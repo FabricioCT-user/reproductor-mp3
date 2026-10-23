@@ -8,6 +8,7 @@ Reproductor de música local que corre en el navegador. Sin dependencias ni buil
 - Lectura de etiquetas y carátula (título, artista, álbum) en MP3 (ID3v2), FLAC, Ogg Vorbis, Opus y M4A/AAC
 - Carátula grande, miniaturas en la lista y fondo difuminado con los colores del álbum
 - Visualizador de audio en tiempo real
+- Letras sincronizadas: lee la letra incrustada (MP3, FLAC, Ogg, Opus, M4A) o archivos `.lrc` y resalta la línea actual; pulsa una línea para saltar a ella. Para añadir una `.lrc`, suéltala junto al audio con el mismo nombre (o usa «Cargar .lrc» en el panel); se guarda en el navegador. Botón `Letra` o tecla `L`
 - Ecualizador de 10 bandas (32 Hz–16 kHz, ±12 dB) con preajustes (Graves, Agudos, Voz, Rock, Pop, Electrónica, Clásica); se guarda entre sesiones
 - Búsqueda en la biblioteca y botón para quitar canciones
 - Reordena la biblioteca arrastrando (el orden se guarda)
@@ -29,6 +30,7 @@ Reproductor de música local que corre en el navegador. Sin dependencias ni buil
 | `N` / `P` | Siguiente / anterior |
 | `S` / `R` | Aleatorio / repetir |
 | `M` | Silenciar |
+| `L` | Mostrar / ocultar letra |
 
 ## Uso
 
@@ -42,7 +44,12 @@ y visita <http://localhost:8000>.
 
 ## Hoja de ruta
 
-- [ ] Letras sincronizadas
+- [ ] Importar carpetas completas
+- [ ] Exportar / importar listas de reproducción
+- [ ] Velocidad de reproducción y temporizador de apagado
+- [ ] Transición suave entre canciones (crossfade)
+- [ ] Tema claro
+- [ ] Edición de etiquetas desde la propia app
 
 ## Licencia
 

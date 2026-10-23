@@ -39,8 +39,15 @@ const ID3 = (() => {
     return new Blob([data.slice(pos)], { type: mime });
   }
 
+  // USLT: codificación, idioma (3), descriptor terminado, letra.
+  function parseLyrics(data) {
+    const enc = data[0];
+    const end = findEnd(data, 4, enc);
+    return decode(enc, data.subarray(end + (enc === 1 || enc === 2 ? 2 : 1)));
+  }
+
   async function read(file) {
-    const meta = { title: "", artist: "", album: "", cover: null };
+    const meta = { title: "", artist: "", album: "", cover: null, lyrics: "" };
     try {
       const head = new Uint8Array(await file.slice(0, 10).arrayBuffer());
       if (String.fromCharCode(...head.subarray(0, 3)) !== "ID3") return meta;
@@ -63,6 +70,7 @@ const ID3 = (() => {
         if (id === "TIT2" || id === "TT2") meta.title = parseText(data);
         else if (id === "TPE1" || id === "TP1") meta.artist = parseText(data);
         else if (id === "TALB" || id === "TAL") meta.album = parseText(data);
+        else if ((id === "USLT" || id === "ULT") && !meta.lyrics) meta.lyrics = parseLyrics(data);
         else if ((id === "APIC" || id === "PIC") && !meta.cover) meta.cover = parsePicture(data, v22);
       }
     } catch {

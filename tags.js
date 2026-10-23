@@ -1,5 +1,5 @@
 // Lectura de etiquetas para FLAC, Ogg (Vorbis/Opus) y MP4/M4A. MP3 se delega en id3.js.
-// Devuelve siempre { title, artist, album, cover } (cover es un Blob o null).
+// Devuelve siempre { title, artist, album, cover, lyrics } (cover es un Blob o null).
 const Tags = (() => {
   const MAX_BLOCK = 64 * 1024 * 1024; // protección frente a archivos corruptos
 
@@ -8,7 +8,12 @@ const Tags = (() => {
   const le32 = (b, o) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
   const ascii = (b, o, n) => String.fromCharCode(...b.subarray(o, o + n));
   const utf8 = (b) => new TextDecoder("utf-8").decode(b);
-  const empty = () => ({ title: "", artist: "", album: "", cover: null });
+  const empty = () => ({ title: "", artist: "", album: "", cover: null, lyrics: "" });
+
+  // Prefiere la letra sincronizada (LRC) frente a la de texto plano.
+  const setLyrics = (meta, val) => {
+    if (val && (!meta.lyrics || (!Lyrics.looksSynced(meta.lyrics) && Lyrics.looksSynced(val)))) meta.lyrics = val;
+  };
 
   function concat(parts) {
     const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
@@ -45,6 +50,7 @@ const Tags = (() => {
       else if (key === "ARTIST") meta.artist ||= val;
       else if (key === "ALBUMARTIST") albumArtist ||= val;
       else if (key === "ALBUM") meta.album ||= val;
+      else if (key === "LYRICS" || key === "UNSYNCEDLYRICS" || key === "SYNCEDLYRICS") setLyrics(meta, val);
       else if (key === "METADATA_BLOCK_PICTURE" && !meta.cover) {
         try { meta.cover = parseFlacPicture(Uint8Array.from(atob(val), (c) => c.charCodeAt(0))); } catch { /* imagen inválida */ }
       }
@@ -128,6 +134,7 @@ const Tags = (() => {
       else if (item.type === "©ART") meta.artist ||= utf8(payload);
       else if (item.type === "aART") albumArtist ||= utf8(payload);
       else if (item.type === "©alb") meta.album ||= utf8(payload);
+      else if (item.type === "©lyr") setLyrics(meta, utf8(payload));
       else if (item.type === "covr" && !meta.cover) meta.cover = new Blob([payload.slice()], { type: flags === 14 ? "image/png" : "image/jpeg" });
     }
     meta.artist ||= albumArtist;

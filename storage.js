@@ -22,7 +22,26 @@ const Storage = (() => {
     });
   }
 
+  // Guarda (o borra, con null) la letra cargada por el usuario en el registro de la pista.
+  async function setLyrics(id, text) {
+    const db = await open();
+    return new Promise((resolve, reject) => {
+      const t = db.transaction("tracks", "readwrite");
+      const store = t.objectStore("tracks");
+      const get = store.get(id);
+      get.onsuccess = () => {
+        const rec = get.result;
+        if (!rec) return;
+        if (text) rec.lyrics = text; else delete rec.lyrics;
+        store.put(rec);
+      };
+      t.oncomplete = () => resolve();
+      t.onerror = () => reject(t.error);
+    });
+  }
+
   return {
+    setLyrics,
     add: (file) => tx("readwrite", (s) => s.add({ name: file.name, blob: file, type: file.type })),
     remove: (id) => tx("readwrite", (s) => s.delete(id)),
     clear: () => tx("readwrite", (s) => s.clear()),

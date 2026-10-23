@@ -14,7 +14,16 @@
 
   <main class="player" id="dropzone">
     <section class="deck">
-      <div class="cover" id="cover"><span class="cover-placeholder">♪</span></div>
+      <div class="cover" id="cover">
+        <span class="cover-placeholder">♪</span>
+        <div id="lyrics" class="lyrics" hidden>
+          <div id="lyrics-body" class="lyrics-body"></div>
+          <div class="lyrics-actions">
+            <label class="link-btn">Cargar .lrc<input type="file" id="lrc-input" accept=".lrc,.txt" hidden></label>
+            <button id="lyrics-clear" class="link-btn" hidden>Quitar la cargada</button>
+          </div>
+        </div>
+      </div>
 
       <div class="info">
         <div id="title" class="title">Nada en reproducción</div>
@@ -52,6 +61,7 @@
           <svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>
         </button>
         <input type="range" id="volume" min="0" max="1" step="0.01" value="1" aria-label="Volumen">
+        <button id="lyrics-toggle" class="btn ghost eq-toggle" title="Letra (L)" aria-pressed="false">Letra</button>
         <button id="eq-toggle" class="btn ghost eq-toggle" title="Ecualizador" aria-pressed="false">EQ</button>
       </div>
 
@@ -77,7 +87,7 @@
         <input type="search" id="filter" placeholder="Buscar en la biblioteca…" aria-label="Buscar">
         <label class="btn">
           + Añadir
-          <input type="file" id="file-input" accept="audio/*,.flac,.m4a,.ogg,.opus" multiple hidden>
+          <input type="file" id="file-input" accept="audio/*,.flac,.m4a,.ogg,.opus,.lrc" multiple hidden>
         </label>
         <button id="clear" class="btn ghost" title="Vaciar biblioteca">Vaciar</button>
       </div>
@@ -87,7 +97,9 @@
   </main>
 
   <div id="menu" class="menu" hidden></div>
+  <div id="toast" class="toast" role="status" hidden></div>
   <audio id="audio"></audio>
+  <script src="lyrics.js"></script>
   <script src="id3.js"></script>
   <script src="tags.js"></script>
   <script src="storage.js"></script>

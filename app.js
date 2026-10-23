@@ -5,7 +5,8 @@ const els = Object.fromEntries(
   ["dropzone", "backdrop", "cover", "title", "artist", "viz", "seek", "current", "duration", "play", "play-icon",
    "prev", "next", "shuffle", "repeat", "mute", "volume", "filter", "file-input", "clear", "playlist",
    "view", "pl-new", "pl-rename", "pl-delete", "menu",
-   "eq-toggle", "eq-panel", "eq-preset", "eq-on", "eq-reset", "eq-bands"]
+   "eq-toggle", "eq-panel", "eq-preset", "eq-on", "eq-reset", "eq-bands",
+   "lyrics", "lyrics-body", "lyrics-toggle", "lyrics-clear", "lrc-input", "toast"]
     .map((id) => [id, $(id)])
 );
 
@@ -31,11 +32,14 @@ const formatTime = (s) => {
 
 /* ---------- Biblioteca ---------- */
 
-async function makeTrack(id, file) {
+async function makeTrack(id, file, userLyrics = "") {
   const meta = await Tags.read(file);
   const fallback = file.name.replace(/\.[^.]+$/, "");
   return {
     id,
+    fileBase: fallback.toLowerCase(),
+    embeddedLyrics: meta.lyrics,
+    userLyrics,
     url: URL.createObjectURL(file),
     title: meta.title || fallback,
     artist: meta.artist,
@@ -47,15 +51,127 @@ async function makeTrack(id, file) {
 const isAudio = (f) => f.type.startsWith("audio/") || /\.(mp3|flac|ogg|oga|opus|m4a|aac|wav|weba)$/i.test(f.name);
 
 async function addFiles(fileList) {
-  const files = [...fileList].filter(isAudio);
+  const all = [...fileList];
+  const lrcFiles = all.filter((f) => /\.lrc$/i.test(f.name));
+  const files = all.filter(isAudio);
   for (const file of files) {
     let id = null;
     try { id = await Storage.add(file); } catch { /* sin persistencia: se usa solo en memoria */ }
     state.tracks.push(await makeTrack(id, file));
   }
+  if (lrcFiles.length) await attachLrcFiles(lrcFiles);
   render();
   if (state.index === -1 && state.tracks.length) loadTrack(0, false, "all");
 }
+
+/* ---------- Letras ---------- */
+
+let toastTimer;
+function toast(msg) {
+  els.toast.textContent = msg;
+  els.toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (els.toast.hidden = true), 3500);
+}
+
+const lyricsOf = (t) => t?.userLyrics || t?.embeddedLyrics || "";
+
+// Letra analizada, con caché por texto.
+function parsedLyrics(t) {
+  const raw = lyricsOf(t);
+  if (!raw) return null;
+  if (t._parsed?.raw !== raw) t._parsed = { raw, value: Lyrics.parse(raw) };
+  return t._parsed.value.lines.length ? t._parsed.value : null;
+}
+
+async function setUserLyrics(t, text) {
+  t.userLyrics = text;
+  if (t.id != null) await Storage.setLyrics(t.id, text || null).catch(() => {});
+  if (t === state.tracks[state.index]) renderLyrics();
+}
+
+// Empareja cada .lrc con una pista por nombre de archivo (o, si no, por título).
+async function attachLrcFiles(lrcFiles) {
+  let matched = 0;
+  for (const f of lrcFiles) {
+    const base = f.name.replace(/\.[^.]+$/, "").toLowerCase();
+    const t = state.tracks.find((x) => x.fileBase === base) || state.tracks.find((x) => x.title.toLowerCase() === base);
+    if (!t) continue;
+    await setUserLyrics(t, await f.text());
+    matched++;
+  }
+  const missed = lrcFiles.length - matched;
+  toast(matched ? `Letra añadida a ${matched} canción(es)` + (missed ? ` · ${missed} sin pareja` : "")
+                : "Ninguna letra coincide con una canción (el nombre debe ser igual al del audio)");
+}
+
+let lyricCursor = -1;
+
+function renderLyrics() {
+  const t = state.tracks[state.index];
+  const L = parsedLyrics(t);
+  els["lyrics-toggle"].classList.toggle("active", !!L);
+  els["lyrics-clear"].hidden = !t?.userLyrics;
+  lyricCursor = -1;
+
+  if (!L) {
+    const p = document.createElement("p");
+    p.className = "lyrics-empty";
+    p.textContent = t ? "No hay letra para esta canción. Carga un archivo .lrc, o súbelo junto al audio con el mismo nombre." : "";
+    els["lyrics-body"].replaceChildren(p);
+    return;
+  }
+
+  els["lyrics-body"].classList.toggle("synced", L.synced);
+  els["lyrics-body"].replaceChildren(
+    ...L.lines.map((line) => {
+      const d = document.createElement("div");
+      d.className = "lyric-line" + (line.text ? "" : " gap");
+      d.textContent = line.text || "♪";
+      if (L.synced) d.addEventListener("click", () => { audio.currentTime = line.t; });
+      return d;
+    })
+  );
+  els["lyrics-body"].scrollTop = 0;
+  syncLyrics();
+}
+
+// Marca la línea actual y la centra en el panel.
+function syncLyrics() {
+  if (els.lyrics.hidden) return;
+  const L = parsedLyrics(state.tracks[state.index]);
+  if (!L?.synced) return;
+  let idx = -1;
+  for (let i = 0; i < L.lines.length && L.lines[i].t <= audio.currentTime + 0.15; i++) idx = i;
+  if (idx === lyricCursor) return;
+  lyricCursor = idx;
+  const nodes = els["lyrics-body"].children;
+  for (let i = 0; i < nodes.length; i++) {
+    nodes[i].classList.toggle("active", i === idx);
+    nodes[i].classList.toggle("past", i < idx);
+  }
+  const el = nodes[idx];
+  if (el) els["lyrics-body"].scrollTo({ top: el.offsetTop - els["lyrics-body"].clientHeight / 2 + el.offsetHeight / 2, behavior: "smooth" });
+}
+
+function toggleLyrics(force) {
+  els.lyrics.hidden = force ?? !els.lyrics.hidden;
+  els["lyrics-toggle"].setAttribute("aria-pressed", !els.lyrics.hidden);
+  localStorage.setItem("lyrics", els.lyrics.hidden ? "0" : "1");
+  if (!els.lyrics.hidden) { lyricCursor = -1; syncLyrics(); }
+}
+
+els["lyrics-toggle"].addEventListener("click", () => toggleLyrics());
+els["lyrics-clear"].addEventListener("click", () => { const t = state.tracks[state.index]; if (t) setUserLyrics(t, ""); });
+els["lrc-input"].addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  const t = state.tracks[state.index];
+  if (!f || !t) return;
+  await setUserLyrics(t, await f.text());
+  toast("Letra cargada");
+});
+setInterval(syncLyrics, 120);
 
 function removeTrack(i) {
   const [t] = state.tracks.splice(i, 1);
@@ -310,6 +426,7 @@ function showTrack(t) {
   els.seek.value = 0;
   els.current.textContent = els.duration.textContent = "0:00";
   document.title = t ? `${t.title} · Reproductor MP3` : "Reproductor MP3";
+  renderLyrics();
 
   if ("mediaSession" in navigator) {
     navigator.mediaSession.metadata = t
@@ -582,6 +699,7 @@ document.addEventListener("keydown", (e) => {
     case "KeyS": els.shuffle.click(); break;
     case "KeyR": els.repeat.click(); break;
     case "KeyM": els.mute.click(); break;
+    case "KeyL": toggleLyrics(); break;
   }
 });
 
@@ -602,7 +720,7 @@ if ("mediaSession" in navigator) {
     const order = JSON.parse(localStorage.getItem("order") || "[]");
     const rank = (r) => { const k = order.indexOf(r.id); return k < 0 ? order.length + r.id : k; };
     saved.sort((a, b) => rank(a) - rank(b));
-    for (const rec of saved) state.tracks.push(await makeTrack(rec.id, rec.blob));
+    for (const rec of saved) state.tracks.push(await makeTrack(rec.id, rec.blob, rec.lyrics || ""));
     const last = state.tracks.findIndex((t) => String(t.id) === localStorage.getItem("lastId"));
     if (state.tracks.length) loadTrack(last >= 0 ? last : 0, false, "all");
     const ids = new Set(state.tracks.map((t) => t.id));
@@ -610,6 +728,7 @@ if ("mediaSession" in navigator) {
     savePlaylists();
   } catch { /* IndexedDB no disponible */ }
   buildEqUi();
+  toggleLyrics(localStorage.getItem("lyrics") !== "1");
   renderViews();
   render();
 })();
