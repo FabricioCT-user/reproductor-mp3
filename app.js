@@ -3,7 +3,8 @@ const $ = (id) => document.getElementById(id);
 const audio = $("audio");
 const els = Object.fromEntries(
   ["dropzone", "backdrop", "cover", "title", "artist", "viz", "seek", "current", "duration", "play", "play-icon",
-   "prev", "next", "shuffle", "repeat", "mute", "volume", "filter", "file-input", "clear", "playlist"]
+   "prev", "next", "shuffle", "repeat", "mute", "volume", "filter", "file-input", "clear", "playlist",
+   "view", "pl-new", "pl-rename", "pl-delete", "menu"]
     .map((id) => [id, $(id)])
 );
 
@@ -17,6 +18,9 @@ const state = {
   repeat: localStorage.getItem("repeat") === "1",
   filter: "",
   queue: [],
+  playlists: JSON.parse(localStorage.getItem("playlists") || "[]"),
+  view: "all",      // "all" o id de lista: lo que se muestra
+  playView: "all",  // vista desde la que se inició la reproducción (define siguiente/anterior)
 };
 
 const formatTime = (s) => {
@@ -47,12 +51,13 @@ async function addFiles(fileList) {
     state.tracks.push(await makeTrack(id, file));
   }
   render();
-  if (state.index === -1 && state.tracks.length) loadTrack(0, false);
+  if (state.index === -1 && state.tracks.length) loadTrack(0, false, "all");
 }
 
 function removeTrack(i) {
   const [t] = state.tracks.splice(i, 1);
   state.queue = state.queue.filter((q) => q !== t);
+  if (t.id != null) { state.playlists.forEach((p) => (p.ids = p.ids.filter((id) => id !== t.id))); savePlaylists(); }
   if (t.id != null) Storage.remove(t.id).catch(() => {});
   URL.revokeObjectURL(t.url);
   if (t.coverUrl) URL.revokeObjectURL(t.coverUrl);
@@ -62,7 +67,7 @@ function removeTrack(i) {
     audio.removeAttribute("src");
     state.index = -1;
     showTrack(null);
-    if (state.tracks.length) loadTrack(Math.min(i, state.tracks.length - 1), false);
+    if (state.tracks.length) loadTrack(Math.min(i, state.tracks.length - 1), false, "all");
   } else if (i < state.index) {
     state.index--;
   }
@@ -76,30 +81,45 @@ async function clearLibrary() {
   state.tracks.forEach((t) => { URL.revokeObjectURL(t.url); t.coverUrl && URL.revokeObjectURL(t.coverUrl); });
   state.tracks = [];
   state.queue = [];
+  state.playlists.forEach((p) => (p.ids = []));
+  savePlaylists();
   state.index = -1;
   await Storage.clear().catch(() => {});
   showTrack(null);
   render();
 }
 
+const currentPlaylist = () => state.playlists.find((p) => p.id === state.view);
+
+function listTracks(view) {
+  const p = state.playlists.find((x) => x.id === view);
+  if (!p) return state.tracks;
+  return p.ids.map((id) => state.tracks.find((t) => t.id === id)).filter(Boolean);
+}
+
 function render() {
   const q = state.filter.toLowerCase();
-  const rows = state.tracks
-    .map((t, i) => ({ t, i }))
+  const pl = currentPlaylist();
+  const rows = listTracks(state.view)
+    .map((t, pos) => ({ t, pos }))
     .filter(({ t }) => !q || `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(q));
 
   if (!rows.length) {
     const li = document.createElement("li");
     li.className = "empty";
-    li.textContent = state.tracks.length ? "Sin resultados." : "Tu biblioteca está vacía. Arrastra archivos de audio aquí o pulsa «+ Añadir».";
+    li.textContent = q ? "Sin resultados."
+      : pl ? "Esta lista está vacía. Usa el botón ♫ de una canción para añadirla."
+      : "Tu biblioteca está vacía. Arrastra archivos de audio aquí o pulsa «+ Añadir».";
     els.playlist.replaceChildren(li);
     return;
   }
 
+  const current = state.tracks[state.index];
   els.playlist.replaceChildren(
-    ...rows.map(({ t, i }) => {
+    ...rows.map(({ t, pos }) => {
+      const i = state.tracks.indexOf(t);
       const li = document.createElement("li");
-      li.classList.toggle("active", i === state.index);
+      li.classList.toggle("active", t === current);
 
       const thumb = document.createElement("div");
       thumb.className = "thumb";
@@ -117,24 +137,26 @@ function render() {
       sub.textContent = (qpos ? `En cola #${qpos} · ` : "") + ([t.artist, t.album].filter(Boolean).join(" · ") || "Artista desconocido");
       text.append(name, sub);
 
-      const qb = document.createElement("button");
-      qb.className = "t-btn";
-      qb.title = qpos ? "Quitar de la cola" : "Reproducir a continuación";
-      qb.textContent = qpos ? "−" : "+";
-      qb.addEventListener("click", (e) => { e.stopPropagation(); toggleQueue(t); });
+      const btn = (cls, title, label, fn) => {
+        const b = document.createElement("button");
+        b.className = cls;
+        b.title = title;
+        b.textContent = label;
+        b.addEventListener("click", (e) => { e.stopPropagation(); fn(b); });
+        return b;
+      };
+      const qb = btn("t-btn", qpos ? "Quitar de la cola" : "Reproducir a continuación", qpos ? "−" : "+", () => toggleQueue(t));
+      const pb = btn("t-btn", "Añadir a una lista", "♫", (b) => openMenu(b, t));
+      const rm = pl
+        ? btn("t-btn remove", "Quitar de esta lista", "✕", () => removeFromPlaylist(pl, t))
+        : btn("t-btn remove", "Quitar de la biblioteca", "✕", () => removeTrack(i));
 
-      const rm = document.createElement("button");
-      rm.className = "t-btn remove";
-      rm.title = "Quitar de la biblioteca";
-      rm.textContent = "✕";
-      rm.addEventListener("click", (e) => { e.stopPropagation(); removeTrack(i); });
-
-      li.append(thumb, text, qb, rm);
-      li.addEventListener("click", () => loadTrack(i, true));
+      li.append(thumb, text, qb, pb, rm);
+      li.addEventListener("click", () => loadTrack(i, true, state.view));
 
       if (!q) {
         li.draggable = true;
-        li.addEventListener("dragstart", (e) => { dragFrom = i; e.dataTransfer.effectAllowed = "move"; li.classList.add("dragging"); });
+        li.addEventListener("dragstart", (e) => { dragFrom = pos; e.dataTransfer.effectAllowed = "move"; li.classList.add("dragging"); });
         li.addEventListener("dragend", () => { dragFrom = -1; li.classList.remove("dragging"); clearDropMarks(); });
         li.addEventListener("dragover", (e) => {
           if (dragFrom < 0) return;
@@ -146,7 +168,7 @@ function render() {
           if (dragFrom < 0) return;
           e.preventDefault();
           e.stopPropagation();
-          moveTrack(dragFrom, i + (dropBefore(e, li) ? 0 : 1));
+          moveTrack(dragFrom, pos + (dropBefore(e, li) ? 0 : 1));
         });
       }
       return li;
@@ -158,9 +180,16 @@ let dragFrom = -1;
 const dropBefore = (e, li) => e.clientY < li.getBoundingClientRect().top + li.offsetHeight / 2;
 const clearDropMarks = () => els.playlist.querySelectorAll(".drop-before, .drop-after").forEach((n) => n.classList.remove("drop-before", "drop-after"));
 
+// Reordena dentro de la vista actual (biblioteca o lista).
 function moveTrack(from, to) {
   if (to > from) to--;
   if (to === from) return render();
+  const pl = currentPlaylist();
+  if (pl) {
+    pl.ids.splice(to, 0, ...pl.ids.splice(from, 1));
+    savePlaylists();
+    return render();
+  }
   const current = state.tracks[state.index];
   const [t] = state.tracks.splice(from, 1);
   state.tracks.splice(to, 0, t);
@@ -168,6 +197,96 @@ function moveTrack(from, to) {
   localStorage.setItem("order", JSON.stringify(state.tracks.map((x) => x.id).filter((id) => id != null)));
   render();
 }
+
+/* ---------- Listas de reproducción ---------- */
+
+const savePlaylists = () => localStorage.setItem("playlists", JSON.stringify(state.playlists));
+
+function renderViews() {
+  els.view.replaceChildren(
+    new Option("Biblioteca", "all"),
+    ...state.playlists.map((p) => new Option(`${p.name} (${p.ids.length})`, p.id))
+  );
+  els.view.value = state.view;
+  const inList = !!currentPlaylist();
+  els["pl-rename"].hidden = els["pl-delete"].hidden = !inList;
+  els.clear.hidden = inList;
+}
+
+function setView(v) {
+  state.view = state.playlists.some((p) => p.id === v) ? v : "all";
+  state.filter = els.filter.value = "";
+  renderViews();
+  render();
+}
+
+function createPlaylist() {
+  const name = prompt("Nombre de la nueva lista:")?.trim();
+  if (!name) return null;
+  const p = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, ids: [] };
+  state.playlists.push(p);
+  savePlaylists();
+  renderViews();
+  return p;
+}
+
+function renamePlaylist() {
+  const p = currentPlaylist();
+  const name = p && prompt("Nuevo nombre:", p.name)?.trim();
+  if (!name) return;
+  p.name = name;
+  savePlaylists();
+  renderViews();
+}
+
+function deletePlaylist() {
+  const p = currentPlaylist();
+  if (!p || !confirm(`¿Eliminar la lista «${p.name}»? Las canciones se conservan en la biblioteca.`)) return;
+  state.playlists = state.playlists.filter((x) => x !== p);
+  savePlaylists();
+  if (state.playView === p.id) state.playView = "all";
+  setView("all");
+}
+
+function removeFromPlaylist(p, t) {
+  p.ids = p.ids.filter((id) => id !== t.id);
+  savePlaylists();
+  renderViews();
+  render();
+}
+
+function togglePlaylistMember(p, t) {
+  p.ids.includes(t.id) ? (p.ids = p.ids.filter((id) => id !== t.id)) : p.ids.push(t.id);
+  savePlaylists();
+  renderViews();
+  render();
+}
+
+function openMenu(anchor, t) {
+  const m = els.menu;
+  m.replaceChildren();
+  const item = (label, fn, disabled) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.disabled = !!disabled;
+    b.addEventListener("click", () => { closeMenu(); fn(); });
+    m.append(b);
+  };
+  if (t.id == null) {
+    item("No disponible: el navegador no permite guardar la biblioteca", () => {}, true);
+  } else {
+    for (const p of state.playlists) item(`${p.ids.includes(t.id) ? "✓" : " "} ${p.name}`, () => togglePlaylistMember(p, t));
+    item("+ Nueva lista…", () => { const p = createPlaylist(); if (p) togglePlaylistMember(p, t); });
+  }
+  m.hidden = false;
+  const r = anchor.getBoundingClientRect();
+  m.style.left = `${Math.max(8, Math.min(r.right - m.offsetWidth, innerWidth - m.offsetWidth - 8))}px`;
+  m.style.top = `${r.bottom + m.offsetHeight + 8 > innerHeight ? r.top - m.offsetHeight - 4 : r.bottom + 4}px`;
+}
+
+const closeMenu = () => (els.menu.hidden = true);
+document.addEventListener("click", (e) => { if (!els.menu.contains(e.target)) closeMenu(); }, true);
+document.addEventListener("keydown", (e) => { if (e.code === "Escape") closeMenu(); });
 
 function toggleQueue(t) {
   const i = state.queue.indexOf(t);
@@ -199,8 +318,9 @@ function showTrack(t) {
   }
 }
 
-function loadTrack(i, autoplay) {
+function loadTrack(i, autoplay, view = "all") {
   state.index = i;
+  state.playView = view;
   const t = state.tracks[i];
   audio.src = t.url;
   showTrack(t);
@@ -214,22 +334,30 @@ function play() {
   audio.play().catch(() => {});
 }
 
+// Pistas entre las que se navega: la vista desde la que se empezó a reproducir.
+const contextList = () => listTracks(state.playView);
+
 function step(dir) {
-  const n = state.tracks.length;
+  if (!state.tracks.length) return;
+  if (dir > 0 && state.queue.length) return loadTrack(state.tracks.indexOf(state.queue.shift()), true, state.playView);
+  const list = contextList();
+  const n = list.length;
   if (!n) return;
-  if (dir > 0 && state.queue.length) return loadTrack(state.tracks.indexOf(state.queue.shift()), true);
-  let i;
-  if (state.shuffle && n > 1) {
-    do { i = Math.floor(Math.random() * n); } while (i === state.index);
+  const current = state.tracks[state.index];
+  const pos = list.indexOf(current);
+  let next;
+  if (pos < 0) next = list[0];
+  else if (state.shuffle && n > 1) {
+    do { next = list[Math.floor(Math.random() * n)]; } while (next === current);
   } else {
-    i = (state.index + dir + n) % n;
+    next = list[(pos + dir + n) % n];
   }
-  loadTrack(i, true);
+  loadTrack(state.tracks.indexOf(next), true, state.playView);
 }
 
 function togglePlay() {
   if (!state.tracks.length) return;
-  if (state.index === -1) return loadTrack(0, true);
+  if (state.index === -1) return loadTrack(0, true, "all");
   audio.paused ? play() : audio.pause();
 }
 
@@ -281,6 +409,10 @@ function draw() {
 
 els["file-input"].addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });
 els.clear.addEventListener("click", clearLibrary);
+els.view.addEventListener("change", () => setView(els.view.value));
+els["pl-new"].addEventListener("click", () => { const p = createPlaylist(); if (p) setView(p.id); });
+els["pl-rename"].addEventListener("click", renamePlaylist);
+els["pl-delete"].addEventListener("click", deletePlaylist);
 els.filter.addEventListener("input", () => { state.filter = els.filter.value; render(); });
 
 let dragDepth = 0;
@@ -324,8 +456,9 @@ audio.addEventListener("timeupdate", () => {
   if (audio.duration) els.seek.value = (audio.currentTime / audio.duration) * 100;
 });
 audio.addEventListener("ended", () => {
-  const last = state.index === state.tracks.length - 1;
-  if (state.repeat && !state.shuffle && state.tracks.length === 1) { audio.currentTime = 0; play(); return; }
+  const list = contextList();
+  const last = list.indexOf(state.tracks[state.index]) === list.length - 1;
+  if (state.repeat && !state.shuffle && list.length === 1) { audio.currentTime = 0; play(); return; }
   if (last && !state.repeat && !state.shuffle && !state.queue.length) return;
   step(1);
 });
@@ -368,8 +501,12 @@ if ("mediaSession" in navigator) {
     saved.sort((a, b) => rank(a) - rank(b));
     for (const rec of saved) state.tracks.push(await makeTrack(rec.id, rec.blob));
     const last = state.tracks.findIndex((t) => String(t.id) === localStorage.getItem("lastId"));
-    if (state.tracks.length) loadTrack(last >= 0 ? last : 0, false);
+    if (state.tracks.length) loadTrack(last >= 0 ? last : 0, false, "all");
+    const ids = new Set(state.tracks.map((t) => t.id));
+    state.playlists.forEach((p) => (p.ids = p.ids.filter((id) => ids.has(id))));
+    savePlaylists();
   } catch { /* IndexedDB no disponible */ }
+  renderViews();
   render();
 })();
 

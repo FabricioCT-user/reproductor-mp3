@@ -56,6 +56,12 @@
     </section>
 
     <section class="library">
+      <div class="view-bar">
+        <select id="view" aria-label="Lista"></select>
+        <button id="pl-new" class="btn ghost" title="Crear una lista de reproducción">+ Lista</button>
+        <button id="pl-rename" class="btn ghost" title="Renombrar lista" hidden>Renombrar</button>
+        <button id="pl-delete" class="btn ghost" title="Eliminar lista" hidden>Eliminar</button>
+      </div>
       <div class="library-head">
         <input type="search" id="filter" placeholder="Buscar en la biblioteca…" aria-label="Buscar">
         <label class="btn">
@@ -69,6 +75,7 @@
     </section>
   </main>
 
+  <div id="menu" class="menu" hidden></div>
   <audio id="audio"></audio>
   <script src="id3.js"></script>
   <script src="storage.js"></script>

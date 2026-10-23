@@ -103,6 +103,29 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 
 /* Biblioteca */
 .library { display: flex; flex-direction: column; gap: 12px; min-height: 0; max-height: 640px; }
+.view-bar { display: flex; flex-wrap: wrap; gap: 8px; }
+.view-bar select {
+  flex: 1 1 160px; min-width: 0;
+  background: #ffffff0d; border: 1px solid var(--line); border-radius: 8px;
+  color: var(--text); padding: 8px 10px; font: inherit; font-size: .9rem; cursor: pointer;
+}
+.view-bar select option { background: #1b1e26; }
+.view-bar .btn[hidden], .library-head .btn[hidden] { display: none; }
+
+.menu {
+  position: fixed; z-index: 10; min-width: 200px; max-width: 280px; max-height: 280px; overflow-y: auto;
+  background: #20242f; border: 1px solid var(--line); border-radius: 10px; padding: 4px;
+  box-shadow: 0 12px 32px #000a;
+}
+.menu[hidden] { display: none; }
+.menu button {
+  display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--text);
+  font: inherit; font-size: .88rem; padding: 8px 10px; border-radius: 6px; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.menu button:hover:not(:disabled) { background: #ffffff14; }
+.menu button:disabled { color: var(--muted); cursor: default; white-space: normal; }
+
 .library-head { display: flex; gap: 8px; }
 .library-head input[type="search"] {
   flex: 1; min-width: 0;
