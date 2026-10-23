@@ -288,3 +288,15 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .edit-note { margin: 0; font-size: .74rem; color: var(--muted); }
 .dialog-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .dialog-actions .spacer { flex: 1; }
+
+/* Selección múltiple */
+.select-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 10px; background: var(--accent-soft); font-size: .85rem; }
+.select-bar[hidden] { display: none; }
+.select-bar .spacer { flex: 1; }
+.select-bar .btn { padding: 6px 12px; font-size: .8rem; }
+.select-bar .btn:disabled { opacity: .45; cursor: default; }
+.playlist.selecting li { cursor: pointer; user-select: none; }
+.playlist.selecting .t-btn { display: none; }
+.playlist li.selected { background: var(--accent-soft); }
+.t-check { width: 16px; height: 16px; flex: none; accent-color: var(--accent); pointer-events: none; margin: 0; }
+.btn.ghost.active, .btn.ghost[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }

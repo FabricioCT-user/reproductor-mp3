@@ -109,7 +109,16 @@
           + Carpeta
           <input type="file" id="folder-input" webkitdirectory multiple hidden>
         </label>
+        <button id="select-btn" class="btn ghost" title="Seleccionar varias canciones para editarlas a la vez (también Ctrl/Cmd + clic)" aria-pressed="false">Seleccionar</button>
         <button id="clear" class="btn ghost" title="Vaciar biblioteca">Vaciar</button>
+      </div>
+      <div id="select-bar" class="select-bar" hidden>
+        <span id="select-count">0 seleccionadas</span>
+        <button id="select-all" class="link-btn" title="Seleccionar todas las canciones visibles">Todas</button>
+        <button id="select-none" class="link-btn">Ninguna</button>
+        <span class="spacer"></span>
+        <button id="select-edit" class="btn" disabled>Editar</button>
+        <button id="select-done" class="btn ghost">Listo</button>
       </div>
       <ul id="playlist" class="playlist"></ul>
       <div class="hint">Arrastra archivos o carpetas a cualquier parte de la ventana · la biblioteca se guarda en este navegador</div>
@@ -129,7 +138,7 @@
       <label class="field">Título <input id="edit-title" maxlength="300"></label>
       <label class="field">Artista <input id="edit-artist" maxlength="300"></label>
       <label class="field">Álbum <input id="edit-album" maxlength="300"></label>
-      <p class="edit-note">Los cambios se guardan en esta aplicación; tus archivos originales no se modifican.</p>
+      <p id="edit-note" class="edit-note">Los cambios se guardan en esta aplicación; tus archivos originales no se modifican.</p>
       <div class="dialog-actions">
         <button type="button" id="edit-reset" class="btn ghost" title="Vuelve a los datos del archivo (se aplica al guardar)">Restaurar original</button>
         <span class="spacer"></span>

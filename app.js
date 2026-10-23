@@ -14,7 +14,8 @@ const els = Object.fromEntries(
    "eq-toggle", "eq-panel", "eq-preset", "eq-on", "eq-reset", "eq-bands",
    "lyrics", "lyrics-body", "lyrics-toggle", "lyrics-clear", "lrc-input", "toast", "folder-input",
    "speed-btn", "sleep-btn", "theme-btn", "xfade-btn",
-   "edit-dialog", "edit-form", "edit-cover", "edit-cover-input", "edit-cover-clear", "edit-title", "edit-artist", "edit-album", "edit-reset", "edit-cancel"]
+   "select-btn", "select-bar", "select-count", "select-all", "select-none", "select-edit", "select-done",
+   "edit-heading", "edit-note", "edit-dialog", "edit-form", "edit-cover", "edit-cover-input", "edit-cover-clear", "edit-title", "edit-artist", "edit-album", "edit-reset", "edit-cancel"]
     .map((id) => [id, $(id)])
 );
 
@@ -30,6 +31,9 @@ const state = {
   queue: [],
   speed: Number(localStorage.getItem("speed")) || 1,
   crossfade: Number(localStorage.getItem("crossfade")) || 0,
+  selecting: false,
+  selected: new Set(), // pistas marcadas en el modo de selección
+  anchor: null,        // última marcada, para seleccionar rangos con Mayús
   playlists: JSON.parse(localStorage.getItem("playlists") || "[]"),
   view: "all",      // "all" o id de lista: lo que se muestra
   playView: "all",  // vista desde la que se inició la reproducción (define siguiente/anterior)
@@ -312,6 +316,10 @@ function listTracks(view) {
 }
 
 function render() {
+  if (state.selecting) {
+    for (const t of state.selected) if (!state.tracks.includes(t)) state.selected.delete(t);
+    updateSelectBar();
+  }
   const q = state.filter.toLowerCase();
   const pl = currentPlaylist();
   const rows = listTracks(state.view)
@@ -329,11 +337,18 @@ function render() {
   }
 
   const current = state.tracks[state.index];
+  const shown = rows.map((r) => r.t);
   els.playlist.replaceChildren(
     ...rows.map(({ t, pos }) => {
       const i = state.tracks.indexOf(t);
       const li = document.createElement("li");
       li.classList.toggle("active", t === current);
+      li.classList.toggle("selected", state.selected.has(t));
+      const check = document.createElement("input");
+      check.type = "checkbox";
+      check.className = "t-check";
+      check.checked = state.selected.has(t);
+      check.tabIndex = -1;
 
       const thumb = document.createElement("div");
       thumb.className = "thumb";
@@ -366,10 +381,14 @@ function render() {
         ? btn("t-btn remove", "Quitar de esta lista", "✕", () => removeFromPlaylist(pl, t))
         : btn("t-btn remove", "Quitar de la biblioteca", "✕", () => removeTrack(i));
 
-      li.append(thumb, text, qb, pb, eb, rm);
-      li.addEventListener("click", () => loadTrack(i, true, state.view));
+      li.append(...(state.selecting ? [check] : []), thumb, text, qb, pb, eb, rm);
+      li.addEventListener("click", (e) => {
+        if (state.selecting) return toggleSelect(t, shown, e.shiftKey);
+        if (e.ctrlKey || e.metaKey) { setSelecting(true); return toggleSelect(t, shown, false); } // atajo para entrar en el modo
+        loadTrack(i, true, state.view);
+      });
 
-      if (!q) {
+      if (!q && !state.selecting) {
         li.draggable = true;
         li.addEventListener("dragstart", (e) => { dragFrom = pos; e.dataTransfer.effectAllowed = "move"; li.classList.add("dragging"); });
         li.addEventListener("dragend", () => { dragFrom = -1; li.classList.remove("dragging"); clearDropMarks(); });
@@ -1127,15 +1146,71 @@ els["xfade-btn"].addEventListener("click", (e) => {
   ]);
 });
 
+/* ---------- Selección múltiple ---------- */
+
+const matchesFilter = (t) => {
+  const q = state.filter.toLowerCase();
+  return !q || `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(q);
+};
+const shownTracks = () => listTracks(state.view).filter(matchesFilter);
+
+function updateSelectBar() {
+  const n = state.selected.size;
+  els["select-count"].textContent = `${n} seleccionada${n === 1 ? "" : "s"}`;
+  els["select-edit"].disabled = n === 0;
+}
+
+function setSelecting(on) {
+  state.selecting = on;
+  state.selected.clear();
+  state.anchor = null;
+  els["select-bar"].hidden = !on;
+  els["select-btn"].setAttribute("aria-pressed", on);
+  els.playlist.classList.toggle("selecting", on);
+  render();
+  updateSelectBar();
+}
+
+// Clic marca o desmarca; con Mayús marca todo el rango desde la última pulsada.
+function toggleSelect(t, shown, range) {
+  if (range && state.anchor && shown.includes(state.anchor)) {
+    const a = shown.indexOf(state.anchor);
+    const b = shown.indexOf(t);
+    shown.slice(Math.min(a, b), Math.max(a, b) + 1).forEach((x) => state.selected.add(x));
+  } else {
+    state.selected.has(t) ? state.selected.delete(t) : state.selected.add(t);
+  }
+  state.anchor = t;
+  render();
+}
+
+els["select-btn"].addEventListener("click", () => setSelecting(!state.selecting));
+els["select-done"].addEventListener("click", () => setSelecting(false));
+els["select-all"].addEventListener("click", () => { shownTracks().forEach((t) => state.selected.add(t)); render(); });
+els["select-none"].addEventListener("click", () => { state.selected.clear(); render(); });
+els["select-edit"].addEventListener("click", () => {
+  // Se editan en el orden en que aparecen en la lista.
+  const picked = state.tracks.filter((t) => state.selected.has(t));
+  if (picked.length) openEditor(picked);
+});
+
 /* ---------- Editor de etiquetas ---------- */
 
-let editing = null; // { t, cover, previewUrl }  cover: undefined (sin cambios) | Blob | false (quitar)
+// editing: { tracks, batch, touched, cover, previewUrl }
+//   touched: campos que el usuario ha tocado (en lote solo se cambian esos)
+//   cover: undefined (sin cambios) | Blob | false (quitar)
+let editing = null;
+const FIELDS = ["title", "artist", "album"];
+const sameValue = (tracks, get) => {
+  const v = get(tracks[0]);
+  return tracks.every((t) => get(t) === v) ? v : null;
+};
 
 function paintEditCover() {
   const c = editing.cover;
   let url = null;
   if (c instanceof Blob) url = editing.previewUrl ??= URL.createObjectURL(c);
-  else if (c === undefined) url = editing.t.orig.coverUrl;
+  else if (c === undefined) url = editing.batch ? null : editing.tracks[0].orig.coverUrl;
   els["edit-cover"].style.backgroundImage = url ? `url(${url})` : "";
   els["edit-cover"].classList.toggle("has-art", !!url);
 }
@@ -1147,19 +1222,26 @@ function setDraftCover(v) {
   paintEditCover();
 }
 
-function fillEditForm(values) {
-  els["edit-title"].value = values.title;
-  els["edit-artist"].value = values.artist;
-  els["edit-album"].value = values.album;
-}
-
-function openEditor(t) {
-  editing = { t, cover: t.edits?.cover, previewUrl: null };
-  fillEditForm(t);
+// Abre el editor para una canción o, con varias, en modo lote.
+function openEditor(target) {
+  const tracks = Array.isArray(target) ? target : [target];
+  const batch = tracks.length > 1;
+  editing = { tracks, batch, touched: new Set(), cover: batch ? undefined : tracks[0].edits?.cover, previewUrl: null };
+  els["edit-heading"].textContent = batch ? `Editar ${tracks.length} canciones` : "Editar etiquetas";
+  els["edit-note"].textContent = batch
+    ? "Solo se cambian los campos que modifiques; el resto se queda como está. Tus archivos originales no se modifican."
+    : "Los cambios se guardan en esta aplicación; tus archivos originales no se modifican.";
+  els["edit-reset"].textContent = batch ? "Restaurar originales" : "Restaurar original";
+  for (const f of FIELDS) {
+    const v = batch ? sameValue(tracks, (t) => t[f]) : tracks[0][f];
+    els[`edit-${f}`].value = v ?? "";
+    els[`edit-${f}`].placeholder = batch && v === null ? "(varios valores)" : "";
+  }
   paintEditCover();
   els["edit-dialog"].showModal();
-  els["edit-title"].focus();
-  els["edit-title"].select();
+  const first = els[batch ? "edit-artist" : "edit-title"];
+  first.focus();
+  first.select();
 }
 
 // Reduce las imágenes grandes para no inflar el almacenamiento ni las miniaturas.
@@ -1176,21 +1258,34 @@ async function shrinkImage(file, max = 800) {
   }
 }
 
-function saveEditor() {
-  const { t } = editing;
-  const title = els["edit-title"].value.trim();
-  const artist = els["edit-artist"].value.trim();
-  const album = els["edit-album"].value.trim();
-  const e = {};
-  if (title && title !== t.orig.title) e.title = title;
-  if (artist !== t.orig.artist) e.artist = artist;
-  if (album !== t.orig.album) e.album = album;
-  if (editing.cover !== undefined) e.cover = editing.cover;
-  t.edits = Object.keys(e).length ? e : null;
-  applyEdits(t);
-  if (t.id != null) Storage.setEdits(t.id, t.edits).catch(() => {});
-  if (t === state.tracks[state.index]) showMeta(t);
+// Guarda las ediciones de una pista (null = sin ediciones) y refresca lo que se muestra.
+function commitEdits(tracks, apply) {
+  for (const t of tracks) {
+    const e = apply(t);
+    t.edits = e && Object.keys(e).length ? e : null;
+    applyEdits(t);
+    if (t.id != null) Storage.setEdits(t.id, t.edits).catch(() => {});
+  }
+  const current = state.tracks[state.index];
+  if (tracks.includes(current)) showMeta(current);
   render();
+}
+
+function saveEditor() {
+  const { tracks, batch, touched, cover } = editing;
+  const values = Object.fromEntries(FIELDS.map((f) => [f, els[`edit-${f}`].value.trim()]));
+  commitEdits(tracks, (t) => {
+    const e = { ...t.edits };
+    for (const f of FIELDS) {
+      if (batch && !touched.has(f)) continue; // en lote, lo que no se toca se deja como está
+      const changed = f === "title" ? values.title && values.title !== t.orig.title : values[f] !== t.orig[f];
+      if (changed) e[f] = values[f]; else delete e[f];
+    }
+    if (cover !== undefined) e.cover = cover;
+    else if (!batch) delete e.cover;
+    return e;
+  });
+  if (batch) toast(`${tracks.length} canciones actualizadas`);
   els["edit-dialog"].close();
 }
 
@@ -1201,7 +1296,19 @@ els["edit-dialog"].addEventListener("close", () => {
   if (editing?.previewUrl) URL.revokeObjectURL(editing.previewUrl);
   editing = null;
 });
-els["edit-reset"].addEventListener("click", () => { fillEditForm(editing.t.orig); setDraftCover(undefined); });
+for (const f of FIELDS) els[`edit-${f}`].addEventListener("input", () => editing?.touched.add(f));
+els["edit-reset"].addEventListener("click", () => {
+  const { tracks, batch } = editing;
+  if (batch) {
+    if (!confirm(`¿Restaurar los datos originales de ${tracks.length} canciones? Se pierden sus ediciones.`)) return;
+    commitEdits(tracks, () => null);
+    toast(`${tracks.length} canciones restauradas`);
+    els["edit-dialog"].close();
+    return;
+  }
+  for (const f of FIELDS) els[`edit-${f}`].value = tracks[0].orig[f];
+  setDraftCover(undefined);
+});
 els["edit-cover-clear"].addEventListener("click", () => setDraftCover(false));
 els["edit-cover-input"].addEventListener("change", async (e) => {
   const f = e.target.files[0];
