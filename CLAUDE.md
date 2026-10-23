@@ -5,7 +5,7 @@ Reproductor de música local que corre en el navegador. **JavaScript clásico, s
 ## Comandos
 
 ```bash
-npm start      # servidor estático en http://localhost:8000
+npm start      # launcher/servidor.py: sirve la app en http://localhost:8000 (y la cola del lanzador)
 npm test       # pruebas unitarias (node:test, tests/unit/*.test.js, ~80)
 ```
 
@@ -18,7 +18,8 @@ npm test       # pruebas unitarias (node:test, tests/unit/*.test.js, ~80)
 ```
 index.html  style.css  sw.js  manifest.webmanifest  icon*.{svg,png}
 src/              módulos sin DOM: util, lyrics, playlist-io, id3, tags, tag-writer, storage
-src/app/          la aplicación: core, library, playlists, lyrics-ui, player, eq, fades, editor, theme, main
+src/app/          la aplicación: core, library, playlists, lyrics-ui, player, eq, fades, launcher, editor, theme, main
+launcher/         servidor.py (estático + cola «Abrir con…»), reproductor (lanzador), instalar.sh (.desktop en Linux), comun.py
 tests/unit/       node:test; helpers.js construye MP3/FLAC/Ogg/MP4 sintéticos
 tests/smoke.*     pruebas de humo en el navegador
 ```
@@ -34,6 +35,8 @@ Al **añadir o mover un archivo**: ponlo en `index.html` (el orden importa: `uti
 - Acceso a `localStorage` solo mediante `store` (core.js): puede estar bloqueado o tener datos corruptos.
 - **Datos guardados:** IndexedDB `reproductor-mp3` v1, almacén `tracks` `{ id, name, blob, type, lyrics?, edits? }`. `localStorage`: `shuffle repeat speed crossfade playlists eq order lastId volume lyrics theme`. Un cambio de esquema exige subir la versión y migrar; no rompas los datos existentes.
 - Las ediciones de etiquetas **no modifican el original**: viven en `edits`. Solo «descargar copia» (MP3 y FLAC) escribe etiquetas, siempre en un archivo nuevo, y se verifica releyéndolo.
+- **Lanzador (`launcher/`)**: sirve archivos del disco de la persona, así que la seguridad es parte del diseño y está probada (`tests/unit/launcher.test.js`): solo 127.0.0.1, comprobación del `Host` (DNS rebinding) y de `Sec-Fetch-Site`, ningún endpoint que registre rutas (el lanzador escribe en una carpeta privada 0700), solo audio, id hex de 32 caracteres. No debilites ninguna de esas defensas; si añades un endpoint, añade su prueba. `sw.js` ignora `/__abrir/*`.
+- **Nunca ejecutes el lanzador sin `REPRODUCTOR_NO_ABRIR=1`** (o `--no-abrir`) al probar: abriría el navegador real de la persona. Usa también `XDG_CACHE_HOME` temporal y un puerto distinto del 8000.
 - Para reproducir sin clic previo (Abrir con…), `play()` comprueba que el contexto de audio esté activo; no dejes que «suene» en silencio.
 
 ## Flujo de trabajo

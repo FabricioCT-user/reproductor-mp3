@@ -45,7 +45,7 @@ Reproductor de música local que corre en el navegador. **Sin dependencias ni bu
 Sirve la carpeta con cualquier servidor estático:
 
 ```bash
-npm start            # o: python3 -m http.server 8000
+npm start            # servidor local en http://localhost:8000 (también vale: python3 -m http.server 8000)
 ```
 
 y abre <http://localhost:8000>. Desde Chrome o Edge puedes **instalarla como app** (icono de instalar en la barra de direcciones, o menú ⋮ → «Instalar Reproductor MP3»). Una vez instalada se abre en su propia ventana y también funciona sin el servidor (se sirve desde la copia guardada).
@@ -60,9 +60,27 @@ Con la app **instalada** (Chrome o Edge de escritorio), el sistema la ofrece com
 
 Si el navegador no permite que algo suene sin que hayas tocado la página, la app lo pausa y avisa («pulsa ▶») en vez de reproducir en silencio.
 
+### Abrir archivos con doble clic en Firefox (u otro navegador): el lanzador (Linux)
+
+Si no quieres o no puedes instalar la app (Firefox no lo permite), hay un pequeño **lanzador** en `launcher/` que se registra en «Abrir con…» y abre el reproductor, en el navegador que uses, con el archivo ya cargado:
+
+```bash
+./launcher/instalar.sh                    # una sola vez: añade «Reproductor MP3» a «Abrir con…»
+./launcher/instalar.sh --predeterminado   # (opcional) además lo pone como programa por defecto de los archivos de audio
+./launcher/instalar.sh --quitar           # lo elimina
+```
+
+Después, clic derecho sobre un MP3 (o FLAC, M4A, OGG, OPUS, AAC, WAV) → **Abrir con** → *Reproductor MP3*. El lanzador arranca el servidor local si hace falta (se apaga solo tras 30 minutos sin uso), abre tu navegador en `http://localhost:8000` y la página recoge el archivo, lo añade a la biblioteca y lo reproduce. Si el reproductor ya está abierto, **no abre otra pestaña**: el archivo llega a esa. Si seleccionas varios, suena el primero y el resto quedan en la cola.
+
+- También sirve desde la terminal: `./launcher/reproductor cancion.mp3 otra.flac`; y `./launcher/reproductor --detener` apaga el servidor.
+- Requiere `python3` (no hay que instalar nada más). Cambia el puerto con `REPRODUCTOR_PORT`.
+- **Primera vez en Firefox:** Firefox bloquea el sonido automático en una pestaña recién abierta; verás el aviso «pulsa ▶» y basta un clic. Para evitarlo: Ajustes → Privacidad y seguridad → Reproducción automática → Configuración → añade `http://localhost:8000` con «Permitir audio y vídeo».
+- Tu biblioteca es la de `http://localhost:8000`: si usas esa misma dirección con `npm start`, es la misma biblioteca. No conviene tener a la vez otro servidor en ese puerto (el lanzador avisa si está ocupado).
+- **Seguridad:** el servidor escucha solo en `127.0.0.1`, rechaza peticiones cuyo `Host` no sea el suyo (DNS rebinding) o que vengan de otros sitios, no tiene ningún endpoint para registrar rutas (el lanzador usa una carpeta privada, `~/.cache/reproductor-mp3/cola`) y solo entrega archivos de audio que el lanzador haya encolado. Está cubierto por pruebas automáticas.
+
 ### Si usas Firefox
 
-Firefox de escritorio no permite instalar aplicaciones web ni registrarlas en «Abrir con…», así que ahí **no hay doble clic desde el sistema**. Para un MP3 que ya tienes descargado:
+Firefox de escritorio no permite instalar aplicaciones web ni registrarlas en «Abrir con…»; en Linux usa el lanzador de arriba. Sin él, para un MP3 que ya tienes descargado:
 
 1. Abre la app (<http://localhost:8000>).
 2. Arrastra el archivo (o toda la carpeta) a la ventana, o usa `+ Añadir` / `+ Carpeta`.
@@ -74,7 +92,7 @@ Consejo: fija la pestaña (clic derecho → *Fijar pestaña*) para tener el repr
 
 ## Privacidad
 
-No hay servidor ni análisis: la aplicación solo se descarga a sí misma. Una política de seguridad de contenido (CSP) impide cargar nada de otros sitios.
+No hay servidor remoto ni análisis: la aplicación solo se descarga a sí misma (el servidor local de `npm start` escucha únicamente en tu equipo). Una política de seguridad de contenido (CSP) impide cargar nada de otros sitios.
 
 ## Desarrollo
 
@@ -91,9 +109,10 @@ src/
   tag-writer.js    escritor de etiquetas para copias de MP3 y FLAC
   storage.js       biblioteca en IndexedDB
   app/             la aplicación, un archivo por función:
-                   core, library, playlists, lyrics-ui, player, eq, fades, editor, theme, main
+                   core, library, playlists, lyrics-ui, player, eq, fades, launcher, editor, theme, main
+launcher/          servidor local en Python y lanzador para «Abrir con…» (instalar.sh lo registra en Linux)
 tests/
-  unit/            pruebas con node:test (módulos puros, escritor de etiquetas, coherencia del proyecto)
+  unit/            pruebas con node:test (módulos puros, escritor de etiquetas, coherencia del proyecto, servidor y lanzador)
   smoke.html       pruebas de humo: manejan la aplicación real en el navegador
 ```
 
@@ -114,6 +133,7 @@ Las unitarias cargan los mismos scripts que el navegador dentro de un contexto a
 
 - La lista de canciones no está virtualizada: con cientos va bien; con decenas de miles aún no se ha probado.
 - Las copias con etiquetas solo existen para MP3 y FLAC. En MP3 con etiqueta ID3v2.2 (muy antiguo) la copia solo lleva las etiquetas editadas.
+- El lanzador solo existe para Linux (usa un archivo `.desktop` y Python 3). En Windows y macOS usa la app instalada desde Chrome o Edge.
 - Las ediciones y las letras cargadas viven en el navegador; no viajan con el archivo salvo que descargues la copia.
 - «Abrir con…» solo funciona con la app instalada en Chrome o Edge de escritorio, y la integración con el sistema (menú contextual, programa por defecto) depende del sistema operativo: sus pruebas automáticas cubren la parte de la app, no el propio menú del sistema.
 - Probado en Chromium; en Firefox y Safari el audio, el almacenamiento y las carpetas deberían funcionar, pero no se ha verificado.

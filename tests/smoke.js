@@ -336,6 +336,27 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     check("sonido bloqueado por el navegador: pausa y avisa en vez de sonar mudo", ev("audio.paused") && /bloque/i.test(ev("els.toast.textContent")), `pausado=${ev("audio.paused")} aviso=${ev("els.toast.textContent")}`);
   });
 
+  await scenario("Lanzador local (Abrir con… en Firefox)", async ({ win, ev }) => {
+    const bytes = wavBytes({ seconds: 2 });
+    const item = { id: "a".repeat(32), name: "externo.wav", type: "audio/wav", mtime: 1700000000.5, size: bytes.length };
+    const json = (body, status = 200) => new win.Response(JSON.stringify(body), { status });
+    const stub = (items) => async (url) => (url.endsWith("/esperar") ? json(items) : new win.Response(bytes, { status: 200 }));
+
+    check("lanzador: la página recibe el archivo, lo añade y suena", (await win.launcherStep(stub([item]))) === "items" && ev("state.tracks.length") === 1
+      && ev("state.tracks[0].fileName") === "externo.wav" && (await until(() => !ev("audio.paused") && ev("audio.currentTime") > 0.2)), ev("state.tracks.length"));
+    check("lanzador: conserva la fecha del archivo (así no se duplica al reabrirlo)", ev("state.tracks[0].key") === `externo.wav|${bytes.length}|1700000000500`, ev("state.tracks[0].key"));
+    ev("audio.pause()");
+    check("lanzador: sin archivos pendientes no hace nada", (await win.launcherStep(stub([]))) === "idle" && ev("state.tracks.length") === 1);
+    check("lanzador: reabrir el mismo archivo no lo duplica", (await win.launcherStep(stub([item]))) === "items" && ev("state.tracks.length") === 1);
+    check("lanzador: con un servidor sin la cola (404) se desactiva solo", (await win.launcherStep(async () => json({}, 404))) === "unsupported");
+    let fallo = false;
+    try { await win.launcherStep(async () => json({}, 500)); } catch { fallo = true; }
+    check("lanzador: un error del servidor se notifica para reintentar", fallo);
+    const roto = { ...item, id: "b".repeat(32), name: "roto.wav" };
+    check("lanzador: si un archivo no se puede descargar, se omite sin romper el resto",
+      (await win.launcherStep(async (url) => (url.endsWith("/esperar") ? json([roto, item]) : url.includes("b".repeat(32)) ? new win.Response("", { status: 404 }) : new win.Response(bytes)))) === "items" && ev("state.tracks.length") === 1);
+  });
+
   /* ----- Casos de robustez (fallos que se encontraron en la revisión) ----- */
 
   await scenario("Robustez: archivos que no se pueden reproducir", async ({ win, ev }) => {

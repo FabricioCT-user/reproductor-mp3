@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""Lanzador del reproductor: abre archivos de audio en la aplicación (pensado para «Abrir con…»).
+
+  reproductor cancion.mp3 otra.flac    añade los archivos al reproductor y lo abre en tu navegador
+  reproductor                          solo abre el reproductor
+  reproductor --detener                apaga el servidor local que arrancó el lanzador
+
+Cómo funciona: deja cada archivo en una cola privada (~/.cache/reproductor-mp3/cola), se asegura de que el
+servidor local esté en marcha y abre el navegador por defecto. La página recoge los archivos de la cola.
+Si el reproductor ya está abierto en una pestaña, no abre otra: los archivos le llegan a esa.
+"""
+import argparse
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+import uuid
+import webbrowser
+from pathlib import Path
+
+from comun import PUERTO_POR_DEFECTO, asegurar_privado, dir_cola, dir_datos, es_audio
+
+AQUI = Path(__file__).resolve().parent
+
+
+def estado(puerto):
+    """Estado del servidor local: dict si es el nuestro, 'otro' si el puerto lo ocupa otro programa, None si no hay nada."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{puerto}/__reproductor", timeout=1.5) as r:
+            datos = json.load(r)
+            return datos if datos.get("app") == "reproductor-mp3" else "otro"
+    except urllib.error.HTTPError:
+        return "otro"
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+
+
+def arrancar_servidor(puerto):
+    asegurar_privado(dir_datos())
+    registro = open(dir_datos() / "servidor.log", "ab")
+    subprocess.Popen(
+        [sys.executable, str(AQUI / "servidor.py"), "--port", str(puerto), "--salir-inactivo", "30"],
+        stdin=subprocess.DEVNULL, stdout=registro, stderr=registro, start_new_session=True,
+    )
+    for _ in range(60):  # hasta ~6 s
+        if isinstance(estado(puerto), dict):
+            return True
+        time.sleep(0.1)
+    return False
+
+
+def encolar(ruta: Path):
+    """Deja una entrada en la cola privada (escritura atómica: el servidor nunca ve un .json a medias)."""
+    cola = asegurar_privado(dir_cola())
+    id_ = uuid.uuid4().hex
+    temporal = cola / f"{id_}.tmp"
+    temporal.write_text(json.dumps({"path": str(ruta), "name": ruta.name, "t": time.time()}), encoding="utf-8")
+    os.replace(temporal, cola / f"{id_}.json")
+
+
+def detener():
+    pid = dir_datos() / "servidor.pid"
+    try:
+        os.kill(int(pid.read_text()), signal.SIGTERM)
+        print("Servidor detenido.")
+    except (OSError, ValueError):
+        print("No hay ningún servidor del reproductor en marcha.")
+    return 0
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Abre archivos de audio en el reproductor MP3")
+    ap.add_argument("archivos", nargs="*")
+    ap.add_argument("--puerto", type=int, default=int(os.environ.get("REPRODUCTOR_PORT", PUERTO_POR_DEFECTO)))
+    ap.add_argument("--no-abrir", action="store_true", default=bool(os.environ.get("REPRODUCTOR_NO_ABRIR")),
+                    help="no abre el navegador (para pruebas)")
+    ap.add_argument("--detener", action="store_true", help="apaga el servidor local")
+    args = ap.parse_args()
+    if args.detener:
+        return detener()
+
+    validos = []
+    for a in args.archivos:
+        ruta = Path(a).expanduser().resolve()
+        if ruta.is_file() and es_audio(ruta) and os.access(ruta, os.R_OK):
+            validos.append(ruta)
+        else:
+            print(f"Se ignora «{a}»: no es un archivo de audio legible.", file=sys.stderr)
+    if args.archivos and not validos:
+        return 1
+
+    st = estado(args.puerto)
+    if st == "otro":
+        print(f"El puerto {args.puerto} lo ocupa otro programa (¿`python -m http.server`?). Ciérralo, o usa REPRODUCTOR_PORT "
+              f"con otro puerto.", file=sys.stderr)
+        return 1
+    if st is None:
+        if not arrancar_servidor(args.puerto):
+            print(f"No se pudo arrancar el servidor. Revisa {dir_datos() / 'servidor.log'}", file=sys.stderr)
+            return 1
+        st = estado(args.puerto)
+
+    for ruta in validos:
+        encolar(ruta)
+
+    url = f"http://localhost:{args.puerto}/"
+    if isinstance(st, dict) and st.get("pagina_conectada"):
+        print("El reproductor ya está abierto: los archivos se añaden a esa pestaña.")
+    elif args.no_abrir:
+        print(f"Listo (sin abrir el navegador): {url}")
+    else:
+        print(f"Abriendo {url} en el navegador…")
+        webbrowser.open(url)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
