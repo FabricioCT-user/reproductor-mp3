@@ -89,3 +89,24 @@ test("los botones que solo tienen icono tienen nombre accesible", () => {
     assert.match(html, new RegExp(`<button id="${id}"[^>]*aria-label="[^"]+"`), `el botón ${id} no tiene aria-label`);
   }
 });
+
+test("manifest: la app se ofrece como manejadora de archivos de audio (Abrir con…)", () => {
+  const manifest = JSON.parse(read("manifest.webmanifest"));
+  const handlers = manifest.file_handlers;
+  assert.ok(Array.isArray(handlers) && handlers.length > 0, "falta file_handlers");
+  const isAudio = require("./helpers").load("util.js")("isAudio");
+  for (const h of handlers) {
+    assert.ok(h.action.startsWith("./") || h.action.startsWith("/"), "la acción debe estar dentro del alcance de la app");
+    for (const [mime, exts] of Object.entries(h.accept)) {
+      assert.match(mime, /^audio\//);
+      for (const ext of exts) {
+        assert.match(ext, /^\.[a-z0-9]+$/, `extensión mal escrita: ${ext}`);
+        assert.ok(isAudio({ name: `x${ext}`, type: "" }), `la app no reconoce ${ext} como audio`);
+      }
+    }
+  }
+  const all = handlers.flatMap((h) => Object.values(h.accept).flat());
+  assert.equal(new Set(all).size, all.length, "una extensión aparece en dos tipos distintos");
+  for (const must of [".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wav"]) assert.ok(all.includes(must), `falta ${must}`);
+  assert.ok(manifest.launch_handler, "falta launch_handler (reutilizar la ventana abierta)");
+});

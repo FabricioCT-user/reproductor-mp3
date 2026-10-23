@@ -93,6 +93,32 @@ async function addFiles(fileList) {
   else els.toast.hidden = true;
 }
 
+// Archivos que el sistema entrega a la app instalada («Abrir con…» o doble clic en un archivo de audio):
+// se añaden a la biblioteca, suena el primero y los demás quedan en la cola.
+async function openFromSystem(files) {
+  const audioFiles = files.filter(isAudio);
+  if (!audioFiles.length) return;
+  await addFiles(audioFiles);
+  const trackOf = (f) => state.tracks.find((t) => t.key === fileKey(f));
+  const first = trackOf(audioFiles[0]);
+  if (!first) return;
+  loadTrack(state.tracks.indexOf(first), true, "all");
+  for (const f of audioFiles.slice(1)) {
+    const t = trackOf(f);
+    if (t && t !== first && !state.queue.includes(t)) state.queue.push(t);
+  }
+  render();
+}
+
+// Consumidor de launchQueue: recibe los manejadores de archivo y los convierte en File.
+async function consumeLaunch({ files: handles = [] } = {}) {
+  const files = [];
+  for (const h of handles) {
+    try { files.push(await h.getFile()); } catch { /* el archivo ya no está o no hay permiso */ }
+  }
+  await openFromSystem(files);
+}
+
 // Recorre arrastres que incluyen carpetas (webkitGetAsEntry) y devuelve todos los archivos con su ruta.
 async function filesFromDrop(dt) {
   // Las entradas hay que leerlas de forma síncrona, antes de cualquier await.

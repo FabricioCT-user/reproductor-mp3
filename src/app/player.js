@@ -48,7 +48,22 @@ function loadTrack(i, autoplay, view = "all") {
 
 function play() {
   startAnalyser();
-  audio.play().catch(() => {});
+  return audio.play().then(ensureSound).catch((e) => {
+    if (e?.name === "NotAllowedError") toast("El navegador bloqueó la reproducción automática: pulsa ▶", 5000);
+  });
+}
+
+// Con Web Audio, un contexto suspendido deja el audio mudo aunque el elemento «suene» (pasa si algo empieza sin que
+// la persona haya tocado la página, p. ej. al abrir un archivo desde el sistema). Se intenta reanudar y, si no se
+// puede, se pausa y se avisa en vez de «reproducir» en silencio.
+async function ensureSound() {
+  const ctx = analyser?.context;
+  if (!ctx || ctx.state === "running") return;
+  await Promise.race([ctx.resume().catch(() => {}), new Promise((r) => setTimeout(r, 400))]);
+  if (ctx.state !== "running") {
+    audio.pause();
+    toast("El navegador bloqueó el sonido automático: pulsa ▶ para empezar", 5000);
+  }
 }
 
 // Pistas entre las que se navega: la vista desde la que se empezó a reproducir.

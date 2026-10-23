@@ -286,7 +286,9 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     check("fundido: empieza al acercarse al final", await until(() => ev("xfade !== null"), 3500));
     check("fundido: la canción nueva pasa a ser la activa (otro deck)", ev("audio") !== first && ev("state.index") === 1, ev("state.index"));
     await until(() => ev("xfade === null"), 4000);
-    check("fundido: al terminar, el deck anterior queda pausado y ambos con ganancia 1", ev("otherDeck().paused") && ev("decks.every(d => d._gain.gain.value === 1)"));
+    // la ganancia vuelve a 1 en el siguiente ciclo de audio, no en el mismo instante
+    const settled = await until(() => ev("decks.every(d => Math.abs(d._gain.gain.value - 1) < 0.001)"), 1500);
+    check("fundido: al terminar, el deck anterior queda pausado y ambos con ganancia 1", ev("otherDeck().paused") && settled, `ganancias=${ev("decks.map(d => d._gain.gain.value.toFixed(3)).join('/')")}`);
     win.setCrossfade(0);
     ev("audio.pause()");
   });
@@ -306,6 +308,32 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     check("selección: «Todas»", ev("state.selected.size") === 4);
     ev("els['select-done'].click()");
     check("selección: «Listo» sale del modo y limpia", !ev("state.selecting") && ev("state.selected.size") === 0);
+  });
+
+  await scenario("Abrir desde el sistema (Abrir con…)", async ({ win, ev }) => {
+    const handle = (f) => ({ getFile: async () => f });
+    const a = wav(win, "abierto1.wav", { mtime: 11 });
+    const b = wav(win, "abierto2.wav", { freq: 550, mtime: 12 });
+    await win.consumeLaunch({
+      files: [handle(a), handle(b), handle(new win.File(["x"], "nota.txt", { type: "text/plain" })), { getFile: async () => { throw new Error("sin permiso"); } }],
+    });
+    check("abrir archivos del sistema: se añaden a la biblioteca (solo el audio legible)", ev("state.tracks.length") === 2, ev("state.tracks.map(t => t.fileName).join(',')"));
+    check("abrir archivos del sistema: suena el primero", (await until(() => !ev("audio.paused") && ev("audio.currentTime") > 0.3)) && ev("state.tracks[state.index].fileName") === "abierto1.wav");
+    check("abrir varios: los demás quedan en la cola", ev("state.queue.length") === 1 && ev("state.queue[0].fileName") === "abierto2.wav");
+    ev("audio.pause()");
+    await win.consumeLaunch({ files: [handle(b)] });
+    check("volver a abrir un archivo: no se duplica y suena ese", ev("state.tracks.length") === 2 && ev("state.tracks[state.index].fileName") === "abierto2.wav");
+    await win.consumeLaunch({ files: [] });
+    await win.consumeLaunch();
+    check("sin archivos no hace nada", ev("state.tracks.length") === 2);
+    ev("audio.pause()");
+
+    // Si el navegador no deja sonar sin un clic previo, no se «reproduce» en silencio: se pausa y se avisa.
+    const ctx = ev("analyser.context");
+    await ctx.suspend();
+    ctx.resume = () => new Promise(() => {}); // simula que el navegador no lo permite
+    await win.play();
+    check("sonido bloqueado por el navegador: pausa y avisa en vez de sonar mudo", ev("audio.paused") && /bloque/i.test(ev("els.toast.textContent")), `pausado=${ev("audio.paused")} aviso=${ev("els.toast.textContent")}`);
   });
 
   /* ----- Casos de robustez (fallos que se encontraron en la revisión) ----- */

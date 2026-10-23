@@ -66,6 +66,9 @@ const appReady = (async function init() {
   render();
 })();
 
+// Archivos abiertos desde el sistema (solo con la app instalada en Chrome o Edge de escritorio).
+if ("launchQueue" in window) window.launchQueue.setConsumer((params) => appReady.then(() => consumeLaunch(params)));
+
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }

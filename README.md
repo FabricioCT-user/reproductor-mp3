@@ -25,6 +25,7 @@ Reproductor de música local que corre en el navegador. **Sin dependencias ni bu
 
 **Interfaz**
 - Tema claro, oscuro o automático, adaptable a móvil, instalable como app (PWA) y funciona sin conexión.
+- Una vez instalada, se ofrece en «Abrir con…» para los archivos de audio del sistema.
 
 ## Atajos
 
@@ -47,7 +48,17 @@ Sirve la carpeta con cualquier servidor estático:
 npm start            # o: python3 -m http.server 8000
 ```
 
-y abre <http://localhost:8000>. Desde Chrome puedes **instalarla como app** (icono en la barra de direcciones).
+y abre <http://localhost:8000>. Desde Chrome o Edge puedes **instalarla como app** (icono de instalar en la barra de direcciones, o menú ⋮ → «Instalar Reproductor MP3»). Una vez instalada se abre en su propia ventana y también funciona sin el servidor (se sirve desde la copia guardada).
+
+### Abrir un archivo con doble clic («Abrir con…»)
+
+Con la app **instalada** (Chrome o Edge de escritorio), el sistema la ofrece como programa para abrir `.mp3`, `.flac`, `.m4a`, `.ogg`, `.oga`, `.opus`, `.aac` y `.wav`:
+
+1. Instala la app como se explica arriba.
+2. Clic derecho sobre un archivo de audio → **Abrir con** → *Reproductor MP3* (en Windows: «Elegir otra aplicación»; en macOS: «Obtener información» → «Abrir con»). Para que sea el programa por defecto, marca «Usar siempre» o cámbialo en las propiedades del tipo de archivo.
+3. El archivo se añade a la biblioteca y empieza a sonar. Si abres varios a la vez, suena el primero y el resto quedan en la cola. Si la app ya está abierta, los archivos van a esa ventana.
+
+Si el navegador no permite que algo suene sin que hayas tocado la página, la app lo pausa y avisa («pulsa ▶») en vez de reproducir en silencio.
 
 > Tu biblioteca, tus listas y tus ajustes se guardan en el navegador y **ligados a la dirección exacta** (`localhost:8000` no comparte datos con `localhost:3000`). Si borras los datos del sitio se pierden; exporta tus listas antes si te importa conservarlas. Los archivos de música se copian dentro del almacenamiento del navegador.
 
@@ -94,6 +105,7 @@ Las unitarias cargan los mismos scripts que el navegador dentro de un contexto a
 - La lista de canciones no está virtualizada: con cientos va bien; con decenas de miles aún no se ha probado.
 - Las copias con etiquetas solo existen para MP3 y FLAC. En MP3 con etiqueta ID3v2.2 (muy antiguo) la copia solo lleva las etiquetas editadas.
 - Las ediciones y las letras cargadas viven en el navegador; no viajan con el archivo salvo que descargues la copia.
+- «Abrir con…» solo funciona con la app instalada en Chrome o Edge de escritorio, y la integración con el sistema (menú contextual, programa por defecto) depende del sistema operativo: sus pruebas automáticas cubren la parte de la app, no el propio menú del sistema.
 - Probado en Chromium; en Firefox y Safari el audio, el almacenamiento y las carpetas deberían funcionar, pero no se ha verificado.
 
 ## Hoja de ruta

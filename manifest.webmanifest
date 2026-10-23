@@ -37,5 +37,38 @@
   "categories": [
     "music",
     "entertainment"
-  ]
+  ],
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": {
+        "audio/mpeg": [
+          ".mp3"
+        ],
+        "audio/flac": [
+          ".flac"
+        ],
+        "audio/ogg": [
+          ".ogg",
+          ".oga",
+          ".opus"
+        ],
+        "audio/mp4": [
+          ".m4a"
+        ],
+        "audio/aac": [
+          ".aac"
+        ],
+        "audio/wav": [
+          ".wav"
+        ]
+      }
+    }
+  ],
+  "launch_handler": {
+    "client_mode": [
+      "focus-existing",
+      "auto"
+    ]
+  }
 }
