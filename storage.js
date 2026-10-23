@@ -6,8 +6,12 @@ const Storage = (() => {
     dbPromise ??= new Promise((resolve, reject) => {
       const req = indexedDB.open("reproductor-mp3", 1);
       req.onupgradeneeded = () => req.result.createObjectStore("tracks", { keyPath: "id", autoIncrement: true });
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      req.onsuccess = () => {
+        // Si otra pestaña pide actualizar o borrar la base, se cierra esta conexión para no bloquearla.
+        req.result.onversionchange = () => { req.result.close(); dbPromise = null; };
+        resolve(req.result);
+      };
+      req.onerror = () => { dbPromise = null; reject(req.error); }; // permite reintentar
     });
     return dbPromise;
   }

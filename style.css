@@ -98,8 +98,9 @@ body {
   display: grid;
   place-items: center;
   box-shadow: 0 12px 32px var(--shadow);
+  position: relative;
+  overflow: hidden;
 }
-.cover { position: relative; overflow: hidden; }
 .cover.has-art .cover-placeholder { display: none; }
 .cover-placeholder { font-size: 4rem; color: var(--muted); }
 
@@ -195,7 +196,8 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .t-name { font-size: .92rem; }
 .t-sub { font-size: .78rem; color: var(--muted); }
 .t-btn { opacity: 0; background: none; border: 0; color: var(--muted); font-size: 1.1rem; cursor: pointer; padding: 4px 9px; border-radius: 6px; }
-.playlist li:hover .t-btn, .t-btn:focus-visible { opacity: 1; }
+.playlist li:hover .t-btn, .playlist li:focus-within .t-btn, .t-btn:focus-visible { opacity: 1; }
+.playlist li:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .t-btn:hover { color: var(--accent); background: var(--fill-2); }
 .t-btn.remove:hover { color: var(--danger); }
 .playlist li.dragging { opacity: .4; }
@@ -216,7 +218,6 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 /* Ecualizador */
 .eq-toggle { padding: 6px 10px; font-size: .78rem; }
 .extras { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
-.eq-toggle.active { color: var(--accent); border-color: var(--accent); }
 .eq-toggle[aria-pressed="true"], .eq-toggle.active { color: var(--accent); border-color: var(--accent); }
 
 .eq-panel { background: var(--inset); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }

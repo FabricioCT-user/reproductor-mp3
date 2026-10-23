@@ -13,9 +13,7 @@ const TagWriter = (() => {
     for (let i = 0; i < s.length; i++) { out[i * 2] = s.charCodeAt(i) & 0xff; out[i * 2 + 1] = s.charCodeAt(i) >> 8; }
     return out;
   };
-  const be32 = (b, o) => ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0;
   const le32 = (b, o) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
-  const syncsafe = (b, o) => (b[o] << 21) | (b[o + 1] << 14) | (b[o + 2] << 7) | b[o + 3];
   const putBe32 = (n) => Uint8Array.of((n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255);
   const putLe32 = (n) => Uint8Array.of(n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255);
   const putSyncsafe = (n) => Uint8Array.of((n >>> 21) & 127, (n >>> 14) & 127, (n >>> 7) & 127, n & 127);
@@ -37,43 +35,14 @@ const TagWriter = (() => {
 
   /* ----- MP3 / ID3v2 ----- */
 
-  // Deshace la «unsincronización» de ID3 (0xFF 0x00 → 0xFF).
-  function unsync(b) {
-    const out = [];
-    for (let i = 0; i < b.length; i++) {
-      out.push(b[i]);
-      if (b[i] === 0xff && b[i + 1] === 0) i++;
-    }
-    return Uint8Array.from(out);
-  }
-
   async function writeMp3(file, edits) {
-    const head = await bytes(file, 0, 10);
-    let audioStart = 0;
-    let ver = 4;
-    let frames = []; // { id, raw } — se conservan byte a byte los que no se editan
-
-    if (ascii(head, 0, 3) === "ID3") {
-      const v = head[3];
-      const flags = head[5];
-      const size = syncsafe(head, 6);
-      audioStart = 10 + size + (v === 4 && flags & 0x10 ? 10 : 0); // pie opcional de ID3v2.4
-      if (v === 3 || v === 4) {
-        ver = v;
-        let b = await bytes(file, 10, size);
-        if (v === 3 && flags & 0x80) b = unsync(b);
-        let pos = 0;
-        if (flags & 0x40) pos = v === 4 ? syncsafe(b, 0) : be32(b, 0) + 4; // se descarta la cabecera extendida
-        while (pos + 10 <= b.length && b[pos] !== 0) {
-          const id = ascii(b, pos, 4);
-          const fsize = v === 4 ? syncsafe(b, pos + 4) : be32(b, pos + 4);
-          if (!/^[A-Z0-9]{4}$/.test(id) || pos + 10 + fsize > b.length) break;
-          frames.push({ id, raw: b.subarray(pos, pos + 10 + fsize) });
-          pos += 10 + fsize;
-        }
-      }
-      // ID3v2.2 (marcos de 3 letras): no se puede reutilizar tal cual, así que solo se escriben las etiquetas editadas.
-    }
+    const tag = await ID3.parse(file); // lector compartido: ya resuelve unsincronización y cabecera extendida
+    const audioStart = tag ? tag.audioStart : 0;
+    // Se conserva la versión de la etiqueta (2.3 o 2.4); con 2.2 o sin etiqueta se escribe 2.4.
+    const reuse = tag && (tag.version === 3 || tag.version === 4);
+    const ver = reuse ? tag.version : 4;
+    // Marcos en bruto: los que no se editan se conservan byte a byte. (Los de ID3v2.2 usan ids de 3 letras y no se pueden reutilizar.)
+    let frames = reuse ? tag.frames : [];
 
     const drop = new Set();
     if ("title" in edits) drop.add("TIT2");

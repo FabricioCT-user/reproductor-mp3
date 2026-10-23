@@ -20,8 +20,10 @@ self.addEventListener("fetch", (e) => {
   e.respondWith(
     fetch(e.request)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(VERSION).then((c) => c.put(e.request, copy));
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(VERSION).then((c) => c.put(e.request, copy)).catch(() => {}); // p. ej. respuestas parciales (206) no se pueden cachear
+        }
         return res;
       })
       .catch(() => caches.match(e.request))

@@ -1,5 +1,13 @@
 const $ = (id) => document.getElementById(id);
 
+// localStorage puede estar bloqueado (modo privado) o tener datos corruptos: nunca debe romper la aplicación.
+const store = {
+  get(key, fallback = null) { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch { /* sin espacio o bloqueado */ } },
+  json(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } },
+};
+const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+
 // Dos elementos de audio: uno suena y el otro entra durante un fundido cruzado (ver «Fundido»).
 const decks = [$("audio"), $("audio-b")];
 let audio = decks[0]; // el deck activo: lo que muestran la barra de progreso, los controles, etc.
@@ -22,19 +30,27 @@ const els = Object.fromEntries(
 const ICON_PLAY = '<path d="M8 5v14l11-7z"/>';
 const ICON_PAUSE = '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
 
+// Descarta entradas que no tengan la forma esperada (datos antiguos o editados a mano).
+function cleanPlaylists(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((p) => p && typeof p.id === "string" && typeof p.name === "string" && Array.isArray(p.ids))
+    .map((p) => ({ ...p, pending: Array.isArray(p.pending) ? p.pending.filter((r) => r && typeof r.file === "string") : [] }));
+}
+
 const state = {
   tracks: [],
   index: -1,
-  shuffle: localStorage.getItem("shuffle") === "1",
-  repeat: localStorage.getItem("repeat") === "1",
+  shuffle: store.get("shuffle") === "1",
+  repeat: store.get("repeat") === "1",
   filter: "",
   queue: [],
-  speed: Number(localStorage.getItem("speed")) || 1,
-  crossfade: Number(localStorage.getItem("crossfade")) || 0,
+  speed: clamp(Number(store.get("speed")) || 1, 0.25, 2),
+  crossfade: clamp(Math.round(Number(store.get("crossfade")) || 0), 0, 12),
   selecting: false,
   selected: new Set(), // pistas marcadas en el modo de selección
   anchor: null,        // última marcada, para seleccionar rangos con Mayús
-  playlists: JSON.parse(localStorage.getItem("playlists") || "[]"),
+  playlists: cleanPlaylists(store.json("playlists", [])),
   view: "all",      // "all" o id de lista: lo que se muestra
   playView: "all",  // vista desde la que se inició la reproducción (define siguiente/anterior)
 };
@@ -90,7 +106,10 @@ function applyEdits(t) {
 
 const revokeCovers = (t) => [t.orig.coverUrl, t._editCoverUrl].forEach((u) => u && URL.revokeObjectURL(u));
 
-const isAudio = (f) => f.type.startsWith("audio/") || /\.(mp3|flac|ogg|oga|opus|m4a|aac|wav|weba)$/i.test(f.name);
+const isLrc = (f) => /\.lrc$/i.test(f.name);
+const isListFile = (f) => /\.(json|m3u8?)$/i.test(f.name);
+// Los .m3u8 a veces llegan con tipo audio/*: no son canciones.
+const isAudio = (f) => !isLrc(f) && !isListFile(f) && (f.type.startsWith("audio/") || /\.(mp3|flac|ogg|oga|opus|m4a|aac|wav|weba)$/i.test(f.name));
 
 // Ruta relativa de un archivo importado desde una carpeta (o solo su nombre).
 const fileKey = (f) => `${f.name}|${f.size}|${f.lastModified}`;
@@ -102,20 +121,30 @@ async function addFiles(fileList) {
   const all = [...fileList];
   // Con carpetas, ordena por ruta para que los álbumes queden en orden (01, 02, … 10).
   if (all.some((f) => pathOf(f).includes("/"))) all.sort(byPath);
-  const lrcFiles = all.filter((f) => /\.lrc$/i.test(f.name));
-  const listFiles = all.filter((f) => /\.(json|m3u8?)$/i.test(f.name));
+  const lrcFiles = all.filter(isLrc);
+  const listFiles = all.filter(isListFile);
   const files = all.filter(isAudio);
 
   let added = 0;
   let dupes = 0;
+  let failed = 0;
+  const keys = new Set(state.tracks.map((t) => t.key));
   for (const [i, file] of files.entries()) {
-    if (state.tracks.some((t) => t.key === fileKey(file))) { dupes++; continue; }
+    const key = fileKey(file);
+    if (keys.has(key)) { dupes++; continue; }
+    keys.add(key);
     if (files.length > 5 && i % 10 === 0) toast(`Importando ${i + 1}/${files.length}…`, 60000);
     let id = null;
-    try { id = await Storage.add(file); } catch { /* sin persistencia: se usa solo en memoria */ }
-    state.tracks.push(await makeTrack(id, file));
-    added++;
-    if (added % 25 === 0) render();
+    try {
+      try { id = await Storage.add(file); } catch { /* sin persistencia: se usa solo en memoria */ }
+      state.tracks.push(await makeTrack(id, file));
+      added++;
+      if (added % 25 === 0) render();
+    } catch {
+      failed++; // un archivo ilegible no debe detener el resto de la importación
+      keys.delete(key);
+      if (id != null) Storage.remove(id).catch(() => {});
+    }
   }
 
   const resolved = added ? resolvePending() : 0;
@@ -127,6 +156,7 @@ async function addFiles(fileList) {
   const msg = [];
   if (added) msg.push(`${added} canción(es) añadida(s)`);
   if (dupes) msg.push(`${dupes} ya estaba(n) en la biblioteca`);
+  if (failed) msg.push(`${failed} no se pudieron leer`);
   if (lyr?.matched) msg.push(`letra para ${lyr.matched}`);
   if (lyr?.missed) msg.push(`${lyr.missed} .lrc sin pareja`);
   if (resolved) msg.push(`${resolved} canción(es) completan listas importadas`);
@@ -255,7 +285,7 @@ function syncLyrics() {
 function toggleLyrics(force) {
   els.lyrics.hidden = force ?? !els.lyrics.hidden;
   els["lyrics-toggle"].setAttribute("aria-pressed", !els.lyrics.hidden);
-  localStorage.setItem("lyrics", els.lyrics.hidden ? "0" : "1");
+  store.set("lyrics", els.lyrics.hidden ? "0" : "1");
   if (!els.lyrics.hidden) { lyricCursor = -1; syncLyrics(); }
 }
 
@@ -274,8 +304,11 @@ setInterval(syncLyrics, 120);
 function removeTrack(i) {
   const [t] = state.tracks.splice(i, 1);
   state.queue = state.queue.filter((q) => q !== t);
-  if (t.id != null) { state.playlists.forEach((p) => (p.ids = p.ids.filter((id) => id !== t.id))); savePlaylists(); }
-  if (t.id != null) Storage.remove(t.id).catch(() => {});
+  if (t.id != null) {
+    state.playlists.forEach((p) => (p.ids = p.ids.filter((id) => id !== t.id)));
+    savePlaylists();
+    Storage.remove(t.id).catch(() => {});
+  }
   URL.revokeObjectURL(t.url);
   revokeCovers(t);
 
@@ -339,10 +372,12 @@ function render() {
 
   const current = state.tracks[state.index];
   const shown = rows.map((r) => r.t);
+  const indexOf = new Map(state.tracks.map((t, n) => [t, n])); // evita un indexOf por fila en bibliotecas grandes
   els.playlist.replaceChildren(
     ...rows.map(({ t, pos }) => {
-      const i = state.tracks.indexOf(t);
+      const i = indexOf.get(t);
       const li = document.createElement("li");
+      li.tabIndex = 0; // se puede recorrer con Tab y activar con Intro
       li.classList.toggle("active", t === current);
       li.classList.toggle("selected", state.selected.has(t));
       const check = document.createElement("input");
@@ -383,6 +418,7 @@ function render() {
         : btn("t-btn remove", "Quitar de la biblioteca", "✕", () => removeTrack(i));
 
       li.append(...(state.selecting ? [check] : []), thumb, text, qb, pb, eb, rm);
+      li.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target === li) li.click(); });
       li.addEventListener("click", (e) => {
         if (state.selecting) return toggleSelect(t, shown, e.shiftKey);
         if (e.ctrlKey || e.metaKey) { setSelecting(true); return toggleSelect(t, shown, false); } // atajo para entrar en el modo
@@ -430,13 +466,13 @@ function moveTrack(from, to) {
   const [t] = state.tracks.splice(from, 1);
   state.tracks.splice(to, 0, t);
   state.index = state.tracks.indexOf(current);
-  localStorage.setItem("order", JSON.stringify(state.tracks.map((x) => x.id).filter((id) => id != null)));
+  store.set("order", JSON.stringify(state.tracks.map((x) => x.id).filter((id) => id != null)));
   render();
 }
 
 /* ---------- Listas de reproducción ---------- */
 
-const savePlaylists = () => localStorage.setItem("playlists", JSON.stringify(state.playlists));
+const savePlaylists = () => store.set("playlists", JSON.stringify(state.playlists));
 
 function renderViews() {
   els.view.replaceChildren(
@@ -681,14 +717,15 @@ function showTrack(t) {
 
 function loadTrack(i, autoplay, view = "all") {
   if (xfade && !xfade.starting) endCrossfade(); // un cambio manual corta el fundido en curso
+  const t = state.tracks[i];
+  if (!t) return;
   state.index = i;
   state.playView = view;
-  const t = state.tracks[i];
   audio.src = t.url;
   audio.playbackRate = state.speed;
   showTrack(t);
   render();
-  localStorage.setItem("lastId", t.id ?? "");
+  store.set("lastId", t.id ?? "");
   if (autoplay) play();
 }
 
@@ -727,7 +764,7 @@ function togglePlay() {
 function setToggle(btn, key, value) {
   state[key] = value;
   btn.setAttribute("aria-pressed", value);
-  localStorage.setItem(key, value ? "1" : "0");
+  store.set(key, value ? "1" : "0");
 }
 
 /* ---------- Ecualizador ---------- */
@@ -745,7 +782,7 @@ const EQ_PRESETS = {
 };
 
 let eqFilters = [], eqPreamp;
-const eqSaved = JSON.parse(localStorage.getItem("eq") || "null");
+const eqSaved = store.json("eq", null);
 state.eq = { on: eqSaved?.on ?? true, gains: eqSaved?.gains?.length === EQ_BANDS.length ? eqSaved.gains : EQ_PRESETS.Plano.slice() };
 
 const fmtFreq = (f) => (f >= 1000 ? `${f / 1000}k` : f);
@@ -759,7 +796,7 @@ function applyEq() {
 }
 
 function saveEq() {
-  localStorage.setItem("eq", JSON.stringify(state.eq));
+  store.set("eq", JSON.stringify(state.eq));
   applyEq();
   syncEqUi();
 }
@@ -818,11 +855,14 @@ els["eq-preset"].addEventListener("change", () => {
 /* ---------- Visualizador ---------- */
 
 let analyser, freq;
+let audioGraphFailed = false; // sin Web Audio la música suena igual, solo faltan ecualizador, visualizador y fundido
+let vizRunning = false;
 const ctx2d = els.viz.getContext("2d");
 
 function startAnalyser() {
-  if (analyser) return;
-  const ac = new (window.AudioContext || window.webkitAudioContext)();
+  if (analyser || audioGraphFailed) return;
+  let ac;
+  try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch { audioGraphFailed = true; return; }
   analyser = ac.createAnalyser();
   analyser.fftSize = 128;
   analyser.smoothingTimeConstant = 0.8;
@@ -852,20 +892,32 @@ function startAnalyser() {
   analyser.connect(ac.destination);
   applyEq();
   decks.forEach((d) => d.addEventListener("play", () => ac.resume()));
-  draw();
 }
 
+// El color de acento solo se vuelve a leer cuando cambia el tema.
+let accent = "";
+let accentTheme = "";
+function accentColor() {
+  const theme = document.documentElement.dataset.theme;
+  if (theme !== accentTheme) {
+    accentTheme = theme;
+    accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+  }
+  return accent;
+}
+
+// El bucle de dibujo solo corre mientras suena algo (se reanuda con el evento «play»).
 function draw() {
-  requestAnimationFrame(draw);
   const { width: w, height: h } = els.viz;
   ctx2d.clearRect(0, 0, w, h);
-  if (audio.paused) return;
+  if (audio.paused) { vizRunning = false; return; }
+  requestAnimationFrame(draw);
 
   analyser.getByteFrequencyData(freq);
   const bars = 48;
   const gap = 4;
   const bw = (w - gap * (bars - 1)) / bars;
-  ctx2d.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+  ctx2d.fillStyle = accentColor();
   for (let i = 0; i < bars; i++) {
     const v = freq[Math.floor((i / bars) * freq.length * 0.75)] / 255;
     const bh = Math.max(3, v * h);
@@ -915,12 +967,12 @@ els.next.addEventListener("click", () => step(1));
 els.shuffle.addEventListener("click", () => setToggle(els.shuffle, "shuffle", !state.shuffle));
 els.repeat.addEventListener("click", () => setToggle(els.repeat, "repeat", !state.repeat));
 
-els.volume.value = localStorage.getItem("volume") ?? 1;
+els.volume.value = store.get("volume") ?? 1;
 setVolume(els.volume.value);
 els.volume.addEventListener("input", () => {
   setVolume(els.volume.value);
   setMuted(false);
-  localStorage.setItem("volume", els.volume.value);
+  store.set("volume", els.volume.value);
 });
 els.mute.addEventListener("click", () => setMuted(!audio.muted));
 onAudio("volumechange", () => (els.mute.style.opacity = audio.muted ? 0.35 : ""));
@@ -929,7 +981,10 @@ els.seek.addEventListener("input", () => {
   if (audio.duration) audio.currentTime = (els.seek.value / 100) * audio.duration;
 });
 
-onAudio("play", () => (els["play-icon"].innerHTML = ICON_PAUSE));
+onAudio("play", () => {
+  els["play-icon"].innerHTML = ICON_PAUSE;
+  if (analyser && !vizRunning) { vizRunning = true; draw(); }
+});
 onAudio("pause", () => { els["play-icon"].innerHTML = ICON_PLAY; if (xfade) endCrossfade(); });
 onAudio("loadedmetadata", () => (els.duration.textContent = formatTime(audio.duration)));
 onAudio("timeupdate", () => {
@@ -944,12 +999,27 @@ onAudio("ended", () => {
   if (last && !state.repeat && !state.shuffle && !state.queue.length) return;
   step(1);
 });
-onAudio("error", () => { if (audio.src) step(1); });
+// Si una canción no se puede reproducir se salta, pero sin dar vueltas para siempre si ninguna funciona.
+let failures = 0;
+onAudio("playing", () => { failures = 0; });
+onAudio("error", () => {
+  if (!audio.getAttribute("src")) return;
+  const title = state.tracks[state.index]?.title ?? "la canción";
+  const limit = Math.max(1, contextList().length);
+  if (++failures >= limit) {
+    failures = 0;
+    toast(limit > 1 ? "Ninguna canción de la lista se puede reproducir en este navegador" : `No se puede reproducir «${title}»`, 6000);
+    return;
+  }
+  toast(`No se puede reproducir «${title}»; se salta`, 3000);
+  step(1);
+});
 
 document.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest?.("dialog")) return;
   const typing = e.target.tagName === "INPUT" && e.target.type !== "range";
   if (typing) return;
+  if (e.code === "Space" && e.target.closest?.("button, select, a, summary")) return; // activa el control enfocado
   switch (e.code) {
     case "Space": e.preventDefault(); togglePlay(); break;
     case "ArrowRight": audio.currentTime += 5; break;
@@ -987,7 +1057,7 @@ function setSpeed(v) {
     d.playbackRate = v;
     d.preservesPitch = true;   // cambia el tempo sin cambiar el tono
   }
-  localStorage.setItem("speed", v);
+  store.set("speed", v);
   els["speed-btn"].textContent = fmtSpeed(v);
   els["speed-btn"].classList.toggle("active", v !== 1);
 }
@@ -1074,7 +1144,7 @@ function renderCrossfade() {
 
 function setCrossfade(s) {
   state.crossfade = s;
-  localStorage.setItem("crossfade", s);
+  store.set("crossfade", s);
   renderCrossfade();
 }
 
@@ -1387,35 +1457,39 @@ function applyTheme(pref) {
 els["theme-btn"].addEventListener("click", () => {
   const order = Object.keys(THEMES);
   const next = order[(order.indexOf(els["theme-btn"].dataset.pref) + 1) % order.length];
-  localStorage.setItem("theme", next);
+  store.set("theme", next);
   applyTheme(next);
   toast(`Tema: ${THEMES[next][1]}`, 1500);
 });
-themeQuery.addEventListener("change", () => applyTheme(localStorage.getItem("theme") || "auto"));
-applyTheme(localStorage.getItem("theme") || "auto");
+themeQuery.addEventListener("change", () => applyTheme(store.get("theme") || "auto"));
+applyTheme(store.get("theme") || "auto");
 
 /* ---------- Arranque ---------- */
 
-(async function init() {
+// Promesa que se cumple cuando la biblioteca guardada ya está cargada y pintada (la usan las pruebas).
+const appReady = (async function init() {
   els.shuffle.setAttribute("aria-pressed", state.shuffle);
   els.repeat.setAttribute("aria-pressed", state.repeat);
   try {
     const saved = await Storage.all();
-    const order = JSON.parse(localStorage.getItem("order") || "[]");
+    const order = [].concat(store.json("order", [])).filter(Number.isFinite);
     const rank = (r) => { const k = order.indexOf(r.id); return k < 0 ? order.length + r.id : k; };
     saved.sort((a, b) => rank(a) - rank(b));
-    for (const rec of saved) state.tracks.push(await makeTrack(rec.id, rec.blob, rec.lyrics || "", rec.edits || null));
-    const last = state.tracks.findIndex((t) => String(t.id) === localStorage.getItem("lastId"));
+    for (const rec of saved) {
+      if (!(rec.blob instanceof Blob)) { Storage.remove(rec.id).catch(() => {}); continue; } // registro sin archivo: se descarta
+      try { state.tracks.push(await makeTrack(rec.id, rec.blob, rec.lyrics || "", rec.edits || null)); } catch { /* este archivo no se puede cargar: se omite */ }
+    }
+    const last = state.tracks.findIndex((t) => String(t.id) === store.get("lastId"));
     if (state.tracks.length) loadTrack(last >= 0 ? last : 0, false, "all");
     const ids = new Set(state.tracks.map((t) => t.id));
     state.playlists.forEach((p) => (p.ids = p.ids.filter((id) => ids.has(id))));
     savePlaylists();
   } catch { /* IndexedDB no disponible */ }
   buildEqUi();
-  setSpeed(Number(localStorage.getItem("speed")) || 1);
+  setSpeed(Number(store.get("speed")) || 1);
   renderCrossfade();
   renderSleep();
-  toggleLyrics(localStorage.getItem("lyrics") !== "1");
+  toggleLyrics(store.get("lyrics") !== "1");
   renderViews();
   render();
 })();

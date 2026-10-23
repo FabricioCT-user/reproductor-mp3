@@ -25,14 +25,15 @@ const Tags = (() => {
   /* ----- Vorbis comments (FLAC y Ogg) ----- */
 
   // Estructura de imagen de FLAC (también usada en METADATA_BLOCK_PICTURE de Ogg).
-  function parseFlacPicture(b) {
+  // Devuelve { type, from, to }: la imagen ocupa b[from..to).
+  function locateFlacPicture(b) {
     let o = 4; // tipo de imagen
     const mimeLen = be32(b, o); o += 4;
     const mime = ascii(b, o, mimeLen); o += mimeLen;
     const descLen = be32(b, o); o += 4 + descLen;
     o += 16; // ancho, alto, profundidad, colores
     const len = be32(b, o); o += 4;
-    return new Blob([b.slice(o, o + len)], { type: mime && mime !== "-->" ? mime : "image/jpeg" });
+    return { type: mime && mime !== "-->" ? mime : "image/jpeg", from: o, to: o + len };
   }
 
   function parseVorbisComment(b, meta) {
@@ -52,7 +53,11 @@ const Tags = (() => {
       else if (key === "ALBUM") meta.album ||= val;
       else if (key === "LYRICS" || key === "UNSYNCEDLYRICS" || key === "SYNCEDLYRICS") setLyrics(meta, val);
       else if (key === "METADATA_BLOCK_PICTURE" && !meta.cover) {
-        try { meta.cover = parseFlacPicture(Uint8Array.from(atob(val), (c) => c.charCodeAt(0))); } catch { /* imagen inválida */ }
+        try {
+          const b = Uint8Array.from(atob(val), (c) => c.charCodeAt(0));
+          const { type, from, to } = locateFlacPicture(b);
+          meta.cover = new Blob([b.slice(from, to)], { type });
+        } catch { /* imagen inválida */ }
       }
     }
     meta.artist ||= albumArtist;
@@ -67,7 +72,11 @@ const Tags = (() => {
       const type = h[0] & 0x7f;
       const len = (h[1] << 16) | (h[2] << 8) | h[3];
       if (type === 4) parseVorbisComment(await bytes(file, off + 4, len), meta);
-      else if (type === 6 && !meta.cover) meta.cover = parseFlacPicture(await bytes(file, off + 4, len));
+      else if (type === 6 && !meta.cover) {
+        // La carátula es un trozo del propio archivo: no se copia a memoria.
+        const { type: mime, from, to } = locateFlacPicture(await bytes(file, off + 4, Math.min(len, 65536)));
+        meta.cover = file.slice(off + 4 + from, off + 4 + to, mime);
+      }
       off += 4 + len;
       if (last) break;
     }
@@ -117,7 +126,7 @@ const Tags = (() => {
     for (const bx of boxes(b, parent.start, parent.end)) if (bx.type === type) return bx;
   };
 
-  function parseMoov(moov, meta) {
+  function parseMoov(moov, meta, file, base) {
     const root = { start: 0, end: moov.length };
     const udta = child(moov, root, "udta");
     const metaBox = udta && child(moov, udta, "meta");
@@ -135,7 +144,7 @@ const Tags = (() => {
       else if (item.type === "aART") albumArtist ||= utf8(payload);
       else if (item.type === "©alb") meta.album ||= utf8(payload);
       else if (item.type === "©lyr") setLyrics(meta, utf8(payload));
-      else if (item.type === "covr" && !meta.cover) meta.cover = new Blob([payload.slice()], { type: flags === 14 ? "image/png" : "image/jpeg" });
+      else if (item.type === "covr" && !meta.cover) meta.cover = file.slice(base + data.start + 8, base + data.end, flags === 14 ? "image/png" : "image/jpeg");
     }
     meta.artist ||= albumArtist;
   }
@@ -151,7 +160,7 @@ const Tags = (() => {
       else if (size === 0) size = file.size - off;
       if (size < hdr) return;
       if (ascii(h, 4, 4) === "moov") {
-        if (size <= MAX_BLOCK) parseMoov(await bytes(file, off + hdr, size - hdr), meta);
+        if (size <= MAX_BLOCK) parseMoov(await bytes(file, off + hdr, size - hdr), meta, file, off + hdr);
         return;
       }
       off += size;

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Pruebas de humo — Reproductor MP3</title>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; max-width: 900px; }
+    h1 { font-size: 1.2rem; }
+    .ok { color: #1a7f37; } .fail { color: #cf222e; font-weight: 600; }
+    li { margin: 2px 0; } small { color: #666; }
+    #summary { font-weight: 700; margin: 12px 0; }
+    iframe { position: fixed; right: 8px; bottom: 8px; width: 420px; height: 520px; border: 1px solid #aaa; opacity: .9; }
+  </style>
+</head>
+<body>
+  <h1>Pruebas de humo del reproductor</h1>
+  <p><small>Cargan la aplicación real en un iframe y la manejan como lo haría una persona. Sirve la carpeta del proyecto (<code>npm start</code>) y abre <code>/tests/smoke.html</code>.</small></p>
+  <div id="summary">Ejecutando…</div>
+  <ul id="results"></ul>
+  <script src="smoke.js"></script>
+</body>
+</html>
