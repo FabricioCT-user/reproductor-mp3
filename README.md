@@ -16,6 +16,8 @@ Reproductor de música local que corre en el navegador. Sin dependencias ni buil
 - Exportar e importar listas (botón `⋯`): JSON con todas tus listas, o M3U8 estándar para otros reproductores. Las canciones se identifican por nombre de archivo y tamaño, así que valen en otro navegador; las que aún no estén en la biblioteca quedan «pendientes» y se enlazan solas al importarlas. También puedes soltar un `.json` / `.m3u8` en la ventana
 - Cola de reproducción: pulsa `+` en una canción para reproducirla a continuación
 - Instalable como app (PWA) y funciona sin conexión
+- Velocidad de reproducción de 0,5× a 2× sin cambiar el tono (menú `1×` o teclas `[` y `]`); se recuerda entre sesiones
+- Temporizador de apagado (15–90 min, personalizado o «al terminar la canción») con fundido de salida de 8 s
 - Aleatorio, repetir, volumen y silencio (se recuerdan entre sesiones)
 - Teclas multimedia del sistema (Media Session API)
 - Interfaz adaptable a móvil
@@ -32,6 +34,7 @@ Reproductor de música local que corre en el navegador. Sin dependencias ni buil
 | `N` / `P` | Siguiente / anterior |
 | `S` / `R` | Aleatorio / repetir |
 | `M` | Silenciar |
+| `[` / `]` | Velocidad más lenta / más rápida |
 | `L` | Mostrar / ocultar letra |
 
 ## Uso
@@ -46,7 +49,6 @@ y visita <http://localhost:8000>.
 
 ## Hoja de ruta
 
-- [ ] Velocidad de reproducción y temporizador de apagado
 - [ ] Transición suave entre canciones (crossfade)
 - [ ] Tema claro
 - [ ] Edición de etiquetas desde la propia app

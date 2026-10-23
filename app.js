@@ -6,7 +6,8 @@ const els = Object.fromEntries(
    "prev", "next", "shuffle", "repeat", "mute", "volume", "filter", "file-input", "clear", "playlist",
    "view", "pl-new", "pl-more", "pl-import", "pl-rename", "pl-delete", "menu",
    "eq-toggle", "eq-panel", "eq-preset", "eq-on", "eq-reset", "eq-bands",
-   "lyrics", "lyrics-body", "lyrics-toggle", "lyrics-clear", "lrc-input", "toast", "folder-input"]
+   "lyrics", "lyrics-body", "lyrics-toggle", "lyrics-clear", "lrc-input", "toast", "folder-input",
+   "speed-btn", "sleep-btn"]
     .map((id) => [id, $(id)])
 );
 
@@ -20,6 +21,7 @@ const state = {
   repeat: localStorage.getItem("repeat") === "1",
   filter: "",
   queue: [],
+  speed: Number(localStorage.getItem("speed")) || 1,
   playlists: JSON.parse(localStorage.getItem("playlists") || "[]"),
   view: "all",      // "all" o id de lista: lo que se muestra
   playView: "all",  // vista desde la que se inició la reproducción (define siguiente/anterior)
@@ -623,6 +625,7 @@ function loadTrack(i, autoplay, view = "all") {
   state.playView = view;
   const t = state.tracks[i];
   audio.src = t.url;
+  audio.playbackRate = state.speed;
   showTrack(t);
   render();
   localStorage.setItem("lastId", t.id ?? "");
@@ -867,6 +870,7 @@ audio.addEventListener("timeupdate", () => {
   if (audio.duration) els.seek.value = (audio.currentTime / audio.duration) * 100;
 });
 audio.addEventListener("ended", () => {
+  if (sleep?.track) { finishSleep(); return; }
   const list = contextList();
   const last = list.indexOf(state.tracks[state.index]) === list.length - 1;
   if (state.repeat && !state.shuffle && list.length === 1) { audio.currentTime = 0; play(); return; }
@@ -891,6 +895,8 @@ document.addEventListener("keydown", (e) => {
     case "KeyR": els.repeat.click(); break;
     case "KeyM": els.mute.click(); break;
     case "KeyL": toggleLyrics(); break;
+    case "BracketLeft": stepSpeed(-1); break;
+    case "BracketRight": stepSpeed(1); break;
   }
 });
 
@@ -900,6 +906,92 @@ if ("mediaSession" in navigator) {
   navigator.mediaSession.setActionHandler("previoustrack", () => step(-1));
   navigator.mediaSession.setActionHandler("nexttrack", () => step(1));
 }
+
+/* ---------- Velocidad ---------- */
+
+const SPEEDS = [0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+const fmtSpeed = (v) => `${Number(v.toFixed(2))}×`;
+
+function setSpeed(v) {
+  v = Math.min(2, Math.max(0.25, Math.round(v * 100) / 100));
+  state.speed = v;
+  audio.defaultPlaybackRate = v; // se conserva al cambiar de pista
+  audio.playbackRate = v;
+  audio.preservesPitch = true;   // cambia el tempo sin cambiar el tono
+  localStorage.setItem("speed", v);
+  els["speed-btn"].textContent = fmtSpeed(v);
+  els["speed-btn"].classList.toggle("active", v !== 1);
+}
+
+// Salta a la velocidad predefinida anterior / siguiente.
+function stepSpeed(dir) {
+  const next = dir > 0 ? SPEEDS.find((s) => s > state.speed + 0.001) : [...SPEEDS].reverse().find((s) => s < state.speed - 0.001);
+  if (next) { setSpeed(next); toast(`Velocidad ${fmtSpeed(next)}`, 1200); }
+}
+
+els["speed-btn"].addEventListener("click", (e) => {
+  showMenu(e.currentTarget, [
+    ...SPEEDS.map((s) => ({ label: `${Math.abs(s - state.speed) < 0.001 ? "✓" : "\u2003"} ${fmtSpeed(s)}${s === 1 ? " (normal)" : ""}`, fn: () => setSpeed(s) })),
+    ...(SPEEDS.includes(state.speed) ? [] : [{ label: `✓ ${fmtSpeed(state.speed)} (personalizada)`, disabled: true }]),
+  ]);
+});
+
+/* ---------- Temporizador de apagado ---------- */
+
+const FADE_MS = 8000;
+let sleep = null; // { endAt } (tiempo) o { track: true } (al terminar la canción)
+
+const fmtClock = (ms) => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = String(Math.floor((s % 3600) / 60)).padStart(h ? 2 : 1, "0");
+  return `${h ? h + ":" : ""}${m}:${String(s % 60).padStart(2, "0")}`;
+};
+
+function renderSleep() {
+  els["sleep-btn"].classList.toggle("active", !!sleep);
+  els["sleep-btn"].textContent = !sleep ? "⏲ Temporizador" : sleep.track ? "⏲ Fin de canción" : `⏲ ${fmtClock(sleep.endAt - Date.now())}`;
+}
+
+function setSleep(minutes) {
+  const wasFading = sleep?.endAt && sleep.endAt - Date.now() < FADE_MS;
+  sleep = minutes === "track" ? { track: true } : minutes ? { endAt: Date.now() + minutes * 60000 } : null;
+  if (wasFading || !sleep) audio.volume = +els.volume.value; // deshace un fundido a medias
+  renderSleep();
+}
+
+// Detiene la reproducción y restaura el volumen.
+function finishSleep() {
+  sleep = null;
+  audio.pause();
+  audio.volume = +els.volume.value;
+  renderSleep();
+  toast("Temporizador de apagado: música detenida");
+}
+
+function sleepTick() {
+  if (!sleep) return;
+  if (sleep.track) return;
+  const left = sleep.endAt - Date.now();
+  if (left <= 0) return finishSleep();
+  // Fundido de salida durante los últimos segundos.
+  if (left < FADE_MS && !audio.paused) audio.volume = +els.volume.value * (left / FADE_MS);
+  renderSleep();
+}
+setInterval(sleepTick, 500);
+
+els["sleep-btn"].addEventListener("click", (e) => {
+  const mark = (on) => (on ? "✓" : "\u2003");
+  showMenu(e.currentTarget, [
+    ...(sleep ? [{ label: sleep.track ? "✕ Cancelar (al terminar la canción)" : `✕ Cancelar (quedan ${fmtClock(sleep.endAt - Date.now())})`, fn: () => setSleep(null) }] : []),
+    ...[15, 30, 45, 60, 90].map((m) => ({ label: `${mark(false)} ${m} minutos`, fn: () => setSleep(m) })),
+    { label: `${mark(sleep?.track)} Al terminar la canción`, fn: () => setSleep("track") },
+    { label: `${mark(false)} Personalizado…`, fn: () => {
+        const m = parseFloat(String(prompt("¿Cuántos minutos?", "20")).replace(",", "."));
+        if (m > 0 && m <= 720) setSleep(m);
+      } },
+  ]);
+});
 
 /* ---------- Arranque ---------- */
 
@@ -919,6 +1011,8 @@ if ("mediaSession" in navigator) {
     savePlaylists();
   } catch { /* IndexedDB no disponible */ }
   buildEqUi();
+  setSpeed(Number(localStorage.getItem("speed")) || 1);
+  renderSleep();
   toggleLyrics(localStorage.getItem("lyrics") !== "1");
   renderViews();
   render();
