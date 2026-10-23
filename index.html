@@ -142,6 +142,7 @@
       <div class="dialog-actions">
         <button type="button" id="edit-reset" class="btn ghost" title="Vuelve a los datos del archivo (se aplica al guardar)">Restaurar original</button>
         <span class="spacer"></span>
+        <button type="button" id="edit-download" class="btn ghost" hidden title="Solo MP3 y FLAC. Descarga una copia nueva con las etiquetas escritas dentro del archivo; el original no se toca.">Guardar y descargar copia</button>
         <button type="button" id="edit-cancel" class="btn ghost">Cancelar</button>
         <button type="submit" class="btn">Guardar</button>
       </div>
@@ -154,6 +155,7 @@
   <audio id="audio-b"></audio>
   <script src="lyrics.js"></script>
   <script src="playlist-io.js"></script>
+  <script src="tag-writer.js"></script>
   <script src="id3.js"></script>
   <script src="tags.js"></script>
   <script src="storage.js"></script>

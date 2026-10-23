@@ -288,6 +288,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .edit-note { margin: 0; font-size: .74rem; color: var(--muted); }
 .dialog-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .dialog-actions .spacer { flex: 1; }
+.dialog-actions .btn[hidden] { display: none; }
 
 /* Selección múltiple */
 .select-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 10px; background: var(--accent-soft); font-size: .85rem; }
