@@ -5,7 +5,7 @@ Reproductor de música local que corre en el navegador. Sin dependencias ni buil
 ## Funciones
 
 - Biblioteca persistente (IndexedDB): al reabrir la página tus canciones siguen ahí
-- Lectura de etiquetas ID3v2: título, artista, álbum y carátula
+- Lectura de etiquetas y carátula (título, artista, álbum) en MP3 (ID3v2), FLAC, Ogg Vorbis, Opus y M4A/AAC
 - Carátula grande, miniaturas en la lista y fondo difuminado con los colores del álbum
 - Visualizador de audio en tiempo real
 - Ecualizador de 10 bandas (32 Hz–16 kHz, ±12 dB) con preajustes (Graves, Agudos, Voz, Rock, Pop, Electrónica, Clásica); se guarda entre sesiones
@@ -42,7 +42,6 @@ y visita <http://localhost:8000>.
 
 ## Hoja de ruta
 
-- [ ] Soporte de etiquetas Vorbis/MP4 (FLAC, OGG, M4A)
 - [ ] Letras sincronizadas
 
 ## Licencia

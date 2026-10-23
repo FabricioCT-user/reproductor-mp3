@@ -77,7 +77,7 @@
         <input type="search" id="filter" placeholder="Buscar en la biblioteca…" aria-label="Buscar">
         <label class="btn">
           + Añadir
-          <input type="file" id="file-input" accept="audio/*" multiple hidden>
+          <input type="file" id="file-input" accept="audio/*,.flac,.m4a,.ogg,.opus" multiple hidden>
         </label>
         <button id="clear" class="btn ghost" title="Vaciar biblioteca">Vaciar</button>
       </div>
@@ -89,6 +89,7 @@
   <div id="menu" class="menu" hidden></div>
   <audio id="audio"></audio>
   <script src="id3.js"></script>
+  <script src="tags.js"></script>
   <script src="storage.js"></script>
   <script src="app.js"></script>
 </body>

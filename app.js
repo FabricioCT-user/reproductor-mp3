@@ -32,7 +32,7 @@ const formatTime = (s) => {
 /* ---------- Biblioteca ---------- */
 
 async function makeTrack(id, file) {
-  const meta = await ID3.read(file);
+  const meta = await Tags.read(file);
   const fallback = file.name.replace(/\.[^.]+$/, "");
   return {
     id,
@@ -44,8 +44,10 @@ async function makeTrack(id, file) {
   };
 }
 
+const isAudio = (f) => f.type.startsWith("audio/") || /\.(mp3|flac|ogg|oga|opus|m4a|aac|wav|weba)$/i.test(f.name);
+
 async function addFiles(fileList) {
-  const files = [...fileList].filter((f) => f.type.startsWith("audio/"));
+  const files = [...fileList].filter(isAudio);
   for (const file of files) {
     let id = null;
     try { id = await Storage.add(file); } catch { /* sin persistencia: se usa solo en memoria */ }
