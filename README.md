@@ -17,6 +17,7 @@ Reproductor de música local que corre en el navegador. Sin dependencias ni buil
 - Cola de reproducción: pulsa `+` en una canción para reproducirla a continuación
 - Instalable como app (PWA) y funciona sin conexión
 - Velocidad de reproducción de 0,5× a 2× sin cambiar el tono (menú `1×` o teclas `[` y `]`); se recuerda entre sesiones
+- Fundido entre canciones (crossfade) de 2 a 12 s con curva de potencia constante (botón `⇄`); solo cuando la reproducción pasa sola a la siguiente, nunca en la última ni al cambiar a mano
 - Temporizador de apagado (15–90 min, personalizado o «al terminar la canción») con fundido de salida de 8 s
 - Aleatorio, repetir, volumen y silencio (se recuerdan entre sesiones)
 - Teclas multimedia del sistema (Media Session API)
@@ -50,7 +51,6 @@ y visita <http://localhost:8000>.
 
 ## Hoja de ruta
 
-- [ ] Transición suave entre canciones (crossfade)
 - [ ] Edición de etiquetas desde la propia app
 
 ## Licencia

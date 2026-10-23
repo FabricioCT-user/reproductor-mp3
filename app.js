@@ -1,13 +1,19 @@
 const $ = (id) => document.getElementById(id);
 
-const audio = $("audio");
+// Dos elementos de audio: uno suena y el otro entra durante un fundido cruzado (ver «Fundido»).
+const decks = [$("audio"), $("audio-b")];
+let audio = decks[0]; // el deck activo: lo que muestran la barra de progreso, los controles, etc.
+const otherDeck = () => decks[audio === decks[0] ? 1 : 0];
+const onAudio = (type, fn) => decks.forEach((d) => d.addEventListener(type, (e) => { if (d === audio) fn(e); }));
+const setVolume = (v) => decks.forEach((d) => (d.volume = v));
+const setMuted = (m) => decks.forEach((d) => (d.muted = m));
 const els = Object.fromEntries(
   ["dropzone", "backdrop", "cover", "title", "artist", "viz", "seek", "current", "duration", "play", "play-icon",
    "prev", "next", "shuffle", "repeat", "mute", "volume", "filter", "file-input", "clear", "playlist",
    "view", "pl-new", "pl-more", "pl-import", "pl-rename", "pl-delete", "menu",
    "eq-toggle", "eq-panel", "eq-preset", "eq-on", "eq-reset", "eq-bands",
    "lyrics", "lyrics-body", "lyrics-toggle", "lyrics-clear", "lrc-input", "toast", "folder-input",
-   "speed-btn", "sleep-btn", "theme-btn"]
+   "speed-btn", "sleep-btn", "theme-btn", "xfade-btn"]
     .map((id) => [id, $(id)])
 );
 
@@ -22,6 +28,7 @@ const state = {
   filter: "",
   queue: [],
   speed: Number(localStorage.getItem("speed")) || 1,
+  crossfade: Number(localStorage.getItem("crossfade")) || 0,
   playlists: JSON.parse(localStorage.getItem("playlists") || "[]"),
   view: "all",      // "all" o id de lista: lo que se muestra
   playView: "all",  // vista desde la que se inició la reproducción (define siguiente/anterior)
@@ -244,6 +251,7 @@ function removeTrack(i) {
   if (t.coverUrl) URL.revokeObjectURL(t.coverUrl);
 
   if (i === state.index) {
+    endCrossfade();
     audio.pause();
     audio.removeAttribute("src");
     state.index = -1;
@@ -257,6 +265,7 @@ function removeTrack(i) {
 
 async function clearLibrary() {
   if (!state.tracks.length || !confirm("¿Vaciar toda la biblioteca?")) return;
+  endCrossfade();
   audio.pause();
   audio.removeAttribute("src");
   state.tracks.forEach((t) => { URL.revokeObjectURL(t.url); t.coverUrl && URL.revokeObjectURL(t.coverUrl); });
@@ -621,6 +630,7 @@ function showTrack(t) {
 }
 
 function loadTrack(i, autoplay, view = "all") {
+  if (xfade && !xfade.starting) endCrossfade(); // un cambio manual corta el fundido en curso
   state.index = i;
   state.playView = view;
   const t = state.tracks[i];
@@ -769,7 +779,14 @@ function startAnalyser() {
   freq = new Uint8Array(analyser.frequencyBinCount);
 
   // fuente → 10 filtros → preamp → analizador → salida
-  let node = ac.createMediaElementSource(audio);
+  // Cada deck tiene su propia ganancia (para el fundido) y ambos entran al mismo ecualizador.
+  const eqIn = ac.createGain();
+  for (const d of decks) {
+    d._gain = ac.createGain();
+    ac.createMediaElementSource(d).connect(d._gain);
+    d._gain.connect(eqIn);
+  }
+  let node = eqIn;
   eqFilters = EQ_BANDS.map((f, i) => {
     const filter = ac.createBiquadFilter();
     filter.type = i === 0 ? "lowshelf" : i === EQ_BANDS.length - 1 ? "highshelf" : "peaking";
@@ -784,7 +801,7 @@ function startAnalyser() {
   eqPreamp.connect(analyser);
   analyser.connect(ac.destination);
   applyEq();
-  audio.addEventListener("play", () => ac.resume());
+  decks.forEach((d) => d.addEventListener("play", () => ac.resume()));
   draw();
 }
 
@@ -849,27 +866,27 @@ els.shuffle.addEventListener("click", () => setToggle(els.shuffle, "shuffle", !s
 els.repeat.addEventListener("click", () => setToggle(els.repeat, "repeat", !state.repeat));
 
 els.volume.value = localStorage.getItem("volume") ?? 1;
-audio.volume = els.volume.value;
+setVolume(els.volume.value);
 els.volume.addEventListener("input", () => {
-  audio.volume = els.volume.value;
-  audio.muted = false;
+  setVolume(els.volume.value);
+  setMuted(false);
   localStorage.setItem("volume", els.volume.value);
 });
-els.mute.addEventListener("click", () => (audio.muted = !audio.muted));
-audio.addEventListener("volumechange", () => (els.mute.style.opacity = audio.muted ? 0.35 : ""));
+els.mute.addEventListener("click", () => setMuted(!audio.muted));
+onAudio("volumechange", () => (els.mute.style.opacity = audio.muted ? 0.35 : ""));
 
 els.seek.addEventListener("input", () => {
   if (audio.duration) audio.currentTime = (els.seek.value / 100) * audio.duration;
 });
 
-audio.addEventListener("play", () => (els["play-icon"].innerHTML = ICON_PAUSE));
-audio.addEventListener("pause", () => (els["play-icon"].innerHTML = ICON_PLAY));
-audio.addEventListener("loadedmetadata", () => (els.duration.textContent = formatTime(audio.duration)));
-audio.addEventListener("timeupdate", () => {
+onAudio("play", () => (els["play-icon"].innerHTML = ICON_PAUSE));
+onAudio("pause", () => { els["play-icon"].innerHTML = ICON_PLAY; if (xfade) endCrossfade(); });
+onAudio("loadedmetadata", () => (els.duration.textContent = formatTime(audio.duration)));
+onAudio("timeupdate", () => {
   els.current.textContent = formatTime(audio.currentTime);
   if (audio.duration) els.seek.value = (audio.currentTime / audio.duration) * 100;
 });
-audio.addEventListener("ended", () => {
+onAudio("ended", () => {
   if (sleep?.track) { finishSleep(); return; }
   const list = contextList();
   const last = list.indexOf(state.tracks[state.index]) === list.length - 1;
@@ -877,7 +894,7 @@ audio.addEventListener("ended", () => {
   if (last && !state.repeat && !state.shuffle && !state.queue.length) return;
   step(1);
 });
-audio.addEventListener("error", () => { if (audio.src) step(1); });
+onAudio("error", () => { if (audio.src) step(1); });
 
 document.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -915,9 +932,11 @@ const fmtSpeed = (v) => `${Number(v.toFixed(2))}×`;
 function setSpeed(v) {
   v = Math.min(2, Math.max(0.25, Math.round(v * 100) / 100));
   state.speed = v;
-  audio.defaultPlaybackRate = v; // se conserva al cambiar de pista
-  audio.playbackRate = v;
-  audio.preservesPitch = true;   // cambia el tempo sin cambiar el tono
+  for (const d of decks) {
+    d.defaultPlaybackRate = v; // se conserva al cambiar de pista
+    d.playbackRate = v;
+    d.preservesPitch = true;   // cambia el tempo sin cambiar el tono
+  }
   localStorage.setItem("speed", v);
   els["speed-btn"].textContent = fmtSpeed(v);
   els["speed-btn"].classList.toggle("active", v !== 1);
@@ -950,13 +969,13 @@ const fmtClock = (ms) => {
 
 function renderSleep() {
   els["sleep-btn"].classList.toggle("active", !!sleep);
-  els["sleep-btn"].textContent = !sleep ? "⏲ Temporizador" : sleep.track ? "⏲ Fin de canción" : `⏲ ${fmtClock(sleep.endAt - Date.now())}`;
+  els["sleep-btn"].textContent = !sleep ? "⏲" : sleep.track ? "⏲ Fin de canción" : `⏲ ${fmtClock(sleep.endAt - Date.now())}`;
 }
 
 function setSleep(minutes) {
   const wasFading = sleep?.endAt && sleep.endAt - Date.now() < FADE_MS;
   sleep = minutes === "track" ? { track: true } : minutes ? { endAt: Date.now() + minutes * 60000 } : null;
-  if (wasFading || !sleep) audio.volume = +els.volume.value; // deshace un fundido a medias
+  if (wasFading || !sleep) setVolume(+els.volume.value); // deshace un fundido a medias
   renderSleep();
 }
 
@@ -964,7 +983,7 @@ function setSleep(minutes) {
 function finishSleep() {
   sleep = null;
   audio.pause();
-  audio.volume = +els.volume.value;
+  setVolume(+els.volume.value);
   renderSleep();
   toast("Temporizador de apagado: música detenida");
 }
@@ -975,7 +994,7 @@ function sleepTick() {
   const left = sleep.endAt - Date.now();
   if (left <= 0) return finishSleep();
   // Fundido de salida durante los últimos segundos.
-  if (left < FADE_MS && !audio.paused) audio.volume = +els.volume.value * (left / FADE_MS);
+  if (left < FADE_MS && !audio.paused) setVolume(+els.volume.value * (left / FADE_MS));
   renderSleep();
 }
 setInterval(sleepTick, 500);
@@ -990,6 +1009,91 @@ els["sleep-btn"].addEventListener("click", (e) => {
         const m = parseFloat(String(prompt("¿Cuántos minutos?", "20")).replace(",", "."));
         if (m > 0 && m <= 720) setSleep(m);
       } },
+  ]);
+});
+
+/* ---------- Fundido entre canciones ---------- */
+
+const XFADES = [0, 2, 4, 6, 8, 12];
+let xfade = null; // { out, inn, secs, starting, timer } mientras dura un fundido
+
+function renderCrossfade() {
+  els["xfade-btn"].textContent = state.crossfade ? `⇄ ${state.crossfade}s` : "⇄";
+  els["xfade-btn"].classList.toggle("active", state.crossfade > 0);
+}
+
+function setCrossfade(s) {
+  state.crossfade = s;
+  localStorage.setItem("crossfade", s);
+  renderCrossfade();
+}
+
+// ¿Pasará la reproducción sola a otra canción al terminar esta? (misma lógica que «ended»)
+function hasNext() {
+  const list = contextList();
+  if (!list.length) return false;
+  if (state.repeat && !state.shuffle && list.length === 1) return false; // esa canción se repite sin fundido
+  const last = list.indexOf(state.tracks[state.index]) === list.length - 1;
+  return !(last && !state.repeat && !state.shuffle && !state.queue.length);
+}
+
+function crossfadeCheck() {
+  if (!state.crossfade || xfade || !analyser || audio.paused || sleep?.track) return;
+  const dur = audio.duration;
+  if (!isFinite(dur) || dur < 3) return;
+  const remaining = (dur - audio.currentTime) / audio.playbackRate; // tiempo real, no de la pista
+  if (remaining > Math.min(state.crossfade, dur / 3) || !hasNext()) return;
+  startCrossfade(Math.max(0.5, remaining));
+}
+setInterval(crossfadeCheck, 200);
+
+function startCrossfade(secs) {
+  const out = audio;
+  const inn = otherDeck();
+  xfade = { out, inn, secs, starting: true, timer: 0 };
+  audio = inn; // la canción nueva pasa a ser la activa
+  inn._gain.gain.cancelScheduledValues(0);
+  inn._gain.gain.value = 0;
+  step(1); // carga la siguiente en `inn` y la arranca en silencio
+  xfade.starting = false;
+  inn.addEventListener("playing", () => rampCrossfade(inn), { once: true });
+  xfade.timer = setTimeout(endCrossfade, secs * 1000 + 2500); // red de seguridad si la pista nueva no llega a sonar
+}
+
+// Cuando la pista nueva ya suena: sube una y baja la otra con curvas de potencia constante.
+function rampCrossfade(inn) {
+  const x = xfade;
+  if (!x || x.inn !== inn) return;
+  const ac = analyser.context;
+  const pts = 64;
+  const up = Float32Array.from({ length: pts }, (_, i) => Math.sin((i / (pts - 1)) * Math.PI / 2));
+  const down = Float32Array.from({ length: pts }, (_, i) => Math.cos((i / (pts - 1)) * Math.PI / 2));
+  const t0 = ac.currentTime + 0.02;
+  x.out._gain.gain.cancelScheduledValues(0);
+  x.out._gain.gain.setValueAtTime(1, ac.currentTime);
+  x.out._gain.gain.setValueCurveAtTime(down, t0, x.secs);
+  x.inn._gain.gain.setValueCurveAtTime(up, t0, x.secs);
+  clearTimeout(x.timer);
+  x.timer = setTimeout(endCrossfade, x.secs * 1000 + 300);
+}
+
+function endCrossfade() {
+  const x = xfade;
+  if (!x) return;
+  xfade = null;
+  clearTimeout(x.timer);
+  x.out.pause();
+  const now = analyser.context.currentTime;
+  for (const d of [x.out, x.inn]) {
+    d._gain.gain.cancelScheduledValues(0);
+    d._gain.gain.setValueAtTime(1, now);
+  }
+}
+
+els["xfade-btn"].addEventListener("click", (e) => {
+  showMenu(e.currentTarget, [
+    ...XFADES.map((s) => ({ label: `${state.crossfade === s ? "✓" : "\u2003"} ${s ? `${s} segundos` : "Sin fundido"}`, fn: () => setCrossfade(s) })),
+    { label: "Solo al pasar sola a la siguiente canción", disabled: true },
   ]);
 });
 
@@ -1038,6 +1142,7 @@ applyTheme(localStorage.getItem("theme") || "auto");
   } catch { /* IndexedDB no disponible */ }
   buildEqUi();
   setSpeed(Number(localStorage.getItem("speed")) || 1);
+  renderCrossfade();
   renderSleep();
   toggleLyrics(localStorage.getItem("lyrics") !== "1");
   renderViews();

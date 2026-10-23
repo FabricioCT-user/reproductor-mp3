@@ -73,6 +73,7 @@
       <div class="extras">
         <button id="speed-btn" class="btn ghost eq-toggle" title="Velocidad de reproducción ( [ y ] )">1×</button>
         <button id="sleep-btn" class="btn ghost eq-toggle" title="Temporizador de apagado">⏲ Temporizador</button>
+        <button id="xfade-btn" class="btn ghost eq-toggle" title="Fundido entre canciones">⇄</button>
         <button id="lyrics-toggle" class="btn ghost eq-toggle" title="Letra (L)" aria-pressed="false">Letra</button>
         <button id="theme-btn" class="btn ghost eq-toggle" title="Tema">◐</button>
         <button id="eq-toggle" class="btn ghost eq-toggle" title="Ecualizador" aria-pressed="false">EQ</button>
@@ -118,6 +119,7 @@
   <div id="menu" class="menu" hidden></div>
   <div id="toast" class="toast" role="status" hidden></div>
   <audio id="audio"></audio>
+  <audio id="audio-b"></audio>
   <script src="lyrics.js"></script>
   <script src="playlist-io.js"></script>
   <script src="id3.js"></script>
