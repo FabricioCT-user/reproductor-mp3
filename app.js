@@ -4,7 +4,7 @@ const audio = $("audio");
 const els = Object.fromEntries(
   ["dropzone", "backdrop", "cover", "title", "artist", "viz", "seek", "current", "duration", "play", "play-icon",
    "prev", "next", "shuffle", "repeat", "mute", "volume", "filter", "file-input", "clear", "playlist",
-   "view", "pl-new", "pl-rename", "pl-delete", "menu",
+   "view", "pl-new", "pl-more", "pl-import", "pl-rename", "pl-delete", "menu",
    "eq-toggle", "eq-panel", "eq-preset", "eq-on", "eq-reset", "eq-bands",
    "lyrics", "lyrics-body", "lyrics-toggle", "lyrics-clear", "lrc-input", "toast", "folder-input"]
     .map((id) => [id, $(id)])
@@ -38,6 +38,8 @@ async function makeTrack(id, file, userLyrics = "") {
   return {
     id,
     fileBase: fallback.toLowerCase(),
+    fileName: file.name,
+    size: file.size,
     key: fileKey(file),   // para no importar dos veces el mismo archivo
     dir: dirOf(pathOf(file)),
     embeddedLyrics: meta.lyrics,
@@ -63,6 +65,7 @@ async function addFiles(fileList) {
   // Con carpetas, ordena por ruta para que los álbumes queden en orden (01, 02, … 10).
   if (all.some((f) => pathOf(f).includes("/"))) all.sort(byPath);
   const lrcFiles = all.filter((f) => /\.lrc$/i.test(f.name));
+  const listFiles = all.filter((f) => /\.(json|m3u8?)$/i.test(f.name));
   const files = all.filter(isAudio);
 
   let added = 0;
@@ -77,7 +80,9 @@ async function addFiles(fileList) {
     if (added % 25 === 0) render();
   }
 
+  const resolved = added ? resolvePending() : 0;
   const lyr = lrcFiles.length ? await attachLrcFiles(lrcFiles) : null;
+  const imp = listFiles.length ? await importPlaylistFiles(listFiles) : null;
   render();
   if (state.index === -1 && state.tracks.length) loadTrack(0, false, "all");
 
@@ -86,7 +91,9 @@ async function addFiles(fileList) {
   if (dupes) msg.push(`${dupes} ya estaba(n) en la biblioteca`);
   if (lyr?.matched) msg.push(`letra para ${lyr.matched}`);
   if (lyr?.missed) msg.push(`${lyr.missed} .lrc sin pareja`);
-  if (all.length && !files.length && !lrcFiles.length) msg.push("No se encontró ningún archivo de audio");
+  if (resolved) msg.push(`${resolved} canción(es) completan listas importadas`);
+  if (imp) msg.push(...importSummary(imp));
+  if (all.length && !files.length && !lrcFiles.length && !listFiles.length) msg.push("No se encontró ningún archivo de audio");
   if (msg.length && !(added === 1 && all.length === 1)) toast(msg.join(" · "));
   else els.toast.hidden = true;
 }
@@ -282,7 +289,7 @@ function render() {
     li.textContent = q ? "Sin resultados."
       : pl ? "Esta lista está vacía. Usa el botón ♫ de una canción para añadirla."
       : "Tu biblioteca está vacía. Arrastra archivos o carpetas aquí, o usa «+ Añadir» / «+ Carpeta».";
-    els.playlist.replaceChildren(li);
+    els.playlist.replaceChildren(li, ...pendingNote(pl));
     return;
   }
 
@@ -344,7 +351,8 @@ function render() {
         });
       }
       return li;
-    })
+    }),
+    ...pendingNote(pl)
   );
 }
 
@@ -434,22 +442,141 @@ function togglePlaylistMember(p, t) {
   render();
 }
 
-function openMenu(anchor, t) {
-  const m = els.menu;
-  m.replaceChildren();
-  const item = (label, fn, disabled) => {
-    const b = document.createElement("button");
-    b.textContent = label;
-    b.disabled = !!disabled;
-    b.addEventListener("click", () => { closeMenu(); fn(); });
-    m.append(b);
-  };
-  if (t.id == null) {
-    item("No disponible: el navegador no permite guardar la biblioteca", () => {}, true);
+/* ---------- Exportar / importar listas ---------- */
+
+const refOf = (t) => ({ file: t.fileName, size: t.size, title: t.title, artist: t.artist });
+const refsOf = (p) => [...listTracks(p.id).map(refOf), ...(p.pending || [])];
+
+function download(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+const safeName = (s) => s.replace(/[\\/:*?"<>|]+/g, "_").trim() || "lista";
+
+function exportPlaylists(lists, format) {
+  lists = lists.filter(Boolean);
+  if (!lists.length) return;
+  if (format === "m3u8") {
+    download(`${safeName(lists[0].name)}.m3u8`, PlaylistIO.toM3U(refsOf(lists[0])), "audio/x-mpegurl");
   } else {
-    for (const p of state.playlists) item(`${p.ids.includes(t.id) ? "✓" : " "} ${p.name}`, () => togglePlaylistMember(p, t));
-    item("+ Nueva lista…", () => { const p = createPlaylist(); if (p) togglePlaylistMember(p, t); });
+    const name = lists.length === 1 ? safeName(lists[0].name) : "listas-reproductor";
+    download(`${name}.json`, PlaylistIO.toJSON(lists.map((p) => ({ name: p.name, refs: refsOf(p) }))), "application/json");
   }
+  toast(`${lists.length} lista(s) exportada(s)`);
+}
+
+// Busca en la biblioteca la canción a la que se refiere una entrada exportada.
+function findTrack(ref) {
+  const lib = state.tracks.filter((t) => t.id != null);
+  const file = ref.file.toLowerCase();
+  if (file) {
+    const same = lib.filter((t) => t.fileName.toLowerCase() === file);
+    const exact = same.find((t) => ref.size == null || t.size === ref.size);
+    if (exact) return exact;
+    if (same.length === 1) return same[0];
+  }
+  if (ref.title) {
+    const byTitle = lib.filter((t) => t.title.toLowerCase() === ref.title.toLowerCase()
+      && (!ref.artist || t.artist.toLowerCase() === ref.artist.toLowerCase()));
+    if (byTitle.length === 1) return byTitle[0];
+  }
+  return null;
+}
+
+// Las canciones que aún no están en la biblioteca quedan como «pendientes» y se enlazan al importarlas.
+function resolvePending() {
+  let n = 0;
+  for (const p of state.playlists) {
+    if (!p.pending?.length) continue;
+    p.pending = p.pending.filter((ref) => {
+      const t = findTrack(ref);
+      if (!t) return true;
+      if (!p.ids.includes(t.id)) p.ids.push(t.id);
+      n++;
+      return false;
+    });
+  }
+  if (n) { savePlaylists(); renderViews(); }
+  return n;
+}
+
+const uniqueName = (name) => {
+  const taken = new Set(state.playlists.map((p) => p.name.toLowerCase()));
+  let out = name;
+  for (let i = 2; taken.has(out.toLowerCase()); i++) out = `${name} (${i})`;
+  return out;
+};
+
+async function importPlaylistFiles(files) {
+  const res = { lists: 0, matched: 0, pending: 0, bad: 0 };
+  for (const f of files) {
+    let parsed;
+    try {
+      const text = await f.text();
+      parsed = /\.json$/i.test(f.name) ? PlaylistIO.parseJSON(text) : PlaylistIO.parseM3U(text, f.name.replace(/\.[^.]+$/, ""));
+    } catch {
+      res.bad++;
+      continue;
+    }
+    for (const { name, refs } of parsed) {
+      const p = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: uniqueName(name), ids: [], pending: [] };
+      for (const ref of refs) {
+        const t = findTrack(ref);
+        if (t) { if (!p.ids.includes(t.id)) { p.ids.push(t.id); res.matched++; } }
+        else { p.pending.push(ref); res.pending++; }
+      }
+      state.playlists.push(p);
+      res.lists++;
+    }
+  }
+  savePlaylists();
+  renderViews();
+  return res;
+}
+
+function importSummary({ lists, matched, pending, bad }) {
+  const out = [];
+  if (lists) out.push(`${lists} lista(s) importada(s) con ${matched} canción(es)`);
+  if (pending) out.push(`${pending} pendiente(s): se enlazarán al importar esos archivos`);
+  if (bad) out.push(`${bad} archivo(s) de listas no válido(s)`);
+  return out;
+}
+
+function pendingNote(pl) {
+  if (!pl?.pending?.length) return [];
+  const li = document.createElement("li");
+  li.className = "empty pending";
+  li.textContent = `${pl.pending.length} canción(es) pendiente(s): aparecerán cuando importes esos archivos.`;
+  li.title = pl.pending.map((r) => r.file || r.title).join("\n");
+  return [li];
+}
+
+function openMenu(anchor, t) {
+  showMenu(anchor, t.id == null
+    ? [{ label: "No disponible: el navegador no permite guardar la biblioteca", disabled: true }]
+    : [
+        ...state.playlists.map((p) => ({ label: `${p.ids.includes(t.id) ? "✓" : "\u2003"} ${p.name}`, fn: () => togglePlaylistMember(p, t) })),
+        { label: "+ Nueva lista…", fn: () => { const p = createPlaylist(); if (p) togglePlaylistMember(p, t); } },
+      ]);
+}
+
+// Menú flotante genérico: items = [{ label, fn, disabled }].
+function showMenu(anchor, items) {
+  const m = els.menu;
+  m.replaceChildren(
+    ...items.map(({ label, fn, disabled }) => {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.disabled = !!disabled;
+      b.addEventListener("click", () => { closeMenu(); fn?.(); });
+      return b;
+    })
+  );
   m.hidden = false;
   const r = anchor.getBoundingClientRect();
   m.style.left = `${Math.max(8, Math.min(r.right - m.offsetWidth, innerWidth - m.offsetWidth - 8))}px`;
@@ -687,6 +814,16 @@ els.view.addEventListener("change", () => setView(els.view.value));
 els["pl-new"].addEventListener("click", () => { const p = createPlaylist(); if (p) setView(p.id); });
 els["pl-rename"].addEventListener("click", renamePlaylist);
 els["pl-delete"].addEventListener("click", deletePlaylist);
+els["pl-more"].addEventListener("click", (e) => {
+  const pl = currentPlaylist();
+  showMenu(e.currentTarget, [
+    { label: "Exportar esta lista (.json)", fn: () => exportPlaylists([pl], "json"), disabled: !pl },
+    { label: "Exportar esta lista (.m3u8)", fn: () => exportPlaylists([pl], "m3u8"), disabled: !pl },
+    { label: "Exportar todas las listas (.json)", fn: () => exportPlaylists(state.playlists, "json"), disabled: !state.playlists.length },
+    { label: "Importar listas…", fn: () => els["pl-import"].click() },
+  ]);
+});
+els["pl-import"].addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });
 els.filter.addEventListener("input", () => { state.filter = els.filter.value; render(); });
 
 let dragDepth = 0;

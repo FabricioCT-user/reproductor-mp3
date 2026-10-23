@@ -13,6 +13,7 @@ Reproductor de música local que corre en el navegador. Sin dependencias ni buil
 - Búsqueda en la biblioteca y botón para quitar canciones
 - Reordena la biblioteca arrastrando (el orden se guarda)
 - Listas de reproducción con nombre: créalas, renómbralas, reordénalas arrastrando y añade canciones con el botón `♫`. Siguiente/anterior respetan la lista desde la que reproduces
+- Exportar e importar listas (botón `⋯`): JSON con todas tus listas, o M3U8 estándar para otros reproductores. Las canciones se identifican por nombre de archivo y tamaño, así que valen en otro navegador; las que aún no estén en la biblioteca quedan «pendientes» y se enlazan solas al importarlas. También puedes soltar un `.json` / `.m3u8` en la ventana
 - Cola de reproducción: pulsa `+` en una canción para reproducirla a continuación
 - Instalable como app (PWA) y funciona sin conexión
 - Aleatorio, repetir, volumen y silencio (se recuerdan entre sesiones)
@@ -45,7 +46,6 @@ y visita <http://localhost:8000>.
 
 ## Hoja de ruta
 
-- [ ] Exportar / importar listas de reproducción
 - [ ] Velocidad de reproducción y temporizador de apagado
 - [ ] Transición suave entre canciones (crossfade)
 - [ ] Tema claro

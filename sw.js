@@ -1,6 +1,6 @@
 // Cachea la aplicación para que funcione sin conexión. Sube VERSION al cambiar archivos.
 const VERSION = "v1";
-const FILES = ["./", "index.html", "style.css", "app.js", "id3.js", "tags.js", "lyrics.js", "storage.js", "icon.svg", "manifest.webmanifest"];
+const FILES = ["./", "index.html", "style.css", "app.js", "id3.js", "tags.js", "lyrics.js", "playlist-io.js", "storage.js", "icon.svg", "manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));

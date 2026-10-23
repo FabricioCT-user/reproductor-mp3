@@ -219,3 +219,5 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
   font-size: .85rem; box-shadow: 0 8px 24px #0009; max-width: calc(100% - 32px);
 }
 .toast[hidden] { display: none; }
+
+.playlist li.pending { padding: 10px 12px; font-size: .8rem; }

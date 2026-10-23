@@ -80,6 +80,8 @@
       <div class="view-bar">
         <select id="view" aria-label="Lista"></select>
         <button id="pl-new" class="btn ghost" title="Crear una lista de reproducción">+ Lista</button>
+        <button id="pl-more" class="btn ghost" title="Exportar o importar listas">⋯</button>
+        <input type="file" id="pl-import" accept=".json,.m3u,.m3u8" multiple hidden>
         <button id="pl-rename" class="btn ghost" title="Renombrar lista" hidden>Renombrar</button>
         <button id="pl-delete" class="btn ghost" title="Eliminar lista" hidden>Eliminar</button>
       </div>
@@ -104,6 +106,7 @@
   <div id="toast" class="toast" role="status" hidden></div>
   <audio id="audio"></audio>
   <script src="lyrics.js"></script>
+  <script src="playlist-io.js"></script>
   <script src="id3.js"></script>
   <script src="tags.js"></script>
   <script src="storage.js"></script>
