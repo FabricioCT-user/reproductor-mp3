@@ -1,6 +1,25 @@
 # Reproductor MP3
 
+[![Pruebas](https://github.com/FabricioCT-user/reproductor-mp3/actions/workflows/test.yml/badge.svg)](https://github.com/FabricioCT-user/reproductor-mp3/actions/workflows/test.yml)
+[![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-blue.svg)](LICENSE)
+
 Reproductor de música local que corre en el navegador. **Sin dependencias ni build**: tus archivos nunca salen de tu equipo.
+
+## Inicio rápido
+
+**Requisitos:** un navegador moderno (probado en Chromium) y `python3`. Con `npm` el comando es más corto, pero no es imprescindible.
+
+```bash
+git clone https://github.com/FabricioCT-user/reproductor-mp3.git
+cd reproductor-mp3
+npm start                          # sin npm: python3 launcher/servidor.py
+```
+
+1. Abre <http://localhost:8000>.
+2. Pulsa **`+ Añadir`** (o **`+ Carpeta`**), o arrastra tus canciones a la ventana. Quedan guardadas en el navegador: no hay que volver a importarlas.
+3. Pulsa una canción y a disfrutar. Las [funciones](#funciones) y los [atajos](#atajos) están más abajo.
+
+¿Quieres abrir un MP3 con doble clic desde tu gestor de archivos? Mira [Abrir archivos con doble clic](#abrir-un-archivo-con-doble-clic-abrir-con) (Chrome o Edge, app instalada) o [el lanzador para Firefox y otros navegadores](#abrir-archivos-con-doble-clic-en-firefox-u-otro-navegador-el-lanzador-linux).
 
 ## Funciones
 
@@ -42,7 +61,7 @@ Reproductor de música local que corre en el navegador. **Sin dependencias ni bu
 
 ## Uso
 
-Sirve la carpeta con cualquier servidor estático:
+Arranca el servidor local (se detiene con Ctrl+C):
 
 ```bash
 npm start            # servidor local en http://localhost:8000 (también vale: python3 -m http.server 8000)
