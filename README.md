@@ -60,6 +60,16 @@ Con la app **instalada** (Chrome o Edge de escritorio), el sistema la ofrece com
 
 Si el navegador no permite que algo suene sin que hayas tocado la página, la app lo pausa y avisa («pulsa ▶») en vez de reproducir en silencio.
 
+### Si usas Firefox
+
+Firefox de escritorio no permite instalar aplicaciones web ni registrarlas en «Abrir con…», así que ahí **no hay doble clic desde el sistema**. Para un MP3 que ya tienes descargado:
+
+1. Abre la app (<http://localhost:8000>).
+2. Arrastra el archivo (o toda la carpeta) a la ventana, o usa `+ Añadir` / `+ Carpeta`.
+3. Queda guardado en la biblioteca: no hay que volver a importarlo la próxima vez.
+
+Consejo: fija la pestaña (clic derecho → *Fijar pestaña*) para tener el reproductor siempre a mano. Firefox no se ha probado todavía con esta aplicación.
+
 > Tu biblioteca, tus listas y tus ajustes se guardan en el navegador y **ligados a la dirección exacta** (`localhost:8000` no comparte datos con `localhost:3000`). Si borras los datos del sitio se pierden; exporta tus listas antes si te importa conservarlas. Los archivos de música se copian dentro del almacenamiento del navegador.
 
 ## Privacidad
