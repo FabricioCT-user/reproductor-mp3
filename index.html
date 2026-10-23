@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Reproductor MP3</title>
   <meta name="theme-color" content="#0e1015">
+  <script>
+    // Aplica el tema antes de pintar para evitar un destello.
+    try {
+      var p = localStorage.getItem("theme") || "auto";
+      document.documentElement.dataset.theme = p === "auto" ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark") : p;
+    } catch (e) {}
+  </script>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
@@ -67,6 +74,7 @@
         <button id="speed-btn" class="btn ghost eq-toggle" title="Velocidad de reproducción ( [ y ] )">1×</button>
         <button id="sleep-btn" class="btn ghost eq-toggle" title="Temporizador de apagado">⏲ Temporizador</button>
         <button id="lyrics-toggle" class="btn ghost eq-toggle" title="Letra (L)" aria-pressed="false">Letra</button>
+        <button id="theme-btn" class="btn ghost eq-toggle" title="Tema">◐</button>
         <button id="eq-toggle" class="btn ghost eq-toggle" title="Ecualizador" aria-pressed="false">EQ</button>
       </div>
 

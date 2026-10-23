@@ -20,6 +20,7 @@ Reproductor de música local que corre en el navegador. Sin dependencias ni buil
 - Temporizador de apagado (15–90 min, personalizado o «al terminar la canción») con fundido de salida de 8 s
 - Aleatorio, repetir, volumen y silencio (se recuerdan entre sesiones)
 - Teclas multimedia del sistema (Media Session API)
+- Tema claro, oscuro o automático (sigue al sistema); botón `◐` / `☀` / `☾`
 - Interfaz adaptable a móvil
 - Importa carpetas completas (con subcarpetas) con el botón `+ Carpeta` o arrastrándolas a la ventana: se ordenan por ruta en orden natural, se ignoran los archivos que no son audio y no se duplican las canciones ya importadas. Los `.lrc` de la carpeta se emparejan con su canción
 - Arrastra archivos sueltos a cualquier parte de la ventana para añadirlos
@@ -50,7 +51,6 @@ y visita <http://localhost:8000>.
 ## Hoja de ruta
 
 - [ ] Transición suave entre canciones (crossfade)
-- [ ] Tema claro
 - [ ] Edición de etiquetas desde la propia app
 
 ## Licencia
