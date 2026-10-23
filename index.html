@@ -89,10 +89,14 @@
           + Añadir
           <input type="file" id="file-input" accept="audio/*,.flac,.m4a,.ogg,.opus,.lrc" multiple hidden>
         </label>
+        <label class="btn" title="Importar todas las canciones de una carpeta (incluye subcarpetas)">
+          + Carpeta
+          <input type="file" id="folder-input" webkitdirectory multiple hidden>
+        </label>
         <button id="clear" class="btn ghost" title="Vaciar biblioteca">Vaciar</button>
       </div>
       <ul id="playlist" class="playlist"></ul>
-      <div class="hint">Arrastra archivos de audio a cualquier parte de la ventana · la biblioteca se guarda en este navegador</div>
+      <div class="hint">Arrastra archivos o carpetas a cualquier parte de la ventana · la biblioteca se guarda en este navegador</div>
     </section>
   </main>
 

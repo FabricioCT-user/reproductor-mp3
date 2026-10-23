@@ -6,7 +6,7 @@ const els = Object.fromEntries(
    "prev", "next", "shuffle", "repeat", "mute", "volume", "filter", "file-input", "clear", "playlist",
    "view", "pl-new", "pl-rename", "pl-delete", "menu",
    "eq-toggle", "eq-panel", "eq-preset", "eq-on", "eq-reset", "eq-bands",
-   "lyrics", "lyrics-body", "lyrics-toggle", "lyrics-clear", "lrc-input", "toast"]
+   "lyrics", "lyrics-body", "lyrics-toggle", "lyrics-clear", "lrc-input", "toast", "folder-input"]
     .map((id) => [id, $(id)])
 );
 
@@ -38,6 +38,8 @@ async function makeTrack(id, file, userLyrics = "") {
   return {
     id,
     fileBase: fallback.toLowerCase(),
+    key: fileKey(file),   // para no importar dos veces el mismo archivo
+    dir: dirOf(pathOf(file)),
     embeddedLyrics: meta.lyrics,
     userLyrics,
     url: URL.createObjectURL(file),
@@ -50,28 +52,78 @@ async function makeTrack(id, file, userLyrics = "") {
 
 const isAudio = (f) => f.type.startsWith("audio/") || /\.(mp3|flac|ogg|oga|opus|m4a|aac|wav|weba)$/i.test(f.name);
 
+// Ruta relativa de un archivo importado desde una carpeta (o solo su nombre).
+const fileKey = (f) => `${f.name}|${f.size}|${f.lastModified}`;
+const pathOf = (f) => f.relPath || f.webkitRelativePath || f.name;
+const dirOf = (p) => p.slice(0, Math.max(0, p.lastIndexOf("/")));
+const byPath = (a, b) => pathOf(a).localeCompare(pathOf(b), undefined, { numeric: true, sensitivity: "base" });
+
 async function addFiles(fileList) {
   const all = [...fileList];
+  // Con carpetas, ordena por ruta para que los álbumes queden en orden (01, 02, … 10).
+  if (all.some((f) => pathOf(f).includes("/"))) all.sort(byPath);
   const lrcFiles = all.filter((f) => /\.lrc$/i.test(f.name));
   const files = all.filter(isAudio);
-  for (const file of files) {
+
+  let added = 0;
+  let dupes = 0;
+  for (const [i, file] of files.entries()) {
+    if (state.tracks.some((t) => t.key === fileKey(file))) { dupes++; continue; }
+    if (files.length > 5 && i % 10 === 0) toast(`Importando ${i + 1}/${files.length}…`, 60000);
     let id = null;
     try { id = await Storage.add(file); } catch { /* sin persistencia: se usa solo en memoria */ }
     state.tracks.push(await makeTrack(id, file));
+    added++;
+    if (added % 25 === 0) render();
   }
-  if (lrcFiles.length) await attachLrcFiles(lrcFiles);
+
+  const lyr = lrcFiles.length ? await attachLrcFiles(lrcFiles) : null;
   render();
   if (state.index === -1 && state.tracks.length) loadTrack(0, false, "all");
+
+  const msg = [];
+  if (added) msg.push(`${added} canción(es) añadida(s)`);
+  if (dupes) msg.push(`${dupes} ya estaba(n) en la biblioteca`);
+  if (lyr?.matched) msg.push(`letra para ${lyr.matched}`);
+  if (lyr?.missed) msg.push(`${lyr.missed} .lrc sin pareja`);
+  if (all.length && !files.length && !lrcFiles.length) msg.push("No se encontró ningún archivo de audio");
+  if (msg.length && !(added === 1 && all.length === 1)) toast(msg.join(" · "));
+  else els.toast.hidden = true;
+}
+
+// Recorre arrastres que incluyen carpetas (webkitGetAsEntry) y devuelve todos los archivos con su ruta.
+async function filesFromDrop(dt) {
+  // Las entradas hay que leerlas de forma síncrona, antes de cualquier await.
+  const entries = [...(dt.items || [])].map((i) => i.webkitGetAsEntry?.()).filter(Boolean);
+  if (!entries.length) return [...dt.files];
+
+  const out = [];
+  const readAll = (reader) => new Promise((resolve, reject) => {
+    const acc = [];
+    const next = () => reader.readEntries((batch) => (batch.length ? (acc.push(...batch), next()) : resolve(acc)), reject);
+    next();
+  });
+  async function walk(entry) {
+    if (entry.isFile) {
+      const f = await new Promise((resolve, reject) => entry.file(resolve, reject));
+      f.relPath = entry.fullPath.replace(/^\//, "");
+      out.push(f);
+    } else if (entry.isDirectory) {
+      for (const child of await readAll(entry.createReader())) await walk(child);
+    }
+  }
+  for (const e of entries) await walk(e);
+  return out;
 }
 
 /* ---------- Letras ---------- */
 
 let toastTimer;
-function toast(msg) {
+function toast(msg, ms = 3500) {
   els.toast.textContent = msg;
   els.toast.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (els.toast.hidden = true), 3500);
+  toastTimer = setTimeout(() => (els.toast.hidden = true), ms);
 }
 
 const lyricsOf = (t) => t?.userLyrics || t?.embeddedLyrics || "";
@@ -95,14 +147,15 @@ async function attachLrcFiles(lrcFiles) {
   let matched = 0;
   for (const f of lrcFiles) {
     const base = f.name.replace(/\.[^.]+$/, "").toLowerCase();
-    const t = state.tracks.find((x) => x.fileBase === base) || state.tracks.find((x) => x.title.toLowerCase() === base);
+    const dir = dirOf(pathOf(f));
+    // Mismo nombre y, si hay varios (p. ej. «01» en distintos álbumes), la misma carpeta.
+    const same = state.tracks.filter((x) => x.fileBase === base);
+    const t = same.find((x) => x.dir === dir) || same[0] || state.tracks.find((x) => x.title.toLowerCase() === base);
     if (!t) continue;
     await setUserLyrics(t, await f.text());
     matched++;
   }
-  const missed = lrcFiles.length - matched;
-  toast(matched ? `Letra añadida a ${matched} canción(es)` + (missed ? ` · ${missed} sin pareja` : "")
-                : "Ninguna letra coincide con una canción (el nombre debe ser igual al del audio)");
+  return { matched, missed: lrcFiles.length - matched };
 }
 
 let lyricCursor = -1;
@@ -228,7 +281,7 @@ function render() {
     li.className = "empty";
     li.textContent = q ? "Sin resultados."
       : pl ? "Esta lista está vacía. Usa el botón ♫ de una canción para añadirla."
-      : "Tu biblioteca está vacía. Arrastra archivos de audio aquí o pulsa «+ Añadir».";
+      : "Tu biblioteca está vacía. Arrastra archivos o carpetas aquí, o usa «+ Añadir» / «+ Carpeta».";
     els.playlist.replaceChildren(li);
     return;
   }
@@ -628,6 +681,7 @@ function draw() {
 /* ---------- Eventos ---------- */
 
 els["file-input"].addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });
+els["folder-input"].addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });
 els.clear.addEventListener("click", clearLibrary);
 els.view.addEventListener("change", () => setView(els.view.value));
 els["pl-new"].addEventListener("click", () => { const p = createPlaylist(); if (p) setView(p.id); });
@@ -645,7 +699,7 @@ window.addEventListener("drop", (e) => {
   e.preventDefault();
   dragDepth = 0;
   els.dropzone.classList.remove("dragover");
-  addFiles(e.dataTransfer.files);
+  filesFromDrop(e.dataTransfer).then(addFiles).catch(() => addFiles(e.dataTransfer.files));
 });
 
 els.play.addEventListener("click", togglePlay);

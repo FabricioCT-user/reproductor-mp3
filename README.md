@@ -18,7 +18,8 @@ Reproductor de música local que corre en el navegador. Sin dependencias ni buil
 - Aleatorio, repetir, volumen y silencio (se recuerdan entre sesiones)
 - Teclas multimedia del sistema (Media Session API)
 - Interfaz adaptable a móvil
-- Arrastra archivos a cualquier parte de la ventana para añadirlos
+- Importa carpetas completas (con subcarpetas) con el botón `+ Carpeta` o arrastrándolas a la ventana: se ordenan por ruta en orden natural, se ignoran los archivos que no son audio y no se duplican las canciones ya importadas. Los `.lrc` de la carpeta se emparejan con su canción
+- Arrastra archivos sueltos a cualquier parte de la ventana para añadirlos
 
 ## Atajos
 
@@ -44,7 +45,6 @@ y visita <http://localhost:8000>.
 
 ## Hoja de ruta
 
-- [ ] Importar carpetas completas
 - [ ] Exportar / importar listas de reproducción
 - [ ] Velocidad de reproducción y temporizador de apagado
 - [ ] Transición suave entre canciones (crossfade)

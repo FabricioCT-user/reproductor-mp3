@@ -127,9 +127,9 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .menu button:hover:not(:disabled) { background: #ffffff14; }
 .menu button:disabled { color: var(--muted); cursor: default; white-space: normal; }
 
-.library-head { display: flex; gap: 8px; }
+.library-head { display: flex; flex-wrap: wrap; gap: 8px; }
 .library-head input[type="search"] {
-  flex: 1; min-width: 0;
+  flex: 1 1 140px; min-width: 0;
   background: #ffffff0d; border: 1px solid var(--line); border-radius: 8px;
   color: var(--text); padding: 8px 12px; font: inherit; font-size: .9rem;
 }
