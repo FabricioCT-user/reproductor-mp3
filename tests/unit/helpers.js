@@ -12,7 +12,7 @@ const ROOT = path.join(__dirname, "..", "..");
 function load(...files) {
   const ctx = vm.createContext({ Blob, File, TextDecoder, TextEncoder, atob, btoa, URL, console });
   for (const f of files) {
-    vm.runInContext(fs.readFileSync(path.join(ROOT, f), "utf8"), ctx, { filename: f });
+    vm.runInContext(fs.readFileSync(path.join(ROOT, "src", f), "utf8"), ctx, { filename: f });
   }
   return (name) => vm.runInContext(name, ctx);
 }

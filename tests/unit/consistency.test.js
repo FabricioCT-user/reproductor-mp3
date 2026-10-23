@@ -28,7 +28,7 @@ test("los scripts se cargan en un orden válido (lo que usa cada uno ya está de
   before("id3.js", "tags.js");
   before("id3.js", "tag-writer.js");
   before("tags.js", "tag-writer.js");
-  assert.equal(order.at(-1), "app.js");
+  assert.equal(order.at(-1), "main.js");
 });
 
 test("el service worker precachea todo lo que carga la página y solo archivos que existen", () => {
@@ -46,7 +46,7 @@ test("los iconos del manifest existen", () => {
 
 test("todos los elementos que el código busca por id existen en index.html", () => {
   const ids = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
-  const code = scripts.filter((s) => !/(id3|tags|tag-writer|lyrics|playlist-io|storage|util)\.js$/.test(s)).map(read).join("\n");
+  const code = scripts.filter((s) => !/\/(id3|tags|tag-writer|lyrics|playlist-io|storage|util)\.js$/.test(s)).map(read).join("\n");
 
   const list = code.match(/const els = Object\.fromEntries\(\s*\[([\s\S]*?)\]\s*\.map/);
   assert.ok(list, "no se encontró la lista de elementos (els)");
