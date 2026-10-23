@@ -13,7 +13,8 @@ const els = Object.fromEntries(
    "view", "pl-new", "pl-more", "pl-import", "pl-rename", "pl-delete", "menu",
    "eq-toggle", "eq-panel", "eq-preset", "eq-on", "eq-reset", "eq-bands",
    "lyrics", "lyrics-body", "lyrics-toggle", "lyrics-clear", "lrc-input", "toast", "folder-input",
-   "speed-btn", "sleep-btn", "theme-btn", "xfade-btn"]
+   "speed-btn", "sleep-btn", "theme-btn", "xfade-btn",
+   "edit-dialog", "edit-form", "edit-cover", "edit-cover-input", "edit-cover-clear", "edit-title", "edit-artist", "edit-album", "edit-reset", "edit-cancel"]
     .map((id) => [id, $(id)])
 );
 
@@ -41,10 +42,10 @@ const formatTime = (s) => {
 
 /* ---------- Biblioteca ---------- */
 
-async function makeTrack(id, file, userLyrics = "") {
+async function makeTrack(id, file, userLyrics = "", edits = null) {
   const meta = await Tags.read(file);
   const fallback = file.name.replace(/\.[^.]+$/, "");
-  return {
+  const t = {
     id,
     fileBase: fallback.toLowerCase(),
     fileName: file.name,
@@ -54,12 +55,35 @@ async function makeTrack(id, file, userLyrics = "") {
     embeddedLyrics: meta.lyrics,
     userLyrics,
     url: URL.createObjectURL(file),
-    title: meta.title || fallback,
-    artist: meta.artist,
-    album: meta.album,
-    coverUrl: meta.cover ? URL.createObjectURL(meta.cover) : null,
+    // Datos del archivo; lo que se muestra (title, artist, album, coverUrl) sale de aplicar las ediciones encima.
+    orig: { title: meta.title || fallback, artist: meta.artist, album: meta.album, coverUrl: meta.cover ? URL.createObjectURL(meta.cover) : null },
+    edits,
   };
+  applyEdits(t);
+  return t;
 }
+
+// ediciones: { title?, artist?, album?, cover?: Blob | false (quitar) } — solo los campos que difieren del archivo.
+function applyEdits(t) {
+  const e = t.edits || {};
+  t.title = e.title || t.orig.title;
+  t.artist = e.artist ?? t.orig.artist;
+  t.album = e.album ?? t.orig.album;
+  if (e.cover instanceof Blob) {
+    if (t._editCoverBlob !== e.cover) {
+      if (t._editCoverUrl) URL.revokeObjectURL(t._editCoverUrl);
+      t._editCoverBlob = e.cover;
+      t._editCoverUrl = URL.createObjectURL(e.cover);
+    }
+    t.coverUrl = t._editCoverUrl;
+  } else {
+    if (t._editCoverUrl) URL.revokeObjectURL(t._editCoverUrl);
+    t._editCoverUrl = t._editCoverBlob = null;
+    t.coverUrl = e.cover === false ? null : t.orig.coverUrl;
+  }
+}
+
+const revokeCovers = (t) => [t.orig.coverUrl, t._editCoverUrl].forEach((u) => u && URL.revokeObjectURL(u));
 
 const isAudio = (f) => f.type.startsWith("audio/") || /\.(mp3|flac|ogg|oga|opus|m4a|aac|wav|weba)$/i.test(f.name);
 
@@ -248,7 +272,7 @@ function removeTrack(i) {
   if (t.id != null) { state.playlists.forEach((p) => (p.ids = p.ids.filter((id) => id !== t.id))); savePlaylists(); }
   if (t.id != null) Storage.remove(t.id).catch(() => {});
   URL.revokeObjectURL(t.url);
-  if (t.coverUrl) URL.revokeObjectURL(t.coverUrl);
+  revokeCovers(t);
 
   if (i === state.index) {
     endCrossfade();
@@ -268,7 +292,7 @@ async function clearLibrary() {
   endCrossfade();
   audio.pause();
   audio.removeAttribute("src");
-  state.tracks.forEach((t) => { URL.revokeObjectURL(t.url); t.coverUrl && URL.revokeObjectURL(t.coverUrl); });
+  state.tracks.forEach((t) => { URL.revokeObjectURL(t.url); revokeCovers(t); });
   state.tracks = [];
   state.queue = [];
   state.playlists.forEach((p) => (p.ids = []));
@@ -336,12 +360,13 @@ function render() {
         return b;
       };
       const qb = btn("t-btn", qpos ? "Quitar de la cola" : "Reproducir a continuación", qpos ? "−" : "+", () => toggleQueue(t));
+      const eb = btn("t-btn", "Editar etiquetas", "✎", () => openEditor(t));
       const pb = btn("t-btn", "Añadir a una lista", "♫", (b) => openMenu(b, t));
       const rm = pl
         ? btn("t-btn remove", "Quitar de esta lista", "✕", () => removeFromPlaylist(pl, t))
         : btn("t-btn remove", "Quitar de la biblioteca", "✕", () => removeTrack(i));
 
-      li.append(thumb, text, qb, pb, rm);
+      li.append(thumb, text, qb, pb, eb, rm);
       li.addEventListener("click", () => loadTrack(i, true, state.view));
 
       if (!q) {
@@ -606,18 +631,15 @@ function toggleQueue(t) {
 
 /* ---------- Reproducción ---------- */
 
-function showTrack(t) {
+// Título, artista y carátula (lo que cambia al editar etiquetas sin reiniciar la reproducción).
+function showMeta(t) {
   els.title.textContent = t ? t.title : "Nada en reproducción";
   els.artist.textContent = t ? [t.artist, t.album].filter(Boolean).join(" · ") || "Artista desconocido" : "Añade música para empezar";
   els.cover.style.backgroundImage = t?.coverUrl ? `url(${t.coverUrl})` : "";
   els.cover.classList.toggle("has-art", !!t?.coverUrl);
   els.backdrop.style.backgroundImage = t?.coverUrl ? `url(${t.coverUrl})` : "";
   els.backdrop.classList.toggle("on", !!t?.coverUrl);
-  els.seek.disabled = !t;
-  els.seek.value = 0;
-  els.current.textContent = els.duration.textContent = "0:00";
   document.title = t ? `${t.title} · Reproductor MP3` : "Reproductor MP3";
-  renderLyrics();
 
   if ("mediaSession" in navigator) {
     navigator.mediaSession.metadata = t
@@ -627,6 +649,14 @@ function showTrack(t) {
         })
       : null;
   }
+}
+
+function showTrack(t) {
+  showMeta(t);
+  els.seek.disabled = !t;
+  els.seek.value = 0;
+  els.current.textContent = els.duration.textContent = "0:00";
+  renderLyrics();
 }
 
 function loadTrack(i, autoplay, view = "all") {
@@ -897,7 +927,7 @@ onAudio("ended", () => {
 onAudio("error", () => { if (audio.src) step(1); });
 
 document.addEventListener("keydown", (e) => {
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest?.("dialog")) return;
   const typing = e.target.tagName === "INPUT" && e.target.type !== "range";
   if (typing) return;
   switch (e.code) {
@@ -1097,6 +1127,92 @@ els["xfade-btn"].addEventListener("click", (e) => {
   ]);
 });
 
+/* ---------- Editor de etiquetas ---------- */
+
+let editing = null; // { t, cover, previewUrl }  cover: undefined (sin cambios) | Blob | false (quitar)
+
+function paintEditCover() {
+  const c = editing.cover;
+  let url = null;
+  if (c instanceof Blob) url = editing.previewUrl ??= URL.createObjectURL(c);
+  else if (c === undefined) url = editing.t.orig.coverUrl;
+  els["edit-cover"].style.backgroundImage = url ? `url(${url})` : "";
+  els["edit-cover"].classList.toggle("has-art", !!url);
+}
+
+function setDraftCover(v) {
+  if (editing.previewUrl) URL.revokeObjectURL(editing.previewUrl);
+  editing.previewUrl = null;
+  editing.cover = v;
+  paintEditCover();
+}
+
+function fillEditForm(values) {
+  els["edit-title"].value = values.title;
+  els["edit-artist"].value = values.artist;
+  els["edit-album"].value = values.album;
+}
+
+function openEditor(t) {
+  editing = { t, cover: t.edits?.cover, previewUrl: null };
+  fillEditForm(t);
+  paintEditCover();
+  els["edit-dialog"].showModal();
+  els["edit-title"].focus();
+  els["edit-title"].select();
+}
+
+// Reduce las imágenes grandes para no inflar el almacenamiento ni las miniaturas.
+async function shrinkImage(file, max = 800) {
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    if (scale === 1 && file.size < 400 * 1024) return file;
+    const canvas = Object.assign(document.createElement("canvas"), { width: Math.round(bmp.width * scale), height: Math.round(bmp.height * scale) });
+    canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    return await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+  } catch {
+    return null;
+  }
+}
+
+function saveEditor() {
+  const { t } = editing;
+  const title = els["edit-title"].value.trim();
+  const artist = els["edit-artist"].value.trim();
+  const album = els["edit-album"].value.trim();
+  const e = {};
+  if (title && title !== t.orig.title) e.title = title;
+  if (artist !== t.orig.artist) e.artist = artist;
+  if (album !== t.orig.album) e.album = album;
+  if (editing.cover !== undefined) e.cover = editing.cover;
+  t.edits = Object.keys(e).length ? e : null;
+  applyEdits(t);
+  if (t.id != null) Storage.setEdits(t.id, t.edits).catch(() => {});
+  if (t === state.tracks[state.index]) showMeta(t);
+  render();
+  els["edit-dialog"].close();
+}
+
+els["edit-form"].addEventListener("submit", (e) => { e.preventDefault(); saveEditor(); });
+els["edit-cancel"].addEventListener("click", () => els["edit-dialog"].close());
+els["edit-dialog"].addEventListener("click", (e) => { if (e.target === els["edit-dialog"]) els["edit-dialog"].close(); }); // clic fuera
+els["edit-dialog"].addEventListener("close", () => {
+  if (editing?.previewUrl) URL.revokeObjectURL(editing.previewUrl);
+  editing = null;
+});
+els["edit-reset"].addEventListener("click", () => { fillEditForm(editing.t.orig); setDraftCover(undefined); });
+els["edit-cover-clear"].addEventListener("click", () => setDraftCover(false));
+els["edit-cover-input"].addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if (!f || !f.type.startsWith("image/")) return;
+  const img = await shrinkImage(f);
+  if (img && editing) setDraftCover(img); else toast("No se pudo leer la imagen");
+});
+// Doble clic sobre el título o el artista de la canción actual abre el editor.
+els.title.parentElement.addEventListener("dblclick", () => { const t = state.tracks[state.index]; if (t) openEditor(t); });
+
 /* ---------- Tema ---------- */
 
 // Preferencia: "auto" (sigue al sistema), "light" o "dark". El tema efectivo vive en <html data-theme>.
@@ -1133,7 +1249,7 @@ applyTheme(localStorage.getItem("theme") || "auto");
     const order = JSON.parse(localStorage.getItem("order") || "[]");
     const rank = (r) => { const k = order.indexOf(r.id); return k < 0 ? order.length + r.id : k; };
     saved.sort((a, b) => rank(a) - rank(b));
-    for (const rec of saved) state.tracks.push(await makeTrack(rec.id, rec.blob, rec.lyrics || ""));
+    for (const rec of saved) state.tracks.push(await makeTrack(rec.id, rec.blob, rec.lyrics || "", rec.edits || null));
     const last = state.tracks.findIndex((t) => String(t.id) === localStorage.getItem("lastId"));
     if (state.tracks.length) loadTrack(last >= 0 ? last : 0, false, "all");
     const ids = new Set(state.tracks.map((t) => t.id));

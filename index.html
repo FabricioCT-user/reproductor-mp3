@@ -116,6 +116,29 @@
     </section>
   </main>
 
+  <dialog id="edit-dialog" class="dialog" aria-labelledby="edit-heading">
+    <form id="edit-form" autocomplete="off">
+      <h2 id="edit-heading">Editar etiquetas</h2>
+      <div class="edit-row">
+        <div id="edit-cover" class="edit-cover"><span>♪</span></div>
+        <div class="edit-cover-actions">
+          <label class="link-btn">Elegir imagen…<input type="file" id="edit-cover-input" accept="image/*" hidden></label>
+          <button type="button" id="edit-cover-clear" class="link-btn">Quitar carátula</button>
+        </div>
+      </div>
+      <label class="field">Título <input id="edit-title" maxlength="300"></label>
+      <label class="field">Artista <input id="edit-artist" maxlength="300"></label>
+      <label class="field">Álbum <input id="edit-album" maxlength="300"></label>
+      <p class="edit-note">Los cambios se guardan en esta aplicación; tus archivos originales no se modifican.</p>
+      <div class="dialog-actions">
+        <button type="button" id="edit-reset" class="btn ghost" title="Vuelve a los datos del archivo (se aplica al guardar)">Restaurar original</button>
+        <span class="spacer"></span>
+        <button type="button" id="edit-cancel" class="btn ghost">Cancelar</button>
+        <button type="submit" class="btn">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="menu" class="menu" hidden></div>
   <div id="toast" class="toast" role="status" hidden></div>
   <audio id="audio"></audio>

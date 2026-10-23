@@ -22,8 +22,8 @@ const Storage = (() => {
     });
   }
 
-  // Guarda (o borra, con null) la letra cargada por el usuario en el registro de la pista.
-  async function setLyrics(id, text) {
+  // Guarda (o borra, con null) un campo del registro de la pista: letra cargada, ediciones de etiquetas…
+  async function setField(id, key, value) {
     const db = await open();
     return new Promise((resolve, reject) => {
       const t = db.transaction("tracks", "readwrite");
@@ -32,7 +32,7 @@ const Storage = (() => {
       get.onsuccess = () => {
         const rec = get.result;
         if (!rec) return;
-        if (text) rec.lyrics = text; else delete rec.lyrics;
+        if (value) rec[key] = value; else delete rec[key];
         store.put(rec);
       };
       t.oncomplete = () => resolve();
@@ -41,7 +41,8 @@ const Storage = (() => {
   }
 
   return {
-    setLyrics,
+    setLyrics: (id, text) => setField(id, "lyrics", text),
+    setEdits: (id, edits) => setField(id, "edits", edits),
     add: (file) => tx("readwrite", (s) => s.add({ name: file.name, blob: file, type: file.type })),
     remove: (id) => tx("readwrite", (s) => s.delete(id)),
     clear: () => tx("readwrite", (s) => s.clear()),

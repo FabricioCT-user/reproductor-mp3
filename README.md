@@ -6,6 +6,7 @@ Reproductor de música local que corre en el navegador. Sin dependencias ni buil
 
 - Biblioteca persistente (IndexedDB): al reabrir la página tus canciones siguen ahí
 - Lectura de etiquetas y carátula (título, artista, álbum) en MP3 (ID3v2), FLAC, Ogg Vorbis, Opus y M4A/AAC
+- Edición de etiquetas (título, artista, álbum y carátula) con el botón `✎` de cada canción o doble clic sobre el título del reproductor. Los cambios se guardan en la app y se pueden restaurar; tus archivos originales no se modifican. Las carátulas grandes se reducen a 800 px
 - Carátula grande, miniaturas en la lista y fondo difuminado con los colores del álbum
 - Visualizador de audio en tiempo real
 - Letras sincronizadas: lee la letra incrustada (MP3, FLAC, Ogg, Opus, M4A) o archivos `.lrc` y resalta la línea actual; pulsa una línea para saltar a ella. Para añadir una `.lrc`, suéltala junto al audio con el mismo nombre (o usa «Cargar .lrc» en el panel); se guarda en el navegador. Botón `Letra` o tecla `L`
@@ -51,7 +52,8 @@ y visita <http://localhost:8000>.
 
 ## Hoja de ruta
 
-- [ ] Edición de etiquetas desde la propia app
+- [ ] Descargar una copia del archivo con las etiquetas editadas
+- [ ] Edición de etiquetas en lote (varias canciones a la vez)
 
 ## Licencia
 
