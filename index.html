@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reproductor MP3</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="player" id="dropzone">
+    <header>
+      <h1>Reproductor MP3</h1>
+      <label class="btn">
+        Añadir canciones
+        <input type="file" id="file-input" accept="audio/*" multiple hidden>
+      </label>
+    </header>
+
+    <section class="now-playing">
+      <div id="title" class="title">Nada en reproducción</div>
+      <div class="progress">
+        <span id="current">0:00</span>
+        <input type="range" id="seek" min="0" max="100" step="0.1" value="0" disabled>
+        <span id="duration">0:00</span>
+      </div>
+    </section>
+
+    <section class="controls">
+      <button id="shuffle" class="icon" title="Aleatorio" aria-pressed="false">🔀</button>
+      <button id="prev" class="icon" title="Anterior">⏮</button>
+      <button id="play" class="icon big" title="Reproducir / Pausar">▶</button>
+      <button id="next" class="icon" title="Siguiente">⏭</button>
+      <button id="repeat" class="icon" title="Repetir" aria-pressed="false">🔁</button>
+      <input type="range" id="volume" min="0" max="1" step="0.01" value="1" title="Volumen">
+    </section>
+
+    <ul id="playlist" class="playlist">
+      <li class="empty">Arrastra archivos de audio aquí o usa «Añadir canciones».</li>
+    </ul>
+  </main>
+
+  <audio id="audio"></audio>
+  <script src="app.js"></script>
+</body>
+</html>

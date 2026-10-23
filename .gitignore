@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+*.mp3
+*.flac
+*.wav
+*.ogg
+*.m4a
+.claude/
