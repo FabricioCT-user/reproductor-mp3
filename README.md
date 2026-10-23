@@ -8,6 +8,7 @@ Reproductor de música local que corre en el navegador. Sin dependencias ni buil
 - Lectura de etiquetas ID3v2: título, artista, álbum y carátula
 - Carátula grande, miniaturas en la lista y fondo difuminado con los colores del álbum
 - Visualizador de audio en tiempo real
+- Ecualizador de 10 bandas (32 Hz–16 kHz, ±12 dB) con preajustes (Graves, Agudos, Voz, Rock, Pop, Electrónica, Clásica); se guarda entre sesiones
 - Búsqueda en la biblioteca y botón para quitar canciones
 - Reordena la biblioteca arrastrando (el orden se guarda)
 - Listas de reproducción con nombre: créalas, renómbralas, reordénalas arrastrando y añade canciones con el botón `♫`. Siguiente/anterior respetan la lista desde la que reproduces
@@ -41,7 +42,6 @@ y visita <http://localhost:8000>.
 
 ## Hoja de ruta
 
-- [ ] Ecualizador
 - [ ] Soporte de etiquetas Vorbis/MP4 (FLAC, OGG, M4A)
 - [ ] Letras sincronizadas
 

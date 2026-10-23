@@ -4,7 +4,8 @@ const audio = $("audio");
 const els = Object.fromEntries(
   ["dropzone", "backdrop", "cover", "title", "artist", "viz", "seek", "current", "duration", "play", "play-icon",
    "prev", "next", "shuffle", "repeat", "mute", "volume", "filter", "file-input", "clear", "playlist",
-   "view", "pl-new", "pl-rename", "pl-delete", "menu"]
+   "view", "pl-new", "pl-rename", "pl-delete", "menu",
+   "eq-toggle", "eq-panel", "eq-preset", "eq-on", "eq-reset", "eq-bands"]
     .map((id) => [id, $(id)])
 );
 
@@ -367,6 +368,91 @@ function setToggle(btn, key, value) {
   localStorage.setItem(key, value ? "1" : "0");
 }
 
+/* ---------- Ecualizador ---------- */
+
+const EQ_BANDS = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+const EQ_PRESETS = {
+  "Plano": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  "Graves": [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
+  "Agudos": [0, 0, 0, 0, 0, 1, 3, 5, 6, 6],
+  "Voz": [-2, -1, 0, 2, 4, 4, 3, 1, 0, -1],
+  "Rock": [4, 3, 2, -1, -2, -1, 2, 3, 4, 4],
+  "Pop": [-1, 1, 3, 4, 3, 0, -1, -1, 1, 2],
+  "Electrónica": [5, 4, 1, 0, -2, 2, 1, 2, 4, 5],
+  "Clásica": [3, 2, 1, 1, 0, 0, -1, -1, 2, 3],
+};
+
+let eqFilters = [], eqPreamp;
+const eqSaved = JSON.parse(localStorage.getItem("eq") || "null");
+state.eq = { on: eqSaved?.on ?? true, gains: eqSaved?.gains?.length === EQ_BANDS.length ? eqSaved.gains : EQ_PRESETS.Plano.slice() };
+
+const fmtFreq = (f) => (f >= 1000 ? `${f / 1000}k` : f);
+const fmtGain = (g) => (g > 0 ? `+${g}` : `${g}`);
+
+function applyEq() {
+  const gains = state.eq.on ? state.eq.gains : EQ_PRESETS.Plano;
+  eqFilters.forEach((f, i) => (f.gain.value = gains[i]));
+  // Reduce el nivel a la mitad del mayor realce para evitar saturación.
+  if (eqPreamp) eqPreamp.gain.value = 10 ** (-0.5 * Math.max(0, ...gains) / 20);
+}
+
+function saveEq() {
+  localStorage.setItem("eq", JSON.stringify(state.eq));
+  applyEq();
+  syncEqUi();
+}
+
+function syncEqUi() {
+  els["eq-on"].checked = state.eq.on;
+  els["eq-panel"].classList.toggle("off", !state.eq.on);
+  els["eq-toggle"].setAttribute("aria-pressed", !els["eq-panel"].hidden);
+  els["eq-toggle"].classList.toggle("active", state.eq.on && state.eq.gains.some((g) => g !== 0));
+  const match = Object.entries(EQ_PRESETS).find(([, g]) => g.every((v, i) => v === state.eq.gains[i]));
+  els["eq-preset"].value = match ? match[0] : "custom";
+  els["eq-bands"].querySelectorAll(".eq-band").forEach((el, i) => {
+    el.querySelector("input").value = state.eq.gains[i];
+    el.querySelector(".eq-gain").textContent = fmtGain(state.eq.gains[i]);
+  });
+}
+
+function buildEqUi() {
+  els["eq-preset"].replaceChildren(...Object.keys(EQ_PRESETS).map((n) => new Option(n, n)), new Option("Personalizado", "custom"));
+  els["eq-bands"].replaceChildren(
+    ...EQ_BANDS.map((f, i) => {
+      const col = document.createElement("div");
+      col.className = "eq-band";
+      const gain = document.createElement("span");
+      gain.className = "eq-gain";
+      const input = document.createElement("input");
+      input.type = "range";
+      input.min = -12; input.max = 12; input.step = 1;
+      input.setAttribute("aria-label", `${fmtFreq(f)} Hz`);
+      input.addEventListener("input", () => { state.eq.gains[i] = +input.value; saveEq(); });
+      input.addEventListener("dblclick", () => { state.eq.gains[i] = 0; saveEq(); });
+      const label = document.createElement("span");
+      label.className = "eq-freq";
+      label.textContent = fmtFreq(f);
+      col.append(gain, input, label);
+      return col;
+    })
+  );
+  syncEqUi();
+}
+
+els["eq-toggle"].addEventListener("click", () => {
+  els["eq-panel"].hidden = !els["eq-panel"].hidden;
+  syncEqUi();
+});
+els["eq-on"].addEventListener("change", () => { state.eq.on = els["eq-on"].checked; saveEq(); });
+els["eq-reset"].addEventListener("click", () => { state.eq.gains = EQ_PRESETS.Plano.slice(); saveEq(); });
+els["eq-preset"].addEventListener("change", () => {
+  const g = EQ_PRESETS[els["eq-preset"].value];
+  if (!g) return;
+  state.eq.gains = g.slice();
+  state.eq.on = true;
+  saveEq();
+});
+
 /* ---------- Visualizador ---------- */
 
 let analyser, freq;
@@ -379,8 +465,23 @@ function startAnalyser() {
   analyser.fftSize = 128;
   analyser.smoothingTimeConstant = 0.8;
   freq = new Uint8Array(analyser.frequencyBinCount);
-  ac.createMediaElementSource(audio).connect(analyser);
+
+  // fuente → 10 filtros → preamp → analizador → salida
+  let node = ac.createMediaElementSource(audio);
+  eqFilters = EQ_BANDS.map((f, i) => {
+    const filter = ac.createBiquadFilter();
+    filter.type = i === 0 ? "lowshelf" : i === EQ_BANDS.length - 1 ? "highshelf" : "peaking";
+    filter.frequency.value = f;
+    filter.Q.value = 1.4;
+    node.connect(filter);
+    node = filter;
+    return filter;
+  });
+  eqPreamp = ac.createGain();
+  node.connect(eqPreamp);
+  eqPreamp.connect(analyser);
   analyser.connect(ac.destination);
+  applyEq();
   audio.addEventListener("play", () => ac.resume());
   draw();
 }
@@ -506,6 +607,7 @@ if ("mediaSession" in navigator) {
     state.playlists.forEach((p) => (p.ids = p.ids.filter((id) => ids.has(id))));
     savePlaylists();
   } catch { /* IndexedDB no disponible */ }
+  buildEqUi();
   renderViews();
   render();
 })();

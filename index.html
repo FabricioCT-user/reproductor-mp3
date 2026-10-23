@@ -52,6 +52,17 @@
           <svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>
         </button>
         <input type="range" id="volume" min="0" max="1" step="0.01" value="1" aria-label="Volumen">
+        <button id="eq-toggle" class="btn ghost eq-toggle" title="Ecualizador" aria-pressed="false">EQ</button>
+      </div>
+
+      <div id="eq-panel" class="eq-panel" hidden>
+        <div class="eq-head">
+          <select id="eq-preset" aria-label="Preajuste"></select>
+          <label class="eq-switch"><input type="checkbox" id="eq-on" checked> Activo</label>
+          <button id="eq-reset" class="btn ghost" title="Poner todas las bandas a 0 dB">Restablecer</button>
+        </div>
+        <div id="eq-bands" class="eq-bands"></div>
+        <div class="hint">Doble clic en una banda para ponerla a 0 dB</div>
       </div>
     </section>
 

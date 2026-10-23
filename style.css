@@ -170,3 +170,23 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
   .cover { max-width: 260px; width: 100%; margin: 0 auto; }
   .library { max-height: 420px; }
 }
+
+/* Ecualizador */
+.eq-toggle { padding: 6px 10px; font-size: .78rem; margin-left: 4px; }
+.eq-toggle[aria-pressed="true"], .eq-toggle.active { color: var(--accent); border-color: var(--accent); }
+
+.eq-panel { background: #0000002e; border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.eq-panel[hidden] { display: none; }
+.eq-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.eq-head select {
+  flex: 1 1 110px; min-width: 0; background: #ffffff0d; border: 1px solid var(--line); border-radius: 8px;
+  color: var(--text); padding: 6px 8px; font: inherit; font-size: .85rem; cursor: pointer;
+}
+.eq-head select option { background: #1b1e26; }
+.eq-head .btn { padding: 6px 10px; font-size: .78rem; }
+.eq-switch { display: flex; align-items: center; gap: 6px; font-size: .82rem; color: var(--muted); cursor: pointer; }
+.eq-bands { display: flex; justify-content: space-between; gap: 2px; transition: opacity .2s; }
+.eq-panel.off .eq-bands { opacity: .35; }
+.eq-band { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.eq-band input[type="range"] { writing-mode: vertical-lr; direction: rtl; width: 20px; height: 110px; margin: 0; }
+.eq-gain, .eq-freq { font-size: .64rem; color: var(--muted); font-variant-numeric: tabular-nums; }
