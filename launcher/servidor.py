@@ -179,6 +179,12 @@ class Manejador(SimpleHTTPRequestHandler):
 class Servidor(ThreadingHTTPServer):
     daemon_threads = True
 
+    def handle_error(self, request, client_address):
+        # Cerrar o recargar la pestaña a mitad de una respuesta es normal: no es un error del servidor.
+        if isinstance(sys.exc_info()[1], (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
+            return
+        super().handle_error(request, client_address)
+
     def __init__(self, direccion, raiz, verboso):
         super().__init__(direccion, partial(Manejador, directory=str(raiz)))
         self.cerrojo = threading.Lock()

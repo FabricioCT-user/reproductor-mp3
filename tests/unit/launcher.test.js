@@ -151,6 +151,21 @@ test("la espera larga avisa de que hay una página conectada y devuelve [] si no
   assert.equal((await json(port, "/__reproductor")).pagina_conectada, false);
 });
 
+test("si el navegador cierra la pestaña a mitad de una espera, el servidor no escribe errores", { skip: !hasPython }, async () => {
+  const { port, child } = await startServer();
+  let stderr = "";
+  child.stderr.on("data", (d) => (stderr += d));
+  for (let i = 0; i < 3; i++) {
+    const socket = net.connect(port, "127.0.0.1");
+    socket.write(`GET /__abrir/esperar HTTP/1.1\r\nHost: localhost:${port}\r\n\r\n`);
+    await wait(100);
+    socket.destroy(); // la pestaña se cierra mientras el servidor espera
+  }
+  await wait(2500); // las esperas terminan (1 s) e intentan responder a un cliente que ya no está
+  assert.equal(stderr, "", `el servidor escribió errores: ${stderr.slice(0, 300)}`);
+  assert.equal((await request(port, "/__reproductor")).status, 200, "el servidor dejó de responder");
+});
+
 test("una espera larga recibe al instante un archivo que llega mientras espera", { skip: !hasPython }, async () => {
   const { port, env } = await startServer();
   const espera = json(port, "/__abrir/esperar");
@@ -206,7 +221,9 @@ test("el servidor descarta entradas de cola trucadas aunque alguien las escriba 
 
 test("sin servidor en marcha, el lanzador lo arranca solo y --detener lo apaga", { skip: !hasPython }, async () => {
   const port = await freePort();
-  const { env } = entorno();
+  const { env, cola } = entorno();
+  // Si una aserción falla antes de --detener, el servidor que arrancó el lanzador no debe quedar huérfano.
+  children.push({ kill: () => { try { process.kill(Number(fs.readFileSync(path.join(path.dirname(cola), "servidor.pid"), "utf8"))); } catch { /* ya no existe */ } } });
   const r = await lanzar(["--puerto", String(port), file("auto.mp3").p], env);
   assert.equal(r.status, 0, r.stderr);
   assert.equal((await json(port, "/__reproductor")).app, "reproductor-mp3");
