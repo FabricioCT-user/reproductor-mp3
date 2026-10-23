@@ -1,33 +1,30 @@
 # Reproductor MP3
 
-Reproductor de música local que corre en el navegador. Sin dependencias ni build: tus archivos nunca salen de tu equipo.
+Reproductor de música local que corre en el navegador. **Sin dependencias ni build**: tus archivos nunca salen de tu equipo.
 
 ## Funciones
 
-- Biblioteca persistente (IndexedDB): al reabrir la página tus canciones siguen ahí
-- Lectura de etiquetas y carátula (título, artista, álbum) en MP3 (ID3v2), FLAC, Ogg Vorbis, Opus y M4A/AAC
-- Edición de etiquetas (título, artista, álbum y carátula) con el botón `✎` de cada canción o doble clic sobre el título del reproductor. Los cambios se guardan en la app y se pueden restaurar; tus archivos originales no se modifican. Las carátulas grandes se reducen a 800 px
-- Edición en lote: pulsa `Seleccionar` (o Ctrl/Cmd + clic en una canción), marca varias (Mayús para rangos, «Todas» respeta el filtro) y pulsa `Editar`. Solo se cambian los campos que toques, así que puedes poner el álbum a toda una carpeta sin pisar artistas o títulos distintos; «Restaurar originales» deshace las ediciones de todas
-- Descargar una copia con las etiquetas escritas dentro (botón «Guardar y descargar copia» del editor, también en lote; solo MP3 y FLAC): título, artista, álbum y carátula van dentro del archivo, el resto de etiquetas y el audio se conservan tal cual y el original no se toca. La copia se vuelve a leer para comprobar que coincide antes de descargarla
-- Carátula grande, miniaturas en la lista y fondo difuminado con los colores del álbum
-- Visualizador de audio en tiempo real
-- Letras sincronizadas: lee la letra incrustada (MP3, FLAC, Ogg, Opus, M4A) o archivos `.lrc` y resalta la línea actual; pulsa una línea para saltar a ella. Para añadir una `.lrc`, suéltala junto al audio con el mismo nombre (o usa «Cargar .lrc» en el panel); se guarda en el navegador. Botón `Letra` o tecla `L`
-- Ecualizador de 10 bandas (32 Hz–16 kHz, ±12 dB) con preajustes (Graves, Agudos, Voz, Rock, Pop, Electrónica, Clásica); se guarda entre sesiones
-- Búsqueda en la biblioteca y botón para quitar canciones
-- Reordena la biblioteca arrastrando (el orden se guarda)
-- Listas de reproducción con nombre: créalas, renómbralas, reordénalas arrastrando y añade canciones con el botón `♫`. Siguiente/anterior respetan la lista desde la que reproduces
-- Exportar e importar listas (botón `⋯`): JSON con todas tus listas, o M3U8 estándar para otros reproductores. Las canciones se identifican por nombre de archivo y tamaño, así que valen en otro navegador; las que aún no estén en la biblioteca quedan «pendientes» y se enlazan solas al importarlas. También puedes soltar un `.json` / `.m3u8` en la ventana
-- Cola de reproducción: pulsa `+` en una canción para reproducirla a continuación
-- Instalable como app (PWA) y funciona sin conexión
-- Velocidad de reproducción de 0,5× a 2× sin cambiar el tono (menú `1×` o teclas `[` y `]`); se recuerda entre sesiones
-- Fundido entre canciones (crossfade) de 2 a 12 s con curva de potencia constante (botón `⇄`); solo cuando la reproducción pasa sola a la siguiente, nunca en la última ni al cambiar a mano
-- Temporizador de apagado (15–90 min, personalizado o «al terminar la canción») con fundido de salida de 8 s
-- Aleatorio, repetir, volumen y silencio (se recuerdan entre sesiones)
-- Teclas multimedia del sistema (Media Session API)
-- Tema claro, oscuro o automático (sigue al sistema); botón `◐` / `☀` / `☾`
-- Interfaz adaptable a móvil
-- Importa carpetas completas (con subcarpetas) con el botón `+ Carpeta` o arrastrándolas a la ventana: se ordenan por ruta en orden natural, se ignoran los archivos que no son audio y no se duplican las canciones ya importadas. Los `.lrc` de la carpeta se emparejan con su canción
-- Arrastra archivos sueltos a cualquier parte de la ventana para añadirlos
+**Biblioteca**
+- Se guarda en el navegador (IndexedDB): al reabrir la página tus canciones siguen ahí.
+- Importa archivos sueltos o **carpetas completas** (con subcarpetas) con `+ Añadir`, `+ Carpeta` o arrastrándolos a la ventana. Se ordenan por ruta en orden natural (`2` antes que `10`), se ignora lo que no es audio y no se duplica lo ya importado.
+- Búsqueda, reordenar arrastrando (el orden se guarda) y cola de reproducción (`+` en una canción).
+- **Listas de reproducción con nombre**, reordenables. Siguiente/anterior respetan la lista desde la que reproduces.
+- **Exportar e importar listas** (botón `⋯`): JSON con todas tus listas o M3U8 estándar. Las canciones se identifican por nombre de archivo y tamaño; las que aún no estén en la biblioteca quedan «pendientes» y se enlazan solas al importarlas.
+
+**Reproducción**
+- Aleatorio, repetir, volumen, velocidad de 0,5× a 2× sin cambiar el tono, y teclas multimedia del sistema.
+- **Fundido entre canciones** de 2 a 12 s (potencia constante) cuando la reproducción pasa sola a la siguiente.
+- **Temporizador de apagado** (15–90 min, personalizado o «al terminar la canción») con fundido de salida.
+- **Ecualizador de 10 bandas** con preajustes y visualizador de audio.
+- **Letras sincronizadas**: lee la letra incrustada o archivos `.lrc` (suéltalos junto al audio con el mismo nombre) y resalta la línea actual; pulsa una línea para saltar a ella.
+
+**Etiquetas**
+- Lee título, artista, álbum, carátula y letra de **MP3 (ID3v2.2–2.4), FLAC, Ogg Vorbis, Opus y M4A/AAC**.
+- **Edita** título, artista, álbum y carátula de una canción (`✎` o doble clic sobre el título) o de **varias a la vez** (`Seleccionar` o Ctrl/Cmd + clic; solo se cambian los campos que toques). Los cambios se guardan en la app y se pueden restaurar: **tus archivos originales no se modifican**.
+- **Descarga una copia con las etiquetas escritas dentro** (solo MP3 y FLAC). El resto de etiquetas y el audio se conservan byte a byte, y la copia se vuelve a leer para comprobar que coincide antes de descargarla.
+
+**Interfaz**
+- Tema claro, oscuro o automático, adaptable a móvil, instalable como app (PWA) y funciona sin conexión.
 
 ## Atajos
 
@@ -44,13 +41,60 @@ Reproductor de música local que corre en el navegador. Sin dependencias ni buil
 
 ## Uso
 
-Abre `index.html` en el navegador, o sirve la carpeta:
+Sirve la carpeta con cualquier servidor estático:
 
 ```bash
-python -m http.server 8000
+npm start            # o: python3 -m http.server 8000
 ```
 
-y visita <http://localhost:8000>.
+y abre <http://localhost:8000>. Desde Chrome puedes **instalarla como app** (icono en la barra de direcciones).
+
+> Tu biblioteca, tus listas y tus ajustes se guardan en el navegador y **ligados a la dirección exacta** (`localhost:8000` no comparte datos con `localhost:3000`). Si borras los datos del sitio se pierden; exporta tus listas antes si te importa conservarlas. Los archivos de música se copian dentro del almacenamiento del navegador.
+
+## Privacidad
+
+No hay servidor ni análisis: la aplicación solo se descarga a sí misma. Una política de seguridad de contenido (CSP) impide cargar nada de otros sitios.
+
+## Desarrollo
+
+Sin dependencias: JavaScript clásico en el navegador, sin empaquetador. Para las pruebas basta con Node 22 o superior (probado con 26).
+
+```
+index.html  style.css  sw.js  manifest.webmanifest   página, estilos, caché sin conexión, PWA
+src/
+  util.js          funciones puras (formatos, rutas, isAudio…)
+  lyrics.js        analizador de letras LRC
+  playlist-io.js   formato JSON y M3U8 de las listas
+  id3.js           lector ID3v2 (y analizador compartido con el escritor)
+  tags.js          lector de etiquetas: FLAC, Ogg/Opus, M4A (MP3 se delega en id3.js)
+  tag-writer.js    escritor de etiquetas para copias de MP3 y FLAC
+  storage.js       biblioteca en IndexedDB
+  app/             la aplicación, un archivo por función:
+                   core, library, playlists, lyrics-ui, player, eq, fades, editor, theme, main
+tests/
+  unit/            pruebas con node:test (módulos puros, escritor de etiquetas, coherencia del proyecto)
+  smoke.html       pruebas de humo: manejan la aplicación real en el navegador
+```
+
+**Cómo está organizado `src/app/`**: cada archivo solo *declara* (funciones y constantes); no hace nada al cargarse. Todo el cableado de eventos vive en funciones `wire…()` (una por archivo) que `main.js` llama al final, cuando todo ya existe. Por eso el orden de carga solo importa para las constantes que se usan al declarar (`index.html` y las pruebas lo vigilan).
+
+**Pruebas**
+
+```bash
+npm test                         # unitarias (~80 pruebas, un par de segundos)
+npm start                        # y abre http://localhost:8000/tests/smoke.html para las de humo
+```
+
+Las unitarias cargan los mismos scripts que el navegador dentro de un contexto aislado de Node y construyen archivos MP3, FLAC, Ogg y MP4 sintéticos para comprobar lectores y escritor (unsincronización, cabecera extendida, ID3v2.2, carátulas, bloques FLAC…). Las de humo importan archivos, reproducen, reordenan, editan, exportan, recargan y fuerzan fallos (archivos que no se pueden reproducir, `localStorage` corrupto, registros dañados). La prueba de humo usa audio generado en el propio navegador y no necesita ffmpeg.
+
+**Al publicar una versión nueva**, si cambia la lista de archivos de la aplicación actualiza `FILES` y `VERSION` en `sw.js` (una prueba comprueba que `FILES` coincide con lo que carga la página).
+
+## Límites conocidos
+
+- La lista de canciones no está virtualizada: con cientos va bien; con decenas de miles aún no se ha probado.
+- Las copias con etiquetas solo existen para MP3 y FLAC. En MP3 con etiqueta ID3v2.2 (muy antiguo) la copia solo lleva las etiquetas editadas.
+- Las ediciones y las letras cargadas viven en el navegador; no viajan con el archivo salvo que descargues la copia.
+- Probado en Chromium; en Firefox y Safari el audio, el almacenamiento y las carpetas deberían funcionar, pero no se ha verificado.
 
 ## Hoja de ruta
 

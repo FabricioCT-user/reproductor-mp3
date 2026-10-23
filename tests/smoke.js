@@ -67,8 +67,13 @@ async function waitReady(win) {
 async function openApp(prepare) {
   await resetStorage();
   if (prepare) await prepare();
+  // La página real lleva una CSP sin «unsafe-eval», y estas pruebas necesitan eval para leer sus variables internas:
+  // se carga la misma página sin esa etiqueta (la CSP se comprueba aparte, en las pruebas unitarias y en el navegador).
+  const html = (await (await fetch("../index.html", { cache: "no-cache" })).text())
+    .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, "")
+    .replace("<head>", '<head><base href="../">');
   const frame = document.createElement("iframe");
-  frame.src = "../index.html";
+  frame.srcdoc = html;
   document.body.append(frame);
   await new Promise((r) => frame.addEventListener("load", r, { once: true }));
   const win = frame.contentWindow;

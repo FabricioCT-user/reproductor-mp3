@@ -71,3 +71,21 @@ test("la CSP (si existe) permite lo que usa la página", () => {
   if (!csp) return;
   for (const need of ["media-src 'self' blob:", "img-src 'self' blob: data:", "worker-src 'self'"]) assert.ok(csp.includes(need), `la CSP no incluye ${need}`);
 });
+
+test("la CSP autoriza exactamente el script en línea del tema (hash al día)", () => {
+  const csp = html.match(/http-equiv="Content-Security-Policy"\s+content="([^"]+)"/)?.[1];
+  assert.ok(csp, "falta la CSP en index.html");
+  const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  assert.equal(inline.length, 1, "solo debe haber un script en línea");
+  const hash = require("node:crypto").createHash("sha256").update(inline[0]).digest("base64");
+  assert.ok(csp.includes(`'sha256-${hash}'`), `la CSP no incluye el hash actual del script en línea: sha256-${hash}`);
+  assert.ok(!/unsafe-inline|unsafe-eval/.test(csp));
+  assert.equal([...html.matchAll(/\sstyle="/g)].length, 0, "hay estilos en línea y la CSP los bloquearía");
+  assert.equal([...html.matchAll(/\son[a-z]+="/g)].length, 0, "hay manejadores de eventos en línea y la CSP los bloquearía");
+});
+
+test("los botones que solo tienen icono tienen nombre accesible", () => {
+  for (const id of ["shuffle", "prev", "play", "next", "repeat", "mute"]) {
+    assert.match(html, new RegExp(`<button id="${id}"[^>]*aria-label="[^"]+"`), `el botón ${id} no tiene aria-label`);
+  }
+});

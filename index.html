@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-WgWwGTjSx6i7mDtllt6fzds2uaHWSMIOKCmDnR6Fcl8='; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Reproductor MP3</title>
   <meta name="theme-color" content="#0e1015">
   <script>
@@ -14,6 +15,7 @@
   </script>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -46,25 +48,25 @@
       </div>
 
       <div class="controls">
-        <button id="shuffle" class="icon" title="Aleatorio (S)" aria-pressed="false">
+        <button id="shuffle" aria-label="Aleatorio" class="icon" title="Aleatorio (S)" aria-pressed="false">
           <svg viewBox="0 0 24 24"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
         </button>
-        <button id="prev" class="icon" title="Anterior (P)">
+        <button id="prev" aria-label="Anterior" class="icon" title="Anterior (P)">
           <svg viewBox="0 0 24 24" class="fill"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg>
         </button>
-        <button id="play" class="icon big" title="Reproducir / Pausar (Espacio)">
+        <button id="play" aria-label="Reproducir o pausar" class="icon big" title="Reproducir / Pausar (Espacio)">
           <svg viewBox="0 0 24 24" class="fill" id="play-icon"><path d="M8 5v14l11-7z"/></svg>
         </button>
-        <button id="next" class="icon" title="Siguiente (N)">
+        <button id="next" aria-label="Siguiente" class="icon" title="Siguiente (N)">
           <svg viewBox="0 0 24 24" class="fill"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg>
         </button>
-        <button id="repeat" class="icon" title="Repetir (R)" aria-pressed="false">
+        <button id="repeat" aria-label="Repetir" class="icon" title="Repetir (R)" aria-pressed="false">
           <svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3"/></svg>
         </button>
       </div>
 
       <div class="volume">
-        <button id="mute" class="icon small" title="Silenciar (M)">
+        <button id="mute" aria-label="Silenciar" class="icon small" title="Silenciar (M)">
           <svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>
         </button>
         <input type="range" id="volume" min="0" max="1" step="0.01" value="1" aria-label="Volumen">
@@ -120,7 +122,7 @@
         <button id="select-edit" class="btn" disabled>Editar</button>
         <button id="select-done" class="btn ghost">Listo</button>
       </div>
-      <ul id="playlist" class="playlist"></ul>
+      <ul id="playlist" class="playlist" aria-label="Biblioteca de canciones"></ul>
       <div class="hint">Arrastra archivos o carpetas a cualquier parte de la ventana · la biblioteca se guarda en este navegador</div>
     </section>
   </main>

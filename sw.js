@@ -23,6 +23,9 @@ const FILES = [
   "src/app/theme.js",
   "src/app/main.js",
   "icon.svg",
+  "icon-192.png",
+  "icon-512.png",
+  "icon-maskable-512.png",
   "manifest.webmanifest",
 ];
 
