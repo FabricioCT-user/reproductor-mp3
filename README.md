@@ -9,6 +9,9 @@ Reproductor de música local que corre en el navegador. Sin dependencias ni buil
 - Carátula grande, miniaturas en la lista y fondo difuminado con los colores del álbum
 - Visualizador de audio en tiempo real
 - Búsqueda en la biblioteca y botón para quitar canciones
+- Reordena la biblioteca arrastrando (el orden se guarda)
+- Cola de reproducción: pulsa `+` en una canción para reproducirla a continuación
+- Instalable como app (PWA) y funciona sin conexión
 - Aleatorio, repetir, volumen y silencio (se recuerdan entre sesiones)
 - Teclas multimedia del sistema (Media Session API)
 - Interfaz adaptable a móvil
@@ -37,12 +40,10 @@ y visita <http://localhost:8000>.
 
 ## Hoja de ruta
 
-- [ ] Listas de reproducción con nombre y reordenar arrastrando
-- [ ] Cola de reproducción
+- [ ] Listas de reproducción con nombre
 - [ ] Ecualizador
 - [ ] Soporte de etiquetas Vorbis/MP4 (FLAC, OGG, M4A)
 - [ ] Letras sincronizadas
-- [ ] Empaquetado como app de escritorio / PWA
 
 ## Licencia
 

@@ -16,6 +16,7 @@ const state = {
   shuffle: localStorage.getItem("shuffle") === "1",
   repeat: localStorage.getItem("repeat") === "1",
   filter: "",
+  queue: [],
 };
 
 const formatTime = (s) => {
@@ -51,6 +52,7 @@ async function addFiles(fileList) {
 
 function removeTrack(i) {
   const [t] = state.tracks.splice(i, 1);
+  state.queue = state.queue.filter((q) => q !== t);
   if (t.id != null) Storage.remove(t.id).catch(() => {});
   URL.revokeObjectURL(t.url);
   if (t.coverUrl) URL.revokeObjectURL(t.coverUrl);
@@ -73,6 +75,7 @@ async function clearLibrary() {
   audio.removeAttribute("src");
   state.tracks.forEach((t) => { URL.revokeObjectURL(t.url); t.coverUrl && URL.revokeObjectURL(t.coverUrl); });
   state.tracks = [];
+  state.queue = [];
   state.index = -1;
   await Storage.clear().catch(() => {});
   showTrack(null);
@@ -110,20 +113,66 @@ function render() {
       name.textContent = t.title;
       const sub = document.createElement("div");
       sub.className = "t-sub";
-      sub.textContent = [t.artist, t.album].filter(Boolean).join(" · ") || "Artista desconocido";
+      const qpos = state.queue.indexOf(t) + 1;
+      sub.textContent = (qpos ? `En cola #${qpos} · ` : "") + ([t.artist, t.album].filter(Boolean).join(" · ") || "Artista desconocido");
       text.append(name, sub);
 
+      const qb = document.createElement("button");
+      qb.className = "t-btn";
+      qb.title = qpos ? "Quitar de la cola" : "Reproducir a continuación";
+      qb.textContent = qpos ? "−" : "+";
+      qb.addEventListener("click", (e) => { e.stopPropagation(); toggleQueue(t); });
+
       const rm = document.createElement("button");
-      rm.className = "t-remove";
+      rm.className = "t-btn remove";
       rm.title = "Quitar de la biblioteca";
       rm.textContent = "✕";
       rm.addEventListener("click", (e) => { e.stopPropagation(); removeTrack(i); });
 
-      li.append(thumb, text, rm);
+      li.append(thumb, text, qb, rm);
       li.addEventListener("click", () => loadTrack(i, true));
+
+      if (!q) {
+        li.draggable = true;
+        li.addEventListener("dragstart", (e) => { dragFrom = i; e.dataTransfer.effectAllowed = "move"; li.classList.add("dragging"); });
+        li.addEventListener("dragend", () => { dragFrom = -1; li.classList.remove("dragging"); clearDropMarks(); });
+        li.addEventListener("dragover", (e) => {
+          if (dragFrom < 0) return;
+          e.preventDefault();
+          clearDropMarks();
+          li.classList.add(dropBefore(e, li) ? "drop-before" : "drop-after");
+        });
+        li.addEventListener("drop", (e) => {
+          if (dragFrom < 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          moveTrack(dragFrom, i + (dropBefore(e, li) ? 0 : 1));
+        });
+      }
       return li;
     })
   );
+}
+
+let dragFrom = -1;
+const dropBefore = (e, li) => e.clientY < li.getBoundingClientRect().top + li.offsetHeight / 2;
+const clearDropMarks = () => els.playlist.querySelectorAll(".drop-before, .drop-after").forEach((n) => n.classList.remove("drop-before", "drop-after"));
+
+function moveTrack(from, to) {
+  if (to > from) to--;
+  if (to === from) return render();
+  const current = state.tracks[state.index];
+  const [t] = state.tracks.splice(from, 1);
+  state.tracks.splice(to, 0, t);
+  state.index = state.tracks.indexOf(current);
+  localStorage.setItem("order", JSON.stringify(state.tracks.map((x) => x.id).filter((id) => id != null)));
+  render();
+}
+
+function toggleQueue(t) {
+  const i = state.queue.indexOf(t);
+  i >= 0 ? state.queue.splice(i, 1) : state.queue.push(t);
+  render();
 }
 
 /* ---------- Reproducción ---------- */
@@ -168,6 +217,7 @@ function play() {
 function step(dir) {
   const n = state.tracks.length;
   if (!n) return;
+  if (dir > 0 && state.queue.length) return loadTrack(state.tracks.indexOf(state.queue.shift()), true);
   let i;
   if (state.shuffle && n > 1) {
     do { i = Math.floor(Math.random() * n); } while (i === state.index);
@@ -234,10 +284,12 @@ els.clear.addEventListener("click", clearLibrary);
 els.filter.addEventListener("input", () => { state.filter = els.filter.value; render(); });
 
 let dragDepth = 0;
-window.addEventListener("dragenter", (e) => { e.preventDefault(); dragDepth++; els.dropzone.classList.add("dragover"); });
-window.addEventListener("dragover", (e) => e.preventDefault());
-window.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; els.dropzone.classList.remove("dragover"); } });
+const hasFiles = (e) => e.dataTransfer?.types.includes("Files");
+window.addEventListener("dragenter", (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; els.dropzone.classList.add("dragover"); });
+window.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+window.addEventListener("dragleave", (e) => { if (!hasFiles(e)) return; if (--dragDepth <= 0) { dragDepth = 0; els.dropzone.classList.remove("dragover"); } });
 window.addEventListener("drop", (e) => {
+  if (!hasFiles(e)) return;
   e.preventDefault();
   dragDepth = 0;
   els.dropzone.classList.remove("dragover");
@@ -274,7 +326,7 @@ audio.addEventListener("timeupdate", () => {
 audio.addEventListener("ended", () => {
   const last = state.index === state.tracks.length - 1;
   if (state.repeat && !state.shuffle && state.tracks.length === 1) { audio.currentTime = 0; play(); return; }
-  if (last && !state.repeat && !state.shuffle) return;
+  if (last && !state.repeat && !state.shuffle && !state.queue.length) return;
   step(1);
 });
 audio.addEventListener("error", () => { if (audio.src) step(1); });
@@ -311,9 +363,16 @@ if ("mediaSession" in navigator) {
   els.repeat.setAttribute("aria-pressed", state.repeat);
   try {
     const saved = await Storage.all();
+    const order = JSON.parse(localStorage.getItem("order") || "[]");
+    const rank = (r) => { const k = order.indexOf(r.id); return k < 0 ? order.length + r.id : k; };
+    saved.sort((a, b) => rank(a) - rank(b));
     for (const rec of saved) state.tracks.push(await makeTrack(rec.id, rec.blob));
     const last = state.tracks.findIndex((t) => String(t.id) === localStorage.getItem("lastId"));
     if (state.tracks.length) loadTrack(last >= 0 ? last : 0, false);
   } catch { /* IndexedDB no disponible */ }
   render();
 })();
+
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}

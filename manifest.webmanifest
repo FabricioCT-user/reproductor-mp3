@@ -1,0 +1,13 @@
+{
+  "name": "Reproductor MP3",
+  "short_name": "MP3",
+  "description": "Reproductor de música local en el navegador",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0e1015",
+  "theme_color": "#0e1015",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
