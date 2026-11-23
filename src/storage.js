@@ -87,10 +87,10 @@ const Storage = (() => {
       tracks.add({ name: file.name, blob: file, type: file.type }).onsuccess = (e) => (out.result = e.target.result);
       return;
     }
-    const allowed = new Set(["name", "type", "size", "lastModified", "kind", "source", "linkId", "lyrics", "edits", "meta", "subs", "thumb"]);
+    const allowed = new Set(["kind", "source", "linkId", "lyrics", "edits", "meta", "subs", "thumb"]);
     const rec = { name: file.name, type: file.type, size: file.size, kind: "audio", source: "blob" };
     for (const [key, value] of Object.entries(extra)) if (allowed.has(key)) rec[key] = value;
-    if (Number.isFinite(file.lastModified)) rec.lastModified ??= file.lastModified;
+    if (Number.isFinite(file.lastModified)) rec.lastModified = file.lastModified;
     tracks.add(rec).onsuccess = (e) => {
       out.result = e.target.result;
       if (rec.source === "blob") files.put({ id: out.result, blob: file });

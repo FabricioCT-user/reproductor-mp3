@@ -91,11 +91,16 @@ test("add solo persiste campos permitidos y descarta rutas", async () => {
   const S = loadStorage(idb);
   const id = await S.add(song("local.mp3"), {
     kind: "audio", source: "link", linkId: "opaque-123", meta: { title: "Título" }, lyrics: "letra",
+    id: 987, name: "sobrescrito.mp3", type: "application/octet-stream", size: 1, lastModified: 1,
     path: "/home/persona/música/local.mp3", filePath: "C:\\Users\\persona\\local.mp3", directory: "/privada",
   });
   const [rec] = raw(idb, "tracks");
   assert.equal(rec.id, id);
   assert.equal(rec.name, "local.mp3");
+  assert.equal(rec.type, "audio/mpeg");
+  assert.equal(rec.size, 600);
+  assert.equal(rec.lastModified, 1234);
+  assert.equal(rec.id, id, "extra no puede sobrescribir la identidad de la pista");
   assert.equal(rec.source, "link");
   assert.equal(rec.linkId, "opaque-123");
   assert.deepEqual(norm(rec.meta), { title: "Título" });
