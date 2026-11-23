@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { load, plain } = require("./helpers");
 
 const g = load("util.js");
-const U = Object.fromEntries(["clamp", "cleanPlaylists", "formatTime", "isLrc", "isListFile", "isAudio", "fileKey", "pathOf", "dirOf", "byPath", "safeName", "fmtFreq", "fmtGain", "fmtSpeed", "fmtClock"].map((n) => [n, g(n)]));
+const U = Object.fromEntries(["clamp", "cleanPlaylists", "formatTime", "isLrc", "isListFile", "isAudio", "isVideo", "isMedia", "fileKey", "pathOf", "dirOf", "byPath", "safeName", "fmtFreq", "fmtGain", "fmtSpeed", "fmtClock"].map((n) => [n, g(n)]));
 const file = (name, type = "", extra = {}) => ({ name, type, size: 10, lastModified: 5, ...extra });
 
 test("isAudio: por tipo MIME o por extensión", () => {
@@ -23,6 +23,17 @@ test("isAudio: letras y listas nunca son canciones, aunque el sistema las marque
   assert.equal(U.isLrc(file("a.LRC")), true);
   assert.equal(U.isListFile(file("x.M3U8")), true);
   assert.equal(U.isListFile(file("x.mp3")), false);
+});
+
+test("isVideo: por tipo MIME o extensión, e isMedia admite audio y video", () => {
+  for (const ext of ["mp4", "m4v", "webm", "mov", "mkv"]) {
+    assert.equal(U.isVideo(file(`x.${ext}`, "")), true, ext);
+    assert.equal(U.isMedia(file(`x.${ext}`, "")), true, ext);
+  }
+  assert.equal(U.isVideo(file("clip.bin", "video/mp4")), true);
+  assert.equal(U.isVideo(file("a.mp3", "audio/mpeg")), false);
+  assert.equal(U.isVideo(file("lista.m3u8", "video/mp4")), false);
+  assert.equal(U.isMedia(file("cancion.mp3", "audio/mpeg")), true);
 });
 
 test("rutas: pathOf, dirOf y orden natural por ruta", () => {

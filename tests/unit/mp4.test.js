@@ -119,6 +119,14 @@ test("readTree: con descend ampliado sí entra en stbl; sin moov devuelve null",
   assert.equal(await MP4.readTree(file(box("ftyp", "isom"))), null);
 });
 
+test("kind clasifica por hdlr: MP4 solo audio y MP4 con pista vide", async () => {
+  const track = (handler) => box("trak", box("mdia", box("hdlr", be32(0), be32(0), handler, [0, 0, 0, 0])));
+  const audio = file(box("ftyp", "isom"), box("mdat", fakeAudio(50000)), box("moov", track("soun")));
+  const video = file(box("ftyp", "isom"), box("moov", track("vide"), track("soun")));
+  assert.equal(await MP4.kind(audio), "audio");
+  assert.equal(await MP4.kind(video), "video");
+});
+
 test("moov tras un mdat enorme (64 bits) se alcanza saltando, sin leerlo", async () => {
   const f = spyFile([box("ftyp", "isom"), box64("mdat", fakeAudio(300000)), box("moov", box("mvhd", [0]))]);
   const moov = await MP4.moov(f);

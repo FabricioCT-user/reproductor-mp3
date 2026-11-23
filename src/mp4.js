@@ -80,6 +80,24 @@ const MP4 = (() => {
 
   const moov = (file) => find(file, null, "moov");
 
+  // Clasifica el contenedor consultando solo las cajas de pista y los 12 bytes
+  // iniciales de hdlr. No lee mdat ni las tablas de muestras.
+  async function kind(file) {
+    const root = await moov(file);
+    if (!root) return undefined;
+    let audio = false;
+    for (const trak of await children(file, root)) {
+      if (trak.type !== "trak") continue;
+      const mdia = await find(file, trak, "mdia");
+      const hdlr = mdia && await find(file, mdia, "hdlr");
+      if (!hdlr || hdlr.end - hdlr.start < 12) continue;
+      const handler = String.fromCharCode(...await bytes(file, hdlr.start + 8, 4));
+      if (handler === "vide") return "video";
+      if (handler === "soun") audio = true;
+    }
+    return audio ? "audio" : undefined;
+  }
+
   // Árbol del moov leyendo solo cabeceras. Desciende por los contenedores de `descend`
   // (por defecto los que llevan metadatos y pistas) y NO entra en el resto (stbl, mdat…),
   // salvo que se pidan: readTree(file, { descend: [...DESCEND, "stbl"] }).
@@ -98,5 +116,5 @@ const MP4 = (() => {
     return fill(root, 0);
   }
 
-  return { MAX_BLOCK, DESCEND, header, children, find, findPath, payload, moov, readTree };
+  return { MAX_BLOCK, DESCEND, header, children, find, findPath, payload, moov, kind, readTree };
 })();
