@@ -36,7 +36,7 @@ function openEditor(target) {
     if (editing?.tracks === tracks) paintEditCover();
   });
   editing = { tracks, batch, touched: new Set(), cover: batch ? undefined : tracks[0].edits?.cover, previewUrl: null };
-  els["edit-heading"].textContent = batch ? `Editar ${tracks.length} canciones` : "Editar etiquetas";
+  els["edit-heading"].textContent = batch ? `Editar ${tracks.length} pistas` : "Editar etiquetas";
   els["edit-note"].textContent = batch
     ? "Solo se cambian los campos que modifiques; el resto se queda como está. Tus archivos originales no se modifican."
     : "Los cambios se guardan en esta aplicación; tus archivos originales no se modifican.";
@@ -99,7 +99,7 @@ function saveEditor() {
     else if (!batch) delete e.cover;
     return e;
   });
-  if (batch) toast(`${tracks.length} canciones actualizadas`);
+  if (batch) toast(`${tracks.length} pistas actualizadas`);
   els["edit-dialog"].close();
   return tracks;
 }
@@ -162,9 +162,9 @@ function wireEditor() {
   els["edit-reset"].addEventListener("click", () => {
     const { tracks, batch } = editing;
     if (batch) {
-      if (!confirm(`¿Restaurar los datos originales de ${tracks.length} canciones? Se pierden sus ediciones.`)) return;
+      if (!confirm(`¿Restaurar los datos originales de ${tracks.length} pistas? Se pierden sus ediciones.`)) return;
       commitEdits(tracks, () => null);
-      toast(`${tracks.length} canciones restauradas`);
+      toast(`${tracks.length} pistas restauradas`);
       els["edit-dialog"].close();
       return;
     }
