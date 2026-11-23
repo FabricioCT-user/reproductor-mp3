@@ -7,6 +7,62 @@ const trackMeta = (m, file) => ({
   width: m.width ?? null, height: m.height ?? null, codecs: m.codecs ?? null,
 });
 
+// Video enlazado por la app de escritorio (T2.1): se comporta como un File de solo lectura (name, size, type,
+// lastModified, slice().arrayBuffer()) pero no se copia nunca: sus bytes se piden por Range a
+// app://reproductor/__media/<linkId>, que sirve el proceso principal. Antes de enlazarlo solo lleva el id de la
+// entrega (`entrega`) que mandó el principal. La ruta del disco no llega nunca a la página.
+class LinkedFile {
+  constructor(info, { linkId = null, entrega = null, offset = 0 } = {}) {
+    this.name = String(info.name || "");
+    this.size = Number(info.size) || 0;
+    this.type = info.type || "";
+    this.lastModified = Number(info.lastModified) || 0;
+    this.linkId = linkId;
+    this.entrega = entrega;
+    this.offset = offset;
+  }
+
+  get url() { return `__media/${this.linkId}`; }
+
+  slice(start = 0, end = this.size, type = "") {
+    const at = (n) => (n < 0 ? Math.max(this.size + n, 0) : Math.min(n, this.size));
+    const a = at(start);
+    const b = Math.max(a, at(end));
+    const info = { name: this.name, size: b - a, type, lastModified: this.lastModified };
+    return new LinkedFile(info, { linkId: this.linkId, offset: this.offset + a });
+  }
+
+  async arrayBuffer() {
+    if (!this.size) return new ArrayBuffer(0);
+    const res = await fetch(this.url, { headers: { Range: `bytes=${this.offset}-${this.offset + this.size - 1}` } });
+    if (res.status !== 206) throw new Error(`No se pudo leer el video enlazado (${res.status})`);
+    return res.arrayBuffer();
+  }
+}
+
+// Registro guardado con source "link" → su LinkedFile (o null si el registro no tiene un id válido).
+const linkedFile = (rec) => (/^[0-9a-f]{32}$/.test(rec.linkId || "")
+  ? new LinkedFile({ name: rec.name, size: rec.size, type: rec.type, lastModified: rec.lastModified }, { linkId: rec.linkId })
+  : null);
+
+// En la app de escritorio los videos se enlazan en vez de copiarse. Devuelve el LinkedFile enlazado, o null si hay que
+// copiarlo como siempre (versión web, audio, o un File sin ruta en el disco, p. ej. uno creado por la página).
+async function linkVideo(file) {
+  const app = window.reproductor;
+  if (!app?.enlazar || !isVideo(file)) return null;
+  if (file instanceof LinkedFile && file.linkId) return file;
+  const info = await app.enlazar(file instanceof LinkedFile ? file.entrega : file).catch(() => null);
+  if (!info?.linkId) {
+    if (file instanceof LinkedFile) throw new Error("no se pudo enlazar"); // sin bytes que copiar
+    return null;
+  }
+  const linked = new LinkedFile(info, { linkId: info.linkId });
+  linked.relPath = pathOf(file);
+  return linked;
+}
+
+const forgetLink = (t) => { if (t.linkId) window.reproductor?.olvidar?.(t.linkId).catch(() => {}); };
+
 async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = null) {
   const meta = cachedMeta || await Tags.read(file);
   if (/\.(mp4|m4v|mov)$/i.test(file.name) || file.type === "video/mp4" || file.type === "video/quicktime") {
@@ -26,7 +82,8 @@ async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = n
     embeddedLyrics: savedMeta.lyrics,
     meta: savedMeta,
     userLyrics,
-    url: URL.createObjectURL(file),
+    url: file instanceof LinkedFile ? file.url : URL.createObjectURL(file),
+    linkId: file instanceof LinkedFile ? file.linkId : null,
     // Datos del archivo; lo que se muestra (title, artist, album, coverUrl) sale de aplicar las ediciones encima.
     orig: { title: savedMeta.title || fallback, artist: savedMeta.artist, album: savedMeta.album, coverUrl: null },
     edits,
@@ -44,6 +101,7 @@ async function makeUnavailableTrack(rec) {
     id: rec.id, file: null, fileBase: fallback.toLowerCase(), fileName,
     size: rec.size || 0, key: `${fileName}|${rec.size || 0}|${rec.lastModified || 0}`,
     dir: "", embeddedLyrics: null, userLyrics: rec.lyrics || "", url: null, unavailable: true,
+    linkId: rec.source === "link" ? rec.linkId : null,
     orig: { title: meta.title || fallback, artist: meta.artist || "", album: meta.album || "", coverUrl: null },
     edits: rec.edits || null,
   };
@@ -78,7 +136,8 @@ function loadCover(t) {
   if (!t || !state.tracks.includes(t) || !t.file || !t.meta?.hasCover || t.edits?.cover === false) return Promise.resolve();
   if (t._coverLoaded) return Promise.resolve();
   if (t._coverPromise) return t._coverPromise;
-  t._coverPromise = Tags.readCover(t.file).then((cover) => {
+  t._coverPromise = Tags.readCover(t.file).then(async (cover) => {
+    if (cover && !(cover instanceof Blob)) cover = new Blob([await cover.arrayBuffer()], { type: cover.type }); // enlazado
     if (!state.tracks.includes(t)) return;
     t._coverLoaded = true;
     if (cover) t.orig.coverUrl = URL.createObjectURL(cover);
@@ -110,9 +169,13 @@ async function addFiles(fileList) {
     if (files.length > 5 && i % 10 === 0) toast(`Importando ${i + 1}/${files.length}…`, 60000);
     let id = null;
     let storeFail = null;
+    let link = null;
     try {
-      const track = await makeTrack(null, file);
-      try { id = await Storage.add(file, { meta: track.meta, metaVersion: META_VERSION }); track.id = id; }
+      link = await linkVideo(file);
+      const src = link || file;
+      const track = await makeTrack(null, src);
+      const extra = link ? { source: "link", linkId: link.linkId, kind: track.meta.kind } : {};
+      try { id = await Storage.add(src, { meta: track.meta, metaVersion: META_VERSION, ...extra }); track.id = id; }
       catch (e) { storeFail = e?.name === "QuotaExceededError" ? "quota" : "other"; }
       state.tracks.push(track);
       added++;
@@ -123,6 +186,7 @@ async function addFiles(fileList) {
       failed++; // un archivo ilegible no debe detener el resto de la importación
       keys.delete(key);
       if (id != null) Storage.remove(id).catch(() => {});
+      if (link) window.reproductor.olvidar(link.linkId).catch(() => {});
     }
   }
 
@@ -176,11 +240,18 @@ async function consumeLaunch({ files: handles = [] } = {}) {
 }
 
 // App de escritorio (window.reproductor): el proceso principal entrega { id, name, size, lastModified, type, kind, rel? }
-// (nunca rutas) y los bytes multimedia y las letras se piden por id para copiarlos a IndexedDB.
+// (nunca rutas). El audio y las letras se piden por id para copiarlos a IndexedDB; los videos no se leen: quedan como
+// LinkedFile pendiente y addFiles los enlaza (solo si de verdad entran en la biblioteca).
 async function filesFromApp(items) {
   const files = [];
   for (const it of items || []) {
-    if (it?.kind !== "audio" && it?.kind !== "video" && it?.kind !== "letra") continue;
+    if (it?.kind === "video" && typeof it.id === "string") {
+      const f = new LinkedFile(it, { entrega: it.id });
+      if (typeof it.rel === "string") f.relPath = it.rel;
+      files.push(f);
+      continue;
+    }
+    if (it?.kind !== "audio" && it?.kind !== "letra") continue;
     try {
       const bytes = await window.reproductor.leer(it.id);
       if (!bytes) continue; // el archivo ya no está o el id caducó
@@ -251,6 +322,7 @@ function removeTrack(i) {
     savePlaylists();
     Storage.remove(t.id).catch(() => {});
   }
+  forgetLink(t);
   URL.revokeObjectURL(t.url);
   revokeCovers(t);
 
@@ -272,7 +344,7 @@ async function clearLibrary() {
   endCrossfade();
   media.pause();
   media.removeAttribute("src");
-  state.tracks.forEach((t) => { URL.revokeObjectURL(t.url); revokeCovers(t); });
+  state.tracks.forEach((t) => { URL.revokeObjectURL(t.url); revokeCovers(t); forgetLink(t); });
   state.tracks = [];
   state.queue = [];
   state.playlists.forEach((p) => (p.ids = []));

@@ -7,7 +7,9 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { analizar } = require("./lib/argumentos");
+const { Enlaces } = require("./lib/enlaces");
 const { Entregas } = require("./lib/entregas");
+const medios = require("./lib/medios");
 const rutas = require("./lib/rutas");
 const servir = require("./lib/servir");
 
@@ -37,11 +39,19 @@ const lista = servir.listaBlanca(fs.readFileSync(path.join(RAIZ, "sw.js"), "utf8
 const csp = servir.cspDeHtml(fs.readFileSync(path.join(RAIZ, "index.html"), "utf8"));
 if (!csp) throw new Error("index.html no tiene CSP");
 
+// Registro de videos enlazados (userData/enlaces.json). Se carga al arrancar; las peticiones lo esperan.
+let enlaces = null;
+let enlacesListos = null;
+
 async function manejarPeticion(req) {
   const r = servir.resolver(req.url, req.method, lista);
   if (r.estado !== 200) return new Response(null, { status: r.estado });
-  // __media/<id>: lo implementa T2.1 (Range propio con FileHandle, solo ids registrados). De momento, nada.
-  if (r.medio) return new Response(null, { status: 404 });
+  // __media/<id>: solo ids registrados; Range propio leyendo por trozos (medios.js).
+  if (r.medio) {
+    const reg = await enlacesListos;
+    const m = await medios.servir(reg.obtener(r.medio), req.method, req.headers.get("range"));
+    return new Response(m.cuerpo ?? null, { status: m.estado, headers: m.cabeceras });
+  }
   let datos;
   try { datos = await fs.promises.readFile(path.join(RAIZ, r.rel)); } catch { return new Response(null, { status: 404 }); }
   return new Response(req.method === "HEAD" ? null : datos, { status: 200, headers: servir.cabeceras(r.rel, csp) });
@@ -126,6 +136,20 @@ async function elegir(carpeta) {
   return items;
 }
 
+// Video que la persona eligió → enlace persistente. Llega como id de una entrega (argv, segunda instancia, diálogo)
+// o como ruta que el preload sacó de un File con webUtils.getPathForFile (arrastrar, <input>). Solo videos válidos.
+async function enlazar(x) {
+  let ruta = null;
+  if (typeof x?.entrega === "string") ruta = entregas.tomar(x.entrega, ["video"])?.ruta ?? null;
+  else if (typeof x?.ruta === "string") ruta = rutas.aRuta(x.ruta, null); // solo absolutas
+  if (!ruta) return null;
+  const v = await rutas.validar(ruta);
+  if (!v || v.clase !== "video") return null;
+  const reg = await enlacesListos;
+  const linkId = await reg.registrar(v);
+  return { linkId, name: v.nombre, size: v.tamano, lastModified: v.fecha, type: v.tipo };
+}
+
 function cablearIpc() {
   ipcMain.on("reproductor:info", (event) => {
     event.returnValue = deLaApp(event) ? { version: app.getVersion() } : null;
@@ -144,6 +168,18 @@ function cablearIpc() {
     const e = entregas.tomar(id);
     if (!e) return null; // inventado, caducado, ya leído o un video
     return rutas.leer(e.ruta).catch(() => null); // ya no está, es otra cosa o es demasiado grande
+  });
+  ipcMain.handle("reproductor:enlazar", async (event, x) => {
+    if (!deLaApp(event)) return null;
+    return enlazar(x).catch(() => null);
+  });
+  ipcMain.handle("reproductor:olvidar", async (event, id) => {
+    if (!deLaApp(event)) return false;
+    return (await enlacesListos).olvidar(id).catch(() => false);
+  });
+  ipcMain.handle("reproductor:estado-enlaces", async (event, ids) => {
+    if (!deLaApp(event)) return {};
+    return (await enlacesListos).estado(ids).catch(() => ({}));
   });
 }
 
@@ -318,6 +354,8 @@ app.whenReady().then(() => {
   if (!primera) return;
   if (app.isPackaged) Menu.setApplicationMenu(null);
   endurecerSesion(session.defaultSession);
+  enlaces = new Enlaces(path.join(app.getPath("userData"), "enlaces.json"));
+  enlacesListos = enlaces.cargar();
   protocol.handle("app", manejarPeticion);
   cablearIpc();
   const win = crearVentana();

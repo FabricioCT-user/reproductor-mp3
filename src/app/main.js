@@ -47,11 +47,12 @@ const appReady = (async function init() {
     const order = [].concat(store.json("order", [])).filter(Number.isFinite);
     const rank = (r) => { const k = order.indexOf(r.id); return k < 0 ? order.length + r.id : k; };
     saved.sort((a, b) => rank(a) - rank(b));
-    const linked = []; // pistas enlazadas por la app de escritorio: se conservan aunque aquí aún no se abran
+    const linked = []; // pistas enlazadas por la app de escritorio: fuera de ella no se abren, pero se conservan
     for (const rec of saved) {
-      if (rec.source === "link") { linked.push(rec.id); continue; }
+      if (rec.source === "link" && !window.reproductor) { linked.push(rec.id); continue; }
       let file = null;
-      if (rec.source !== "session") {
+      if (rec.source === "link") file = linkedFile(rec); // si el archivo ya no está no se borra nada (T2.2 lo marcará)
+      else if (rec.source !== "session") {
         try { file = await Storage.getFile(rec.id); } catch { /* se muestra como no disponible; el registro no se borra */ }
       }
       if (!file) { state.tracks.push(await makeUnavailableTrack(rec)); continue; }
@@ -63,7 +64,9 @@ const appReady = (async function init() {
           Storage.setMeta(rec.id, meta, META_VERSION).catch(() => {});
         }
         state.tracks.push(await makeTrack(rec.id, file, rec.lyrics || "", rec.edits || null, meta));
-      } catch { /* este archivo no se puede cargar: se omite */ }
+      } catch { // este archivo no se puede cargar: se omite (un enlace se conserva como no disponible)
+        if (rec.source === "link") state.tracks.push(await makeUnavailableTrack(rec));
+      }
     }
     const last = state.tracks.findIndex((t) => String(t.id) === store.get("lastId") && !t.unavailable);
     const firstPlayable = state.tracks.findIndex((t) => !t.unavailable);
