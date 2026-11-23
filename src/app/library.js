@@ -157,8 +157,8 @@ function removeTrack(i) {
 
   if (i === state.index) {
     endCrossfade();
-    audio.pause();
-    audio.removeAttribute("src");
+    media.pause();
+    media.removeAttribute("src");
     state.index = -1;
     showTrack(null);
     if (state.tracks.length) loadTrack(Math.min(i, state.tracks.length - 1), false, "all");
@@ -171,8 +171,8 @@ function removeTrack(i) {
 async function clearLibrary() {
   if (!state.tracks.length || !confirm("¿Vaciar toda la biblioteca?")) return;
   endCrossfade();
-  audio.pause();
-  audio.removeAttribute("src");
+  media.pause();
+  media.removeAttribute("src");
   state.tracks.forEach((t) => { URL.revokeObjectURL(t.url); revokeCovers(t); });
   state.tracks = [];
   state.queue = [];

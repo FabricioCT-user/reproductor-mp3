@@ -38,8 +38,8 @@ function loadTrack(i, autoplay, view = "all") {
   if (!t) return;
   state.index = i;
   state.playView = view;
-  audio.src = t.url;
-  audio.playbackRate = state.speed;
+  media.src = t.url;
+  media.playbackRate = state.speed;
   showTrack(t);
   render();
   store.set("lastId", t.id ?? "");
@@ -48,7 +48,7 @@ function loadTrack(i, autoplay, view = "all") {
 
 function play() {
   startAnalyser();
-  return audio.play().then(ensureSound).catch((e) => {
+  return media.play().then(ensureSound).catch((e) => {
     if (e?.name === "NotAllowedError") toast("El navegador bloqueó la reproducción automática: pulsa ▶", 5000);
   });
 }
@@ -61,7 +61,7 @@ async function ensureSound() {
   if (!ctx || ctx.state === "running") return;
   await Promise.race([ctx.resume().catch(() => {}), new Promise((r) => setTimeout(r, 400))]);
   if (ctx.state !== "running") {
-    audio.pause();
+    media.pause();
     toast("El navegador bloqueó el sonido automático: pulsa ▶ para empezar", 5000);
   }
 }
@@ -90,7 +90,7 @@ function step(dir) {
 function togglePlay() {
   if (!state.tracks.length) return;
   if (state.index === -1) return loadTrack(0, true, "all");
-  audio.paused ? play() : audio.pause();
+  media.paused ? play() : media.pause();
 }
 
 function setToggle(btn, key, value) {
@@ -160,7 +160,7 @@ function accentColor() {
 function draw() {
   const { width: w, height: h } = els.viz;
   ctx2d.clearRect(0, 0, w, h);
-  if (audio.paused) { vizRunning = false; return; }
+  if (media.paused) { vizRunning = false; return; }
   requestAnimationFrame(draw);
 
   analyser.getByteFrequencyData(freq);
@@ -205,7 +205,7 @@ let failures = 0;
 function wirePlayer() {
   els.play.addEventListener("click", togglePlay);
 
-  els.prev.addEventListener("click", () => { audio.currentTime > 3 ? (audio.currentTime = 0) : step(-1); });
+  els.prev.addEventListener("click", () => { media.currentTime > 3 ? (media.currentTime = 0) : step(-1); });
 
   els.next.addEventListener("click", () => step(1));
 
@@ -223,41 +223,41 @@ function wirePlayer() {
     store.set("volume", els.volume.value);
   });
 
-  els.mute.addEventListener("click", () => setMuted(!audio.muted));
+  els.mute.addEventListener("click", () => setMuted(!media.muted));
 
-  onAudio("volumechange", () => (els.mute.style.opacity = audio.muted ? 0.35 : ""));
+  onMedia("volumechange", () => (els.mute.style.opacity = media.muted ? 0.35 : ""));
 
   els.seek.addEventListener("input", () => {
-    if (audio.duration) audio.currentTime = (els.seek.value / 100) * audio.duration;
+    if (media.duration) media.currentTime = (els.seek.value / 100) * media.duration;
   });
 
-  onAudio("play", () => {
+  onMedia("play", () => {
     els["play-icon"].innerHTML = ICON_PAUSE;
     if (analyser && !vizRunning) { vizRunning = true; draw(); }
   });
 
-  onAudio("pause", () => { els["play-icon"].innerHTML = ICON_PLAY; if (xfade) endCrossfade(); });
+  onMedia("pause", () => { els["play-icon"].innerHTML = ICON_PLAY; if (xfade) endCrossfade(); });
 
-  onAudio("loadedmetadata", () => (els.duration.textContent = formatTime(audio.duration)));
+  onMedia("loadedmetadata", () => (els.duration.textContent = formatTime(media.duration)));
 
-  onAudio("timeupdate", () => {
-    els.current.textContent = formatTime(audio.currentTime);
-    if (audio.duration) els.seek.value = (audio.currentTime / audio.duration) * 100;
+  onMedia("timeupdate", () => {
+    els.current.textContent = formatTime(media.currentTime);
+    if (media.duration) els.seek.value = (media.currentTime / media.duration) * 100;
   });
 
-  onAudio("ended", () => {
+  onMedia("ended", () => {
     if (sleep?.track) { finishSleep(); return; }
     const list = contextList();
     const last = list.indexOf(state.tracks[state.index]) === list.length - 1;
-    if (state.repeat && !state.shuffle && list.length === 1) { audio.currentTime = 0; play(); return; }
+    if (state.repeat && !state.shuffle && list.length === 1) { media.currentTime = 0; play(); return; }
     if (last && !state.repeat && !state.shuffle && !state.queue.length) return;
     step(1);
   });
 
-  onAudio("playing", () => { failures = 0; });
+  onMedia("playing", () => { failures = 0; });
 
-  onAudio("error", () => {
-    if (!audio.getAttribute("src")) return;
+  onMedia("error", () => {
+    if (!media.getAttribute("src")) return;
     const title = state.tracks[state.index]?.title ?? "la canción";
     const limit = Math.max(1, contextList().length);
     if (++failures >= limit) {
@@ -271,7 +271,7 @@ function wirePlayer() {
 
   if ("mediaSession" in navigator) {
     navigator.mediaSession.setActionHandler("play", play);
-    navigator.mediaSession.setActionHandler("pause", () => audio.pause());
+    navigator.mediaSession.setActionHandler("pause", () => media.pause());
     navigator.mediaSession.setActionHandler("previoustrack", () => step(-1));
     navigator.mediaSession.setActionHandler("nexttrack", () => step(1));
   }
