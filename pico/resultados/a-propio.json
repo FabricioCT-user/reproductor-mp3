@@ -1,0 +1,562 @@
+{
+  "fase": "a",
+  "modo": "propio",
+  "versiones": {
+    "node": "24.22.3",
+    "acorn": "8.18.0",
+    "ada": "4.0.0",
+    "amaro": "1.1.11",
+    "ares": "1.34.9",
+    "brotli": "1.2.0",
+    "cldr": "48.0",
+    "icu": "78.2",
+    "llhttp": "9.4.4",
+    "merve": "1.2.2",
+    "modules": "150",
+    "napi": "10",
+    "nbytes": "0.1.4",
+    "ncrypto": "0.0.1",
+    "nghttp2": "1.70.0",
+    "nghttp3": "",
+    "ngtcp2": "",
+    "openssl": "0.0.0",
+    "simdjson": "4.6.11",
+    "simdutf": "7.7.0",
+    "sqlite": "3.54.1",
+    "tz": "2026e",
+    "undici": "7.30.2",
+    "unicode": "17.0",
+    "uv": "1.52.1",
+    "uvwasi": "0.0.23",
+    "v8": "15.6.75.57-electron.c2a1644ee688c616",
+    "zlib": "1.3.2.1-motley",
+    "zstd": "1.6.0",
+    "electron": "45.4.1",
+    "chrome": "156.0.8078.100"
+  },
+  "plataforma": {
+    "XDG_SESSION_TYPE": "wayland",
+    "WAYLAND_DISPLAY": "wayland-1",
+    "ozone": "wayland",
+    "noSandbox": false
+  },
+  "p1": {
+    "url": "app://reproductor/index.html",
+    "origen": "app://reproductor",
+    "cspMeta": "default-src 'self'; script-src 'self' 'sha256-WgWwGTjSx6i7mDtllt6fzds2uaHWSMIOKCmDnR6Fcl8='; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'",
+    "titulo": "Reproductor MP3",
+    "botones": 29,
+    "swRegistrado": false,
+    "consola": []
+  },
+  "p2escritura": {
+    "marca": "1795441454928",
+    "bases": [
+      "pico-db v1",
+      "reproductor-mp3 v2"
+    ]
+  },
+  "netFetchFileRange": {
+    "status": 200,
+    "contentRange": null,
+    "acceptRanges": null,
+    "contentLength": null,
+    "bytesRecibidos": 1000
+  },
+  "p3peq": {
+    "url": "app://reproductor/__media/h264-aac.mp4",
+    "estadoContexto": "running",
+    "carga": "canplay",
+    "msHastaCanplay": 15,
+    "duracion": 8,
+    "tamVideo": "640x360",
+    "msHastaPlay": 1,
+    "tiempoTrasReproducir": 2.99,
+    "rmsEq0": 0.0881,
+    "rmsEqMas12": 0.352,
+    "rmsEqMenos12": 0.0222,
+    "saltos": [
+      {
+        "a": 4,
+        "evento": "seeked",
+        "msSeeked": 12,
+        "avanza": 0.7
+      },
+      {
+        "a": 0.8,
+        "evento": "seeked",
+        "msSeeked": 3,
+        "avanza": 0.69
+      },
+      {
+        "a": 7.2,
+        "evento": "seeked",
+        "msSeeked": 27,
+        "avanza": 0.7
+      }
+    ],
+    "cuadros": 489,
+    "cuadrosPerdidos": 0,
+    "decodedAudioBytes": 178757,
+    "memAntes": {
+      "totalMB": 776,
+      "porTipoMB": {
+        "Browser": 287,
+        "GPU": 256,
+        "Utility": 101,
+        "Tab": 131
+      },
+      "principalRssMB": 286
+    },
+    "memDespues": {
+      "totalMB": 904,
+      "porTipoMB": {
+        "Browser": 293,
+        "GPU": 261,
+        "Utility": 199,
+        "Tab": 151
+      },
+      "principalRssMB": 292
+    },
+    "memMaxTotalMB": 910,
+    "memMaxPrincipalRssMB": 292,
+    "servido": {
+      "peticiones": 3,
+      "bytesMB": 2,
+      "rangos": [
+        "bytes=0-",
+        "bytes=1867776-",
+        "bytes=327680-"
+      ]
+    }
+  },
+  "p3p4": {
+    "url": "app://reproductor/__media/grande.mp4",
+    "estadoContexto": "running",
+    "carga": "canplay",
+    "msHastaCanplay": 19,
+    "duracion": 1440.49075,
+    "tamVideo": "1280x720",
+    "msHastaPlay": 1,
+    "tiempoTrasReproducir": 3,
+    "rmsEq0": 0.0882,
+    "rmsEqMas12": 0.352,
+    "rmsEqMenos12": 0.0221,
+    "saltos": [
+      {
+        "a": 720.2,
+        "evento": "seeked",
+        "msSeeked": 40,
+        "avanza": 0.7
+      },
+      {
+        "a": 144,
+        "evento": "seeked",
+        "msSeeked": 4,
+        "avanza": 0.7
+      },
+      {
+        "a": 1296.4,
+        "evento": "seeked",
+        "msSeeked": 37,
+        "avanza": 0.7
+      },
+      {
+        "a": 1426.1,
+        "evento": "seeked",
+        "msSeeked": 20,
+        "avanza": 0.69
+      },
+      {
+        "a": 432.1,
+        "evento": "seeked",
+        "msSeeked": 28,
+        "avanza": 0.7
+      }
+    ],
+    "cuadros": 411,
+    "cuadrosPerdidos": 0,
+    "decodedAudioBytes": 158663,
+    "memAntes": {
+      "totalMB": 904,
+      "porTipoMB": {
+        "Browser": 293,
+        "GPU": 261,
+        "Utility": 199,
+        "Tab": 151
+      },
+      "principalRssMB": 292
+    },
+    "memDespues": {
+      "totalMB": 1007,
+      "porTipoMB": {
+        "Browser": 350,
+        "GPU": 263,
+        "Utility": 199,
+        "Tab": 195
+      },
+      "principalRssMB": 349
+    },
+    "memMaxTotalMB": 1014,
+    "memMaxPrincipalRssMB": 345,
+    "servido": {
+      "peticiones": 6,
+      "bytesMB": 200,
+      "rangos": [
+        "bytes=0-",
+        "bytes=1407746048-",
+        "bytes=282951680-",
+        "bytes=2536407040-",
+        "bytes=2791211008-",
+        "bytes=843382784-"
+      ]
+    }
+  },
+  "p3grande2": {
+    "url": "app://reproductor/__media/grande.mp4",
+    "estadoContexto": "running",
+    "carga": "canplay",
+    "msHastaCanplay": 20,
+    "duracion": 1440.49075,
+    "tamVideo": "1280x720",
+    "msHastaPlay": 1,
+    "tiempoTrasReproducir": 3,
+    "rmsEq0": 0.0882,
+    "rmsEqMas12": 0.3521,
+    "rmsEqMenos12": 0.0222,
+    "saltos": [
+      {
+        "a": 72,
+        "evento": "seeked",
+        "msSeeked": 4,
+        "avanza": 0.69
+      },
+      {
+        "a": 216.1,
+        "evento": "seeked",
+        "msSeeked": 5,
+        "avanza": 0.7
+      },
+      {
+        "a": 360.1,
+        "evento": "seeked",
+        "msSeeked": 21,
+        "avanza": 0.69
+      },
+      {
+        "a": 504.2,
+        "evento": "seeked",
+        "msSeeked": 5,
+        "avanza": 0.69
+      },
+      {
+        "a": 648.2,
+        "evento": "seeked",
+        "msSeeked": 4,
+        "avanza": 0.69
+      },
+      {
+        "a": 792.3,
+        "evento": "seeked",
+        "msSeeked": 36,
+        "avanza": 0.69
+      },
+      {
+        "a": 936.3,
+        "evento": "seeked",
+        "msSeeked": 36,
+        "avanza": 0.69
+      },
+      {
+        "a": 1080.4,
+        "evento": "seeked",
+        "msSeeked": 26,
+        "avanza": 0.7
+      },
+      {
+        "a": 1224.4,
+        "evento": "seeked",
+        "msSeeked": 28,
+        "avanza": 0.7
+      },
+      {
+        "a": 1368.5,
+        "evento": "seeked",
+        "msSeeked": 35,
+        "avanza": 0.7
+      }
+    ],
+    "cuadros": 601,
+    "cuadrosPerdidos": 0,
+    "decodedAudioBytes": 238174,
+    "memAntes": {
+      "totalMB": 998,
+      "porTipoMB": {
+        "Browser": 350,
+        "GPU": 261,
+        "Utility": 199,
+        "Tab": 188
+      },
+      "principalRssMB": 349
+    },
+    "memDespues": {
+      "totalMB": 997,
+      "porTipoMB": {
+        "Browser": 314,
+        "GPU": 263,
+        "Utility": 199,
+        "Tab": 222
+      },
+      "principalRssMB": 312
+    },
+    "memMaxTotalMB": 1028,
+    "memMaxPrincipalRssMB": 352,
+    "servido": {
+      "peticiones": 11,
+      "bytesMB": 446,
+      "rangos": [
+        "bytes=0-",
+        "bytes=141885440-",
+        "bytes=424050688-",
+        "bytes=702316544-",
+        "bytes=988381184-",
+        "bytes=1270579200-",
+        "bytes=1548812288-",
+        "bytes=1830977536-",
+        "bytes=2113175552-",
+        "bytes=2395340800-",
+        "bytes=2677506048-"
+      ]
+    }
+  },
+  "p5canPlay": {
+    "video/mp4; codecs=\"avc1.42E01E, mp4a.40.2\"": "probably",
+    "video/mp4; codecs=\"avc1.640028\"": "probably",
+    "audio/mp4; codecs=\"mp4a.40.2\"": "probably",
+    "video/mp4; codecs=\"hvc1.1.6.L93.B0\"": "probably",
+    "video/mp4; codecs=\"hev1.1.6.L93.B0\"": "probably",
+    "video/mp4; codecs=\"av01.0.05M.08\"": "probably",
+    "video/webm; codecs=\"vp9, opus\"": "probably",
+    "video/webm; codecs=\"vp8, vorbis\"": "probably",
+    "video/webm; codecs=\"av01.0.05M.08\"": "probably",
+    "audio/mp4; codecs=\"ac-3\"": "(vacío)",
+    "audio/mp4; codecs=\"ec-3\"": "(vacío)",
+    "video/x-matroska; codecs=\"avc1.42E01E, mp4a.40.2\"": "probably",
+    "video/x-matroska": "maybe",
+    "video/quicktime": "(vacío)",
+    "audio/flac": "probably",
+    "audio/ogg; codecs=opus": "probably"
+  },
+  "p5real": {
+    "h264-aac.mp4": {
+      "url": "app://reproductor/__media/h264-aac.mp4",
+      "estadoContexto": "running",
+      "carga": "canplay",
+      "msHastaCanplay": 11,
+      "duracion": 8,
+      "tamVideo": "640x360",
+      "msHastaPlay": 0,
+      "tiempoTrasReproducir": 1.5,
+      "rms": 0.088,
+      "saltos": [
+        {
+          "a": 4.8,
+          "evento": "seeked",
+          "msSeeked": 30,
+          "avanza": 0.7
+        }
+      ],
+      "cuadros": 196,
+      "cuadrosPerdidos": 0,
+      "decodedAudioBytes": 72082,
+      "rmsFinal": 0.0885
+    },
+    "hevc-aac.mp4": {
+      "url": "app://reproductor/__media/hevc-aac.mp4",
+      "estadoContexto": "running",
+      "carga": "canplay",
+      "msHastaCanplay": 11,
+      "duracion": 8,
+      "tamVideo": "640x360",
+      "msHastaPlay": 1,
+      "tiempoTrasReproducir": 1.5,
+      "rms": 0.0881,
+      "saltos": [
+        {
+          "a": 4.8,
+          "evento": "seeked",
+          "msSeeked": 18,
+          "avanza": 0.69
+        }
+      ],
+      "cuadros": 196,
+      "cuadrosPerdidos": 0,
+      "decodedAudioBytes": 72113,
+      "rmsFinal": 0.0886
+    },
+    "av1-aac.mp4": {
+      "url": "app://reproductor/__media/av1-aac.mp4",
+      "estadoContexto": "running",
+      "carga": "canplay",
+      "msHastaCanplay": 11,
+      "duracion": 8,
+      "tamVideo": "640x360",
+      "msHastaPlay": 0,
+      "tiempoTrasReproducir": 1.5,
+      "rms": 0.088,
+      "saltos": [
+        {
+          "a": 4.8,
+          "evento": "seeked",
+          "msSeeked": 27,
+          "avanza": 0.7
+        }
+      ],
+      "cuadros": 196,
+      "cuadrosPerdidos": 0,
+      "decodedAudioBytes": 72082,
+      "rmsFinal": 0.0885
+    },
+    "vp9-opus.webm": {
+      "url": "app://reproductor/__media/vp9-opus.webm",
+      "estadoContexto": "running",
+      "carga": "canplay",
+      "msHastaCanplay": 8,
+      "duracion": 8.008,
+      "tamVideo": "640x360",
+      "msHastaPlay": 0,
+      "tiempoTrasReproducir": 1.5,
+      "rms": 0.0884,
+      "saltos": [
+        {
+          "a": 4.8,
+          "evento": "seeked",
+          "msSeeked": 24,
+          "avanza": 0.69
+        }
+      ],
+      "cuadros": 196,
+      "cuadrosPerdidos": 0,
+      "decodedAudioBytes": 81770,
+      "rmsFinal": 0.0884
+    },
+    "h264-ac3.mp4": {
+      "url": "app://reproductor/__media/h264-ac3.mp4",
+      "estadoContexto": "running",
+      "carga": "canplay",
+      "msHastaCanplay": 10,
+      "duracion": 8,
+      "tamVideo": "640x360",
+      "msHastaPlay": 0,
+      "tiempoTrasReproducir": 1.5,
+      "rms": 0,
+      "saltos": [
+        {
+          "a": 4.8,
+          "evento": "seeked",
+          "msSeeked": 30,
+          "avanza": 0.7
+        }
+      ],
+      "cuadros": 196,
+      "cuadrosPerdidos": 0,
+      "decodedAudioBytes": 0,
+      "rmsFinal": 0
+    },
+    "h264-eac3.mp4": {
+      "url": "app://reproductor/__media/h264-eac3.mp4",
+      "estadoContexto": "running",
+      "carga": "canplay",
+      "msHastaCanplay": 9,
+      "duracion": 8,
+      "tamVideo": "640x360",
+      "msHastaPlay": 1,
+      "tiempoTrasReproducir": 1.5,
+      "rms": 0,
+      "saltos": [
+        {
+          "a": 4.8,
+          "evento": "seeked",
+          "msSeeked": 28,
+          "avanza": 0.7
+        }
+      ],
+      "cuadros": 196,
+      "cuadrosPerdidos": 0,
+      "decodedAudioBytes": 0,
+      "rmsFinal": 0
+    },
+    "h264-aac.mkv": {
+      "url": "app://reproductor/__media/h264-aac.mkv",
+      "estadoContexto": "running",
+      "carga": "canplay",
+      "msHastaCanplay": 10,
+      "duracion": 8.021,
+      "tamVideo": "640x360",
+      "msHastaPlay": 1,
+      "tiempoTrasReproducir": 1.49,
+      "rms": 0.088,
+      "saltos": [
+        {
+          "a": 4.8,
+          "evento": "seeked",
+          "msSeeked": 29,
+          "avanza": 0.7
+        }
+      ],
+      "cuadros": 196,
+      "cuadrosPerdidos": 0,
+      "decodedAudioBytes": 72082,
+      "rmsFinal": 0.0886
+    }
+  },
+  "p6input": {
+    "nombre": "h264-aac.mp4",
+    "tam": 1883615,
+    "ruta": "/home/fabricioct/proyectos-claude/te0-medios/h264-aac.mp4",
+    "rutaArchivoSintetico": ""
+  },
+  "p6soltar": {
+    "nombre": "h264-aac.mp4",
+    "tam": 1883615,
+    "ruta": "/home/fabricioct/proyectos-claude/te0-medios/h264-aac.mp4"
+  },
+  "p6esperada": "/home/fabricioct/proyectos-claude/te0-medios/h264-aac.mp4",
+  "p7": {
+    "pidRenderer": 174327,
+    "preloadSandboxed": true,
+    "seccomp": "2",
+    "noNewPrivs": "1",
+    "nsUserRenderer": "user:[4026533058]",
+    "nsUserPrincipal": "user:[4026531837]",
+    "nsPidRenderer": "pid:[4026532757]",
+    "nsPidPrincipal": "pid:[4026531836]",
+    "nsNetRenderer": "net:[4026532818]",
+    "nsNetPrincipal": "net:[4026531833]",
+    "chromeSandbox": {
+      "modo": "100755",
+      "uid": 1000
+    },
+    "userns": "1",
+    "maxUserNs": "62532",
+    "gpu": {
+      "2d_canvas": "enabled",
+      "direct_rendering_display_compositor": "disabled_off_ok",
+      "gpu_compositing": "enabled",
+      "multiple_raster_threads": "enabled_on",
+      "opengl": "enabled_on",
+      "rasterization": "enabled",
+      "raw_draw": "disabled_off_ok",
+      "skia_graphite": "disabled_off",
+      "trees_in_viz": "disabled_off",
+      "video_decode": "enabled",
+      "video_encode": "disabled_software",
+      "vulkan": "disabled_off",
+      "webgl": "enabled",
+      "webgpu": "enabled",
+      "webgpu_on_vk_via_gl_interop": "enabled",
+      "webnn": "disabled_off"
+    }
+  },
+  "consolaFinal": []
+}

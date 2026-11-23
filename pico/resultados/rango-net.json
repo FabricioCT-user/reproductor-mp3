@@ -1,0 +1,318 @@
+{
+  "fase": "rango",
+  "modo": "net",
+  "versiones": {
+    "node": "24.22.3",
+    "acorn": "8.18.0",
+    "ada": "4.0.0",
+    "amaro": "1.1.11",
+    "ares": "1.34.9",
+    "brotli": "1.2.0",
+    "cldr": "48.0",
+    "icu": "78.2",
+    "llhttp": "9.4.4",
+    "merve": "1.2.2",
+    "modules": "150",
+    "napi": "10",
+    "nbytes": "0.1.4",
+    "ncrypto": "0.0.1",
+    "nghttp2": "1.70.0",
+    "nghttp3": "",
+    "ngtcp2": "",
+    "openssl": "0.0.0",
+    "simdjson": "4.6.11",
+    "simdutf": "7.7.0",
+    "sqlite": "3.54.1",
+    "tz": "2026e",
+    "undici": "7.30.2",
+    "unicode": "17.0",
+    "uv": "1.52.1",
+    "uvwasi": "0.0.23",
+    "v8": "15.6.75.57-electron.c2a1644ee688c616",
+    "zlib": "1.3.2.1-motley",
+    "zstd": "1.6.0",
+    "electron": "45.4.1",
+    "chrome": "156.0.8078.100"
+  },
+  "plataforma": {
+    "XDG_SESSION_TYPE": "wayland",
+    "WAYLAND_DISPLAY": "wayland-1",
+    "ozone": "wayland",
+    "noSandbox": false
+  },
+  "p1": {
+    "url": "app://reproductor/index.html",
+    "origen": "app://reproductor",
+    "cspMeta": "default-src 'self'; script-src 'self' 'sha256-WgWwGTjSx6i7mDtllt6fzds2uaHWSMIOKCmDnR6Fcl8='; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'",
+    "titulo": "Reproductor MP3",
+    "botones": 29,
+    "swRegistrado": false,
+    "consola": []
+  },
+  "netFetchFileRange": {
+    "status": 200,
+    "contentRange": null,
+    "acceptRanges": null,
+    "contentLength": null,
+    "bytesRecibidos": 1000
+  },
+  "p3peq": {
+    "url": "app://reproductor/__media/h264-aac.mp4",
+    "estadoContexto": "running",
+    "carga": "canplay",
+    "msHastaCanplay": 13,
+    "duracion": 8,
+    "tamVideo": "640x360",
+    "msHastaPlay": 1,
+    "tiempoTrasReproducir": 3,
+    "rmsEq0": 0.0882,
+    "rmsEqMas12": 0.3521,
+    "rmsEqMenos12": 0.0221,
+    "saltos": [
+      {
+        "a": 4,
+        "evento": "seeked",
+        "msSeeked": 2,
+        "avanza": 0.69
+      },
+      {
+        "a": 0.8,
+        "evento": "seeked",
+        "msSeeked": 2,
+        "avanza": 0.7
+      },
+      {
+        "a": 7.2,
+        "evento": "seeked",
+        "msSeeked": 3,
+        "avanza": 0.7
+      }
+    ],
+    "cuadros": 189,
+    "cuadrosPerdidos": 0,
+    "decodedAudioBytes": 76184,
+    "memAntes": {
+      "totalMB": 760,
+      "porTipoMB": {
+        "Browser": 275,
+        "GPU": 257,
+        "Utility": 95,
+        "Tab": 132
+      },
+      "principalRssMB": 275
+    },
+    "memDespues": {
+      "totalMB": 886,
+      "porTipoMB": {
+        "Browser": 279,
+        "GPU": 261,
+        "Utility": 192,
+        "Tab": 153
+      },
+      "principalRssMB": 279
+    },
+    "memMaxTotalMB": 890,
+    "memMaxPrincipalRssMB": 278,
+    "servido": {
+      "peticiones": 1,
+      "bytesMB": 0,
+      "rangos": [
+        "bytes=0-"
+      ]
+    }
+  },
+  "p3p4": {
+    "url": "app://reproductor/__media/grande.mp4",
+    "estadoContexto": "running",
+    "carga": "canplay",
+    "msHastaCanplay": 18,
+    "duracion": 1440.49075,
+    "tamVideo": "1280x720",
+    "msHastaPlay": 1,
+    "tiempoTrasReproducir": 3.01,
+    "rmsEq0": 0.0882,
+    "rmsEqMas12": 0.352,
+    "rmsEqMenos12": 0.0222,
+    "saltos": [
+      {
+        "a": 720.2,
+        "evento": "seeked",
+        "msSeeked": 6,
+        "avanza": 0.7
+      },
+      {
+        "a": 144,
+        "evento": "seeked",
+        "msSeeked": 3,
+        "avanza": 0.7
+      },
+      {
+        "a": 1296.4,
+        "evento": "seeked",
+        "msSeeked": 2,
+        "avanza": 0.7
+      },
+      {
+        "a": 1426.1,
+        "evento": "seeked",
+        "msSeeked": 3,
+        "avanza": 0.69
+      },
+      {
+        "a": 432.1,
+        "evento": "seeked",
+        "msSeeked": 3,
+        "avanza": 0.69
+      }
+    ],
+    "cuadros": 221,
+    "cuadrosPerdidos": 0,
+    "decodedAudioBytes": 92894,
+    "memAntes": {
+      "totalMB": 886,
+      "porTipoMB": {
+        "Browser": 279,
+        "GPU": 261,
+        "Utility": 192,
+        "Tab": 153
+      },
+      "principalRssMB": 279
+    },
+    "memDespues": {
+      "totalMB": 945,
+      "porTipoMB": {
+        "Browser": 297,
+        "GPU": 263,
+        "Utility": 192,
+        "Tab": 193
+      },
+      "principalRssMB": 297
+    },
+    "memMaxTotalMB": 954,
+    "memMaxPrincipalRssMB": 297,
+    "servido": {
+      "peticiones": 7,
+      "bytesMB": 0,
+      "rangos": [
+        "bytes=0-",
+        "bytes=786432-",
+        "bytes=12451840-",
+        "bytes=28770304-",
+        "bytes=1802240-",
+        "bytes=1507328-",
+        "bytes=30310400-"
+      ]
+    }
+  },
+  "p3grande2": {
+    "url": "app://reproductor/__media/grande.mp4",
+    "estadoContexto": "running",
+    "carga": "canplay",
+    "msHastaCanplay": 20,
+    "duracion": 1440.49075,
+    "tamVideo": "1280x720",
+    "msHastaPlay": 1,
+    "tiempoTrasReproducir": 3,
+    "rmsEq0": 0.0882,
+    "rmsEqMas12": 0.3522,
+    "rmsEqMenos12": 0.0222,
+    "saltos": [
+      {
+        "a": 72,
+        "evento": "seeked",
+        "msSeeked": 7,
+        "avanza": 0.7
+      },
+      {
+        "a": 216.1,
+        "evento": "seeked",
+        "msSeeked": 3,
+        "avanza": 0.7
+      },
+      {
+        "a": 360.1,
+        "evento": "seeked",
+        "msSeeked": 2,
+        "avanza": 0.69
+      },
+      {
+        "a": 504.2,
+        "evento": "seeked",
+        "msSeeked": 3,
+        "avanza": 0.69
+      },
+      {
+        "a": 648.2,
+        "evento": "seeked",
+        "msSeeked": 3,
+        "avanza": 0.69
+      },
+      {
+        "a": 792.3,
+        "evento": "seeked",
+        "msSeeked": 3,
+        "avanza": 0.69
+      },
+      {
+        "a": 936.3,
+        "evento": "seeked",
+        "msSeeked": 3,
+        "avanza": 0.69
+      },
+      {
+        "a": 1080.4,
+        "evento": "seeked",
+        "msSeeked": 3,
+        "avanza": 0.7
+      },
+      {
+        "a": 1224.4,
+        "evento": "seeked",
+        "msSeeked": 3,
+        "avanza": 0.7
+      },
+      {
+        "a": 1368.5,
+        "evento": "seeked",
+        "msSeeked": 3,
+        "avanza": 0.7
+      }
+    ],
+    "cuadros": 301,
+    "cuadrosPerdidos": 0,
+    "decodedAudioBytes": 133153,
+    "memAntes": {
+      "totalMB": 940,
+      "porTipoMB": {
+        "Browser": 297,
+        "GPU": 262,
+        "Utility": 192,
+        "Tab": 189
+      },
+      "principalRssMB": 297
+    },
+    "memDespues": {
+      "totalMB": 929,
+      "porTipoMB": {
+        "Browser": 283,
+        "GPU": 261,
+        "Utility": 192,
+        "Tab": 192
+      },
+      "principalRssMB": 283
+    },
+    "memMaxTotalMB": 964,
+    "memMaxPrincipalRssMB": 300,
+    "servido": {
+      "peticiones": 5,
+      "bytesMB": 0,
+      "rangos": [
+        "bytes=0-",
+        "bytes=26214400-",
+        "bytes=786432-",
+        "bytes=7340032-",
+        "bytes=38404096-"
+      ]
+    }
+  }
+}
