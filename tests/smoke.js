@@ -100,7 +100,8 @@ async function openApp(prepare) {
   // se carga la misma página sin esa etiqueta (la CSP se comprueba aparte, en las pruebas unitarias y en el navegador).
   const html = (await (await fetch("../index.html", { cache: "no-cache" })).text())
     .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, "")
-    .replace("<head>", '<head><base href="../">');
+    .replace("<head>", '<head><base href="../">')
+    .replace('<script src="src/app/main.js"></script>', '<script>const __tagsRead = Tags.read; window.__tagsReadCount = 0; Tags.read = (...a) => { window.__tagsReadCount++; return __tagsRead(...a); };</script><script src="src/app/main.js"></script>');
   const frame = document.createElement("iframe");
   frame.srcdoc = html;
   document.body.append(frame);
@@ -407,6 +408,25 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     localStorage.setItem("playlists", "{esto no es json");
     localStorage.setItem("eq", "[[[");
     localStorage.setItem("order", "no");
+  });
+
+  await scenario("Caché de metadatos al arrancar", async ({ frame, win, ev }) => {
+    await win.addFiles([wav(win, "cache.wav")]);
+    await until(async () => {
+      const db = await openDbAsIs();
+      const found = (await getAll(db, "tracks")).some((r) => r.name === "cache.wav" && r.metaVersion === 1);
+      db.close();
+      return found;
+    });
+    frame.contentWindow.location.reload();
+    await new Promise((r) => frame.contentWindow.addEventListener("load", r, { once: true }));
+    await waitReady(frame.contentWindow);
+    const reloaded = frame.contentWindow;
+    check("arranque con metaVersion coincidente no llama Tags.read", reloaded.__tagsReadCount === 0, reloaded.__tagsReadCount);
+    const db = await openDbAsIs();
+    const rec = (await getAll(db, "tracks")).find((r) => r.name === "cache.wav");
+    db.close();
+    check("importación guarda los campos de meta y metaVersion", rec?.metaVersion === 1 && ["title", "artist", "album", "lyrics", "hasCover", "duration", "kind", "width", "height", "codecs"].every((k) => k in rec.meta), JSON.stringify(rec?.meta));
   });
 
   await scenario("Robustez: un registro dañado no impide cargar el resto", async ({ ev }) => {

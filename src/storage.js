@@ -87,7 +87,7 @@ const Storage = (() => {
       tracks.add({ name: file.name, blob: file, type: file.type }).onsuccess = (e) => (out.result = e.target.result);
       return;
     }
-    const allowed = new Set(["kind", "source", "linkId", "lyrics", "edits", "meta", "subs", "thumb"]);
+    const allowed = new Set(["kind", "source", "linkId", "lyrics", "edits", "meta", "metaVersion", "subs", "thumb"]);
     const rec = { name: file.name, type: file.type, size: file.size, kind: "audio", source: "blob" };
     for (const [key, value] of Object.entries(extra)) if (allowed.has(key)) rec[key] = value;
     if (Number.isFinite(file.lastModified)) rec.lastModified = file.lastModified;
@@ -124,9 +124,21 @@ const Storage = (() => {
     };
   });
 
+  const setMeta = (id, meta, version) => tx("readwrite", ({ tracks }) => {
+    const get = tracks.get(id);
+    get.onsuccess = () => {
+      const rec = get.result;
+      if (!rec) return;
+      rec.meta = meta;
+      rec.metaVersion = version;
+      tracks.put(rec);
+    };
+  });
+
   return {
     setLyrics: (id, text) => setField(id, "lyrics", text),
     setEdits: (id, edits) => setField(id, "edits", edits),
+    setMeta,
     add,
     getFile,
     remove: (id) => tx("readwrite", ({ tracks, files }) => { tracks.delete(id); files?.delete(id); }),

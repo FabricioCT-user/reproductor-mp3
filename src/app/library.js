@@ -1,7 +1,15 @@
 // Biblioteca: canciones (con sus ediciones), importación, lista en pantalla, reordenar y selección múltiple.
 
-async function makeTrack(id, file, userLyrics = "", edits = null) {
-  const meta = await Tags.read(file);
+const META_VERSION = 1;
+const trackMeta = (m, file) => ({
+  title: m.title || "", artist: m.artist || "", album: m.album || "", lyrics: m.lyrics || "",
+  hasCover: !!(m.hasCover ?? m.cover), duration: m.duration ?? null, kind: m.kind || (file.type.startsWith("video/") ? "video" : "audio"),
+  width: m.width ?? null, height: m.height ?? null, codecs: m.codecs ?? null,
+});
+
+async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = null) {
+  const meta = cachedMeta || await Tags.read(file);
+  const savedMeta = trackMeta(meta, file);
   const fallback = file.name.replace(/\.[^.]+$/, "");
   const t = {
     id,
@@ -11,11 +19,12 @@ async function makeTrack(id, file, userLyrics = "", edits = null) {
     size: file.size,
     key: fileKey(file),   // para no importar dos veces el mismo archivo
     dir: dirOf(pathOf(file)),
-    embeddedLyrics: meta.lyrics,
+    embeddedLyrics: savedMeta.lyrics,
+    meta: savedMeta,
     userLyrics,
     url: URL.createObjectURL(file),
     // Datos del archivo; lo que se muestra (title, artist, album, coverUrl) sale de aplicar las ediciones encima.
-    orig: { title: meta.title || fallback, artist: meta.artist, album: meta.album, coverUrl: meta.cover ? URL.createObjectURL(meta.cover) : null },
+    orig: { title: savedMeta.title || fallback, artist: savedMeta.artist, album: savedMeta.album, coverUrl: null },
     edits,
   };
   applyEdits(t);
@@ -82,9 +91,10 @@ async function addFiles(fileList) {
     let id = null;
     let storeFail = null;
     try {
-      try { id = await Storage.add(file); }
+      const track = await makeTrack(null, file);
+      try { id = await Storage.add(file, { meta: track.meta, metaVersion: META_VERSION }); track.id = id; }
       catch (e) { storeFail = e?.name === "QuotaExceededError" ? "quota" : "other"; }
-      state.tracks.push(await makeTrack(id, file));
+      state.tracks.push(track);
       added++;
       if (storeFail === "quota") noSpace++;
       else if (storeFail) storeErr++;
@@ -250,7 +260,18 @@ function render() {
       const thumb = document.createElement("div");
       thumb.className = "thumb";
       if (t.coverUrl) thumb.style.backgroundImage = `url(${t.coverUrl})`;
-      else thumb.textContent = "♪";
+      else {
+        thumb.textContent = "♪";
+        if (t.meta?.hasCover && t.edits?.cover !== false && t.file && !t._coverPromise && !t._coverLoaded) {
+          t._coverPromise = Tags.readCover(t.file).then((cover) => {
+            t._coverLoaded = true;
+            if (!cover) return;
+            t.orig.coverUrl = URL.createObjectURL(cover);
+            applyEdits(t);
+            if (t.coverUrl) { thumb.textContent = ""; thumb.style.backgroundImage = `url(${t.coverUrl})`; }
+          }).catch(() => {}).finally(() => { t._coverPromise = null; });
+        }
+      }
 
       const text = document.createElement("div");
       text.className = "t-text";

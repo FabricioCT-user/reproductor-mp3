@@ -154,5 +154,8 @@ const Tags = (() => {
     return meta;
   }
 
-  return { read };
+  // Se usa al pintar la miniatura; no forma parte del arranque de la biblioteca.
+  const readCover = async (file) => (await read(file)).cover;
+
+  return { read, readCover };
 })();
