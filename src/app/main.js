@@ -55,7 +55,15 @@ const appReady = (async function init() {
         try { file = await Storage.getFile(rec.id); } catch { /* se muestra como no disponible; el registro no se borra */ }
       }
       if (!file) { state.tracks.push(await makeUnavailableTrack(rec)); continue; }
-      try { state.tracks.push(await makeTrack(rec.id, file, rec.lyrics || "", rec.edits || null)); } catch { /* este archivo no se puede cargar: se omite */ }
+      try {
+        let meta = rec.metaVersion === META_VERSION ? rec.meta : null;
+        if (!meta) {
+          const parsed = await Tags.read(file);
+          meta = trackMeta({ ...parsed, hasCover: !!parsed.cover }, file);
+          Storage.setMeta(rec.id, meta, META_VERSION).catch(() => {});
+        }
+        state.tracks.push(await makeTrack(rec.id, file, rec.lyrics || "", rec.edits || null, meta));
+      } catch { /* este archivo no se puede cargar: se omite */ }
     }
     const last = state.tracks.findIndex((t) => String(t.id) === store.get("lastId") && !t.unavailable);
     const firstPlayable = state.tracks.findIndex((t) => !t.unavailable);

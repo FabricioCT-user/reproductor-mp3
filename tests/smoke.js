@@ -37,6 +37,15 @@ function fakeMp3(win, name, title) {
   return new win.File([head, frame, wavBytes({ seconds: 1 })], name, { type: "audio/mpeg", lastModified: 77 });
 }
 
+function fakeMp3WithCover(win, name) {
+  const enc = new TextEncoder();
+  const image = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+  const picture = new Uint8Array([0, ...enc.encode("image/png"), 0, 3, 0, ...image]);
+  const frame = new Uint8Array([...enc.encode("APIC"), 0, 0, 0, picture.length, 0, 0, ...picture]);
+  const head = new Uint8Array([73, 68, 51, 3, 0, 0, 0, 0, 0, frame.length]);
+  return new win.File([head, frame, wavBytes({ seconds: 1 })], name, { type: "audio/mpeg", lastModified: 78 });
+}
+
 /* ---------- Marco de pruebas ---------- */
 
 // Se vacían los almacenes en vez de borrar la base: borrarla se queda bloqueada si otra pestaña la tiene abierta.
@@ -100,7 +109,8 @@ async function openApp(prepare) {
   // se carga la misma página sin esa etiqueta (la CSP se comprueba aparte, en las pruebas unitarias y en el navegador).
   const html = (await (await fetch("../index.html", { cache: "no-cache" })).text())
     .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, "")
-    .replace("<head>", '<head><base href="../">');
+    .replace("<head>", '<head><base href="../">')
+    .replace('<script src="src/app/main.js"></script>', '<script>const __tagsRead = Tags.read; window.__tagsReadCount = 0; Tags.read = (...a) => { window.__tagsReadCount++; return __tagsRead(...a); };</script><script src="src/app/main.js"></script>');
   const frame = document.createElement("iframe");
   frame.srcdoc = html;
   document.body.append(frame);
@@ -407,6 +417,33 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     localStorage.setItem("playlists", "{esto no es json");
     localStorage.setItem("eq", "[[[");
     localStorage.setItem("order", "no");
+  });
+
+  await scenario("Caché de metadatos al arrancar", async ({ frame, win, ev }) => {
+    await win.addFiles([wav(win, "cache.wav")]);
+    await until(async () => {
+      const db = await openDbAsIs();
+      const found = (await getAll(db, "tracks")).some((r) => r.name === "cache.wav" && r.metaVersion === 1);
+      db.close();
+      return found;
+    });
+    frame.contentWindow.location.reload();
+    await new Promise((r) => frame.contentWindow.addEventListener("load", r, { once: true }));
+    await waitReady(frame.contentWindow);
+    const reloaded = frame.contentWindow;
+    check("arranque con metaVersion coincidente no llama Tags.read", reloaded.__tagsReadCount === 0, reloaded.__tagsReadCount);
+    const db = await openDbAsIs();
+    const rec = (await getAll(db, "tracks")).find((r) => r.name === "cache.wav");
+    db.close();
+    check("importación guarda los campos de meta y metaVersion", rec?.metaVersion === 1 && ["title", "artist", "album", "lyrics", "hasCover", "duration", "kind", "width", "height", "codecs"].every((k) => k in rec.meta), JSON.stringify(rec?.meta));
+  });
+
+  await scenario("Carátula perezosa en reproductor y Media Session", async ({ win, ev }) => {
+    await win.addFiles([fakeMp3WithCover(win, "portada.mp3")]);
+    const ready = await until(() => ev("!!state.tracks[0].coverUrl && !!els.cover.style.backgroundImage"));
+    const artwork = ev("navigator.mediaSession?.metadata?.artwork || []");
+    check("la carátula perezosa aparece en el reproductor", ready && ev("els.cover.classList.contains('has-art')"), ev("els.cover.style.backgroundImage"));
+    check("la carátula perezosa llega a Media Session", artwork.length > 0 && artwork[0].src === ev("state.tracks[0].coverUrl"), JSON.stringify(artwork));
   });
 
   await scenario("Robustez: un registro dañado no impide cargar el resto", async ({ ev }) => {

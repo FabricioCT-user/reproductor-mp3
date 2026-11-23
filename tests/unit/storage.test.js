@@ -109,6 +109,17 @@ test("add solo persiste campos permitidos y descarta rutas", async () => {
   assert.equal(raw(idb, "files").length, 0, "un link no copia el archivo");
 });
 
+test("add admite metaVersion junto a los metadatos sin guardar campos extra", async () => {
+  const idb = createFakeIndexedDB();
+  const S = loadStorage(idb);
+  const meta = { title: "Tema", artist: "Banda", album: "Disco", lyrics: "Verso", hasCover: false, duration: null, kind: "audio", width: null, height: null, codecs: null };
+  const id = await S.add(song("meta.mp3"), { meta, metaVersion: 1, path: "/privado/meta.mp3" });
+  const [rec] = raw(idb, "tracks");
+  assert.deepEqual(norm(rec.meta), meta);
+  assert.equal(rec.metaVersion, 1);
+  assert.equal("path" in rec, false);
+});
+
 test("setLyrics / setEdits solo tocan tracks: el archivo guardado no se reescribe", async () => {
   const idb = createFakeIndexedDB();
   const S = loadStorage(idb);

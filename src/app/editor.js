@@ -32,6 +32,9 @@ function setDraftCover(v) {
 function openEditor(target) {
   const tracks = Array.isArray(target) ? target : [target];
   const batch = tracks.length > 1;
+  if (!batch) loadCover(tracks[0]).then(() => {
+    if (editing?.tracks === tracks) paintEditCover();
+  });
   editing = { tracks, batch, touched: new Set(), cover: batch ? undefined : tracks[0].edits?.cover, previewUrl: null };
   els["edit-heading"].textContent = batch ? `Editar ${tracks.length} canciones` : "Editar etiquetas";
   els["edit-note"].textContent = batch
