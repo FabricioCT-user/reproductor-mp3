@@ -5,6 +5,7 @@
 function wireShortcuts() {
   document.addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest?.("dialog")) return;
+    if (e.target.closest?.("select")) return; // deja que el selector maneje flechas, espacio y letras
     const typing = e.target.tagName === "INPUT" && e.target.type !== "range";
     if (typing) return;
     if (e.code === "Space" && e.target.closest?.("button, select, a, summary")) return; // activa el control enfocado
@@ -31,6 +32,7 @@ wireLibrary();
 wireSelection();
 wirePlaylists();
 wirePlayer();
+wireStage();
 wireEq();
 wireFades();
 wireLyrics();
