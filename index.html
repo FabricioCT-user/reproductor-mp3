@@ -25,6 +25,10 @@
     <section class="deck">
       <div class="cover" id="cover">
         <span class="cover-placeholder">♪</span>
+        <div id="stage" class="stage oculto">
+          <video id="deck-a" class="stage-video" playsinline preload="metadata"></video>
+          <video id="deck-b" class="stage-video" playsinline preload="metadata"></video>
+        </div>
         <div id="lyrics" class="lyrics" hidden>
           <div id="lyrics-body" class="lyrics-body"></div>
           <div class="lyrics-actions">
@@ -167,8 +171,6 @@
 
   <div id="menu" class="menu" hidden></div>
   <div id="toast" class="toast" role="status" hidden></div>
-  <audio id="audio"></audio>
-  <audio id="audio-b"></audio>
   <script src="src/util.js"></script>
   <script src="src/lyrics.js"></script>
   <script src="src/playlist-io.js"></script>

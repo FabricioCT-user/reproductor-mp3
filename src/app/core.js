@@ -9,8 +9,10 @@ const store = {
   json(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } },
 };
 
-// Dos elementos de audio: uno suena y el otro entra durante un fundido cruzado (ver «Fundido»).
-const decks = [$("audio"), $("audio-b")];
+// Dos elementos multimedia (<video>, que también reproduce audio): uno suena y el otro entra durante un fundido
+// cruzado (ver «Fundido»). Viven fijos en el escenario (#stage): sacarlos del DOM los pausaría, así que mientras la
+// pista es de audio el escenario solo se oculta con CSS.
+const decks = [$("deck-a"), $("deck-b")];
 
 let media = decks[0]; // el deck activo: lo que muestran la barra de progreso, los controles, etc.
 

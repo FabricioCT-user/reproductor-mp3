@@ -103,6 +103,10 @@ body {
 }
 .cover.has-art .cover-placeholder { display: none; }
 .cover-placeholder { font-size: 4rem; color: var(--muted); }
+/* Escenario de video: los dos decks apilados sobre la carátula; oculto (no fuera del DOM) mientras suena audio. */
+.stage { position: absolute; inset: 0; background: #000; }
+.stage.oculto { display: none; }
+.stage-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 
 .info { text-align: center; min-height: 3.2em; }
 .title { font-size: 1.1rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
