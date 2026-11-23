@@ -125,6 +125,8 @@ async function responderDialogo(win, valor) {
   await until(() => win.document.getElementById("prompt-dialog")?.open, 2000, 20);
   if (valor === null) { win.document.getElementById("prompt-cancel").click(); return; }
   win.document.getElementById("prompt-input").value = valor;
+  // Enter en el campo = envío implícito del formulario; requestSubmit() es ese mismo camino
+  // (un keydown sintético no dispara el envío implícito en ningún navegador).
   win.document.getElementById("prompt-form").requestSubmit();
 }
 
@@ -218,6 +220,15 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     const cancelCreate = win.createPlaylist();
     await responderDialogo(win, null);
     check("crear lista: cancelar no crea nada", (await cancelCreate) === null && ev("state.playlists.length") === 0);
+
+    // Escape: el navegador lanza «cancel» y cierra el <dialog> sin pasar por el formulario.
+    const escCreate = win.createPlaylist();
+    await until(() => win.document.getElementById("prompt-dialog")?.open, 2000, 20);
+    const dlg = win.document.getElementById("prompt-dialog");
+    win.document.getElementById("prompt-input").value = "No debe crearse";
+    dlg.dispatchEvent(new win.Event("cancel", { cancelable: true }));
+    dlg.close();
+    check("diálogo: Escape cancela y no crea nada", (await escCreate) === null && ev("state.playlists.length") === 0 && !dlg.open);
 
     const createP = win.createPlaylist();
     await until(() => win.document.getElementById("prompt-dialog")?.open, 2000, 20);
