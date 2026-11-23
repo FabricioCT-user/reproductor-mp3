@@ -1,9 +1,10 @@
 // npm run smoke:app — ejecuta tests/smoke.html dentro de Electron (sin mostrar ventana) con una carpeta
 // de datos temporal, y sale con 0 (todo bien) o 1. La prueba vacía la base de datos: nunca usa la real.
 // También lanza la app con archivos en argv (TE.2): se generan en otra carpeta temporal (con espacios en la ruta).
+// Los videos (T2.1, enlazados por ruta) se generan con ffmpeg: es obligatorio para esta prueba.
 "use strict";
 
-const { spawn } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -39,7 +40,23 @@ escribir("tres.wav", wav(8, 660)); // lo abre la segunda instancia
 escribir("sub/cuatro.wav", wav(1, 330)); // solo al elegir la carpeta
 const lrc = escribir("uno.lrc", "[00:00.00]Hola\n[00:02.00]mundo\n");
 const nota = escribir("nota.mp3.txt", "no es audio");
-const video = escribir("video.mp4", Buffer.alloc(2000, 1));
+// MP4 H.264 + AAC (320×180 con ruido, seno de 440 Hz), con el índice al principio. El largo (5 min, ~8 MB) supera lo
+// que Chromium lee por adelantado, así que los saltos abren peticiones nuevas y cancelan las de antes (si nadie las
+// cancelara, sus descriptores quedarían abiertos). Se genera en un par de segundos.
+function mp4(destino, segundos) {
+  const r = spawnSync("timeout", ["60", "ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", `testsrc=size=320x180:rate=25:duration=${segundos},noise=alls=30:allf=t`,
+    "-f", "lavfi", "-i", `sine=frequency=440:duration=${segundos}`, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30",
+    "-pix_fmt", "yuv420p", "-g", "25", "-c:a", "aac", "-shortest", "-movflags", "+faststart", destino], { stdio: ["ignore", "inherit", "inherit"] });
+  if (r.status !== 0) {
+    console.error("No se pudo generar el video de prueba con ffmpeg (¿está instalado?)");
+    fs.rmSync(datos, { recursive: true, force: true });
+    fs.rmSync(path.dirname(medios), { recursive: true, force: true });
+    process.exit(1);
+  }
+  return destino;
+}
+const video = mp4(path.join(medios, "video.mp4"), 300);
+mp4(path.join(path.dirname(medios), "otro video.mp4"), 3); // fuera de la carpeta: se arrastra/elige con <input>
 fs.symlinkSync(uno, path.join(medios, "enlace.wav"));
 
 const env = { ...process.env };

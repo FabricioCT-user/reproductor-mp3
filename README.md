@@ -132,7 +132,8 @@ src/
                    core, library, playlists, lyrics-ui, player, eq, fades, launcher, editor, theme, main
 electron/          app de escritorio (en construcción): main.js (protocolo app://reproductor/, ventana endurecida, instancia
                    única y archivos abiertos desde el sistema), preload.js (puente mínimo), lib/servir.js (lista blanca
-                   del protocolo), lib/argumentos.js, lib/rutas.js (validar rutas), lib/entregas.js (ids de archivos abiertos)
+                   del protocolo), lib/argumentos.js, lib/rutas.js (validar rutas), lib/entregas.js (ids de archivos abiertos),
+                   lib/enlaces.js (registro de videos enlazados), lib/rango.js y lib/medios.js (servir videos con Range)
 launcher/          servidor local en Python y lanzador para «Abrir con…» (instalar.sh lo registra en Linux)
 tests/
   unit/            pruebas con node:test (módulos puros, escritor de etiquetas, almacenamiento y migración, coherencia del proyecto, servidor y lanzador)
@@ -145,12 +146,12 @@ tests/
 **Pruebas**
 
 ```bash
-npm test                         # unitarias (~155 pruebas, un par de segundos)
+npm test                         # unitarias (~175 pruebas, unos segundos)
 npm start                        # y abre http://localhost:8000/tests/smoke.html para las de humo
-npm install && npm run smoke:app # las mismas de humo dentro de Electron, sin ventana; sale con 0 o 1
+npm install && npm run smoke:app # las mismas de humo dentro de Electron, sin ventana; sale con 0 o 1 (necesita ffmpeg)
 ```
 
-Las unitarias cargan los mismos scripts que el navegador dentro de un contexto aislado de Node y construyen archivos MP3, FLAC, Ogg y MP4 sintéticos para comprobar lectores y escritor (unsincronización, cabecera extendida, ID3v2.2, carátulas, bloques FLAC…). Las de humo importan archivos, reproducen, reordenan, editan, exportan, recargan y fuerzan fallos (archivos que no se pueden reproducir, `localStorage` corrupto, registros dañados) y comprueban que una biblioteca guardada con la versión anterior de la base (v1) se migra sin perder canciones, letras, ediciones ni orden. La prueba de humo usa audio generado en el propio navegador y no necesita ffmpeg.
+Las unitarias cargan los mismos scripts que el navegador dentro de un contexto aislado de Node y construyen archivos MP3, FLAC, Ogg y MP4 sintéticos para comprobar lectores y escritor (unsincronización, cabecera extendida, ID3v2.2, carátulas, bloques FLAC…). Las de humo importan archivos, reproducen, reordenan, editan, exportan, recargan y fuerzan fallos (archivos que no se pueden reproducir, `localStorage` corrupto, registros dañados) y comprueban que una biblioteca guardada con la versión anterior de la base (v1) se migra sin perder canciones, letras, ediciones ni orden. La prueba de humo del navegador usa audio generado en el propio navegador y no necesita ffmpeg; la de Electron genera con ffmpeg los videos que enlaza (uno de 5 minutos, para que los saltos abran y cancelen peticiones de verdad) y cuenta en `/proc/self/fd` que no quede ningún archivo abierto.
 
 **App de escritorio (Electron, en construcción)**
 
@@ -162,7 +163,9 @@ npm run dist         # empaqueta con electron-builder en dist/ (por ahora solo l
 
 La app sirve la misma interfaz desde `app://reproductor/`, que solo entrega los archivos de `FILES` de `sw.js` (más `index.html`) y repite la CSP del meta como cabecera. La ventana va endurecida: aislamiento de contexto, sandbox, sin Node en la página, sin ventanas nuevas ni navegación fuera de la app y sin permisos salvo pantalla completa; el paquete lleva los *fuses* de Electron que impiden usarlo como Node (`ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS`, `--inspect`) y solo carga la app del `.asar`. Dentro de la app no se registra el service worker.
 
-**Abrir archivos en la app:** `npm run app -- ~/Música/cancion.mp3 "$HOME/Música/otra canción.flac"` (rutas absolutas: npm ejecuta desde la carpeta del proyecto; también valen URLs `file://`) los añade a la biblioteca, suena el primero y los demás quedan en la cola. Con la app ya abierta, abrir más archivos (otra vez el mismo comando o, cuando exista el paquete, «Abrir con…») no abre otra ventana: los entrega a la abierta y la pone al frente. En la app, «+ Añadir» y «+ Carpeta» usan el diálogo del sistema. El proceso principal solo acepta archivos regulares (resuelve enlaces simbólicos y mira la extensión del destino) de audio, video, `.lrc`, `.srt` o `.vtt`, y la interfaz nunca ve rutas: recibe un id de un solo uso y pide con él los bytes, que se copian a la biblioteca como cualquier otro archivo. Los videos aún no se abren (se enlazarán sin copiarlos), ni los subtítulos. La asociación con el gestor de archivos («Abrir con…») llega con el empaquetado; hasta entonces sigue el lanzador de `launcher/`.
+**Abrir archivos en la app:** `npm run app -- ~/Música/cancion.mp3 "$HOME/Música/otra canción.flac"` (rutas absolutas: npm ejecuta desde la carpeta del proyecto; también valen URLs `file://`) los añade a la biblioteca, suena el primero y los demás quedan en la cola. Con la app ya abierta, abrir más archivos (otra vez el mismo comando o, cuando exista el paquete, «Abrir con…») no abre otra ventana: los entrega a la abierta y la pone al frente. En la app, «+ Añadir» y «+ Carpeta» usan el diálogo del sistema. El proceso principal solo acepta archivos regulares (resuelve enlaces simbólicos y mira la extensión del destino) de audio, video, `.lrc`, `.srt` o `.vtt`, y la interfaz nunca ve rutas: recibe un id de un solo uso y pide con él los bytes, que se copian a la biblioteca como cualquier otro archivo. Los subtítulos aún no se abren.
+
+**Videos en la app: se enlazan, no se copian.** Un video que llega por «Abrir con…», el diálogo, arrastrándolo o con el selector de archivos se registra en `enlaces.json`, dentro de la carpeta de datos de la app (permisos 0600), con un id opaco; la biblioteca (IndexedDB) guarda solo ese id (`source: "link"`) y nunca la ruta. La interfaz lo reproduce desde `app://reproductor/__media/<id>`, que el proceso principal sirve con `Range` propio (`206`, `416`, tipo por extensión) leyendo el archivo por trozos de 512 KB solo cuando el reproductor los pide y cerrándolo en cuanto cancela la petición (al saltar), así que un video de varios GB ni se copia ni se carga en memoria. Las etiquetas se leen también por `Range`. Solo se sirven ids registrados; quitar la pista olvida su enlace. Si el archivo se mueve o se borra, la pista no se pierde (avisar «no encontrado» y volver a enlazarlo llegará después). El audio se sigue copiando a la biblioteca, y la versión web no cambia: allí los videos se copian como cualquier archivo. La asociación con el gestor de archivos («Abrir con…») llega con el empaquetado; hasta entonces sigue el lanzador de `launcher/`.
 
 **Al publicar una versión nueva**, si cambia la lista de archivos de la aplicación actualiza `FILES` y `VERSION` en `sw.js` (una prueba comprueba que `FILES` coincide con lo que carga la página).
 
