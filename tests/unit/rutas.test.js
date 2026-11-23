@@ -138,8 +138,12 @@ test("subtitulosAcompanantes: encuentra nombre.srt / nombre.*.srt / .vtt en la m
   crear("subs/peli.grande.srt", "x".repeat(200));
   const fuera = crear("fuera.srt", "fuera de la carpeta");
   const secreto = crear("subs/secreto.txt", "secreto");
+  const privado = crear("subs/privado.srt", "privado de la misma carpeta");
   fs.symlinkSync(fuera, path.join(dir, "subs", "peli.fuera.srt"));
   fs.symlinkSync(secreto, path.join(dir, "subs", "peli.disfraz.srt"));
+  fs.symlinkSync(privado, path.join(dir, "subs", "peli.priv.srt"));
+  fs.symlinkSync(path.join(dir, "subs", "peli.es.srt"), path.join(dir, "subs", "peli.alias.srt"));
+  fs.symlinkSync(path.join(dir, "subs", "peli.priv.srt"), path.join(dir, "subs", "peli.cadena.srt"));
 
   const r = await rutas.subtitulosAcompanantes(v, { maxTamano: 100 });
   assert.deepEqual(r.map((x) => x.nombre), ["peli.en.forced.vtt", "peli.es.srt", "Peli.srt"]);
@@ -148,6 +152,18 @@ test("subtitulosAcompanantes: encuentra nombre.srt / nombre.*.srt / .vtt en la m
   const limitado = await rutas.subtitulosAcompanantes(v, { maxArchivos: 1, maxTamano: 100 });
   assert.equal(limitado.length, 1);
   assert.deepEqual(await rutas.subtitulosAcompanantes(path.join(dir, "no-existe.mp4")), []);
+});
+
+test("subtitulosAcompanantes + leer: si el archivo se sustituye por un symlink entre comprobación y lectura, leer falla", async () => {
+  const v = crear("toctou/Cine.mp4", "mp4");
+  const sub = crear("toctou/Cine.srt", "1\n00:00:01,000 --> 00:00:02,000\nOriginal\n");
+  const privado = crear("toctou/privado.srt", "secreto");
+  const r = await rutas.subtitulosAcompanantes(v);
+  assert.deepEqual(r.map((x) => x.ruta), [sub]);
+
+  fs.unlinkSync(sub);
+  fs.symlinkSync(privado, sub);
+  await assert.rejects(rutas.leer(r[0].ruta, { limite: rutas.MAX_SUBTITULO }));
 });
 
 /* ----- entregas.js ----- */

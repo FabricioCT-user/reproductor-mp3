@@ -429,7 +429,8 @@ async function comprobacionesEnlaces(win) {
     const subAuto = await hasta(`media.textTracks[0]?.activeCues?.length === 1 && media.textTracks[0].activeCues[0].text === "Subtítulo automático"`, 5000);
     const subInfo = await ev(`({ subs: state.tracks[state.index]?.subs?.map((s) => ({ label: s.label, offset: s.offset })),
       cues: [...(media.textTracks[0]?.activeCues || [])].map((c) => c.text) })`);
-    check("encuentra solo el .srt junto al video abierto por argv y muestra activeCues", subAuto, subInfo);
+    check("encuentra solo el .srt regular junto al video de argv (ignora symlinks) y muestra activeCues",
+      subAuto && subInfo.subs?.length === 1, subInfo);
 
     // Saltar: a mitad y sigue sonando.
     const t = await ev(`new Promise((res) => { media.addEventListener("seeked", () => res(media.currentTime), { once: true }); media.currentTime = 5; })`);
@@ -486,9 +487,10 @@ async function comprobacionesEnlaces(win) {
     const otroId = d.rec?.linkId;
     check("un File de <input> o arrastrado (webUtils.getPathForFile) se enlaza sin copiarse",
       d.rec?.source === "link" && /^[0-9a-f]{32}$/.test(otroId) && d.archivo === false && !d.json.includes(otro), d);
-    check("al enlazar un video por <input>/arrastrar encuentra solo el .es.srt de su misma carpeta",
+    check("al enlazar un video por <input>/arrastrar encuentra solo el .es.srt regular de su misma carpeta (ignora symlinks)",
       otroSubs.length === 1 && otroSubs[0].lang === "es" && otroSubs[0].label === "Español"
-      && otroSubs[0].text.includes("Subtítulo enlazado") && !d.json.includes(path.dirname(otro)), otroSubs);
+      && otroSubs[0].text.includes("Subtítulo enlazado") && !otroSubs.some((s) => s.text.includes("Secreto"))
+      && !d.json.includes(path.dirname(otro)), otroSubs);
 
     // Lo que no es un video con ruta no se enlaza: un File creado por la página se copia como en la web.
     const api = await ev(`(async () => {

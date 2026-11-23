@@ -108,8 +108,8 @@ const MAX_SUBTITULO = 5 * 1024 * 1024;
 const MAX_SUBTITULOS_POR_VIDEO = 32;
 
 // Busca subtítulos acompañantes (.srt / .vtt) de un video ya validado en SU MISMA carpeta:
-// nombre.srt, nombre.*.srt, nombre.vtt, nombre.*.vtt. Valida cada archivo, exige que el destino real
-// viva en la misma carpeta y aplica tope de tamaño y cantidad.
+// nombre.srt, nombre.*.srt, nombre.vtt, nombre.*.vtt. Rechaza enlaces simbólicos para evitar
+// que un symlink (p. ej. pelicula.es.srt -> privado.srt) exponga otro archivo, y aplica tope de tamaño y cantidad.
 async function subtitulosAcompanantes(rutaVideo, { maxArchivos = MAX_SUBTITULOS_POR_VIDEO, maxTamano = MAX_SUBTITULO } = {}) {
   if (typeof rutaVideo !== "string" || !path.isAbsolute(rutaVideo)) return [];
   const realVideo = await fs.promises.realpath(rutaVideo).catch(() => null);
@@ -129,18 +129,26 @@ async function subtitulosAcompanantes(rutaVideo, { maxArchivos = MAX_SUBTITULOS_
   for (const e of entradas) {
     if (encontrados.length >= maxArchivos) break;
     if (e.name.startsWith(".")) continue;
-    if (!e.isFile() && !e.isSymbolicLink()) continue;
+    // Rechazamos symlinks en acompañantes: un enlace como pelicula.es.srt -> privado.srt no debe entregar privado.srt.
+    if (!e.isFile()) continue;
     const c = clasificar(e.name);
     if (!c || c.clase !== "subtitulo") continue;
     const stem = e.name.slice(0, e.name.length - path.extname(e.name).length).toLowerCase();
     if (stem !== base && !stem.startsWith(base + ".")) continue;
-    const v = await validar(path.join(dir, e.name));
-    if (!v || v.clase !== "subtitulo") continue;
-    if (path.dirname(v.ruta) !== dir) continue;
-    if (v.tamano > maxTamano) continue;
-    if (vistos.has(v.ruta)) continue;
-    vistos.add(v.ruta);
-    encontrados.push(v);
+    const candidato = path.join(dir, e.name);
+    let st;
+    try { st = await fs.promises.lstat(candidato); } catch { continue; }
+    if (!st.isFile() || st.size > maxTamano) continue;
+    if (vistos.has(candidato)) continue;
+    vistos.add(candidato);
+    encontrados.push({
+      ruta: candidato,
+      nombre: e.name,
+      tamano: st.size,
+      fecha: Math.floor(st.mtimeMs),
+      tipo: c.tipo,
+      clase: c.clase,
+    });
   }
   return encontrados;
 }
