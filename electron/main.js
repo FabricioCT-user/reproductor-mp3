@@ -103,7 +103,8 @@ function abrirEnLaApp(items) {
 }
 
 function enfocar() {
-  if (!ventana || ventana.isDestroyed()) return;
+  // En la prueba de humo la ventana nunca se muestra: si no, la segunda instancia la abriría en el escritorio del usuario.
+  if (args.smoke || !ventana || ventana.isDestroyed()) return;
   if (ventana.isMinimized()) ventana.restore();
   ventana.show();
   ventana.focus();
