@@ -110,7 +110,7 @@ const appReady = (async function init() {
           meta = trackMeta({ ...parsed, hasCover: !!parsed.cover }, file);
           Storage.setMeta(rec.id, meta, META_VERSION).catch(() => {});
         }
-        state.tracks.push(await makeTrack(rec.id, file, rec.lyrics || "", rec.edits || null, meta, rec.subs || []));
+        state.tracks.push(await makeTrack(rec.id, file, rec.lyrics || "", rec.edits || null, meta, rec.subs || [], rec.thumb || null));
       } catch { // este archivo no se puede cargar: se omite (un enlace se conserva como no disponible)
         if (rec.source === "link") state.tracks.push(await makeUnavailableTrack(rec));
       }

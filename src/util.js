@@ -249,3 +249,39 @@ function checkCompatibility({ kind = "", ext = "", mime = "", codecs = "" } = {}
   }
   return { ok: true, reason: "", ac3Unsupported: false };
 }
+
+const THUMB_WIDTH = 320;
+const THUMB_QUALITY = 0.8;
+const THUMB_DARK_LUMA = 16;
+
+// Puntos de búsqueda (en segundos) para capturar la miniatura de un video:
+// empieza en min(10 % de la duración, 30 s) y ofrece puntos alternativos si el fotograma sale casi negro.
+function thumbSeekTimes(duration) {
+  if (!Number.isFinite(duration) || duration <= 0) return [0.2, 1, 3, 5];
+  const max = Math.max(0, duration - 0.05);
+  const clampTime = (t) => Math.min(max, Math.max(0, Math.round(t * 1000) / 1000));
+  const candidates = [Math.min(duration * 0.1, 30), duration * 0.25, duration * 0.5, duration * 0.75];
+  const out = [];
+  for (const c of candidates) {
+    const t = clampTime(c);
+    if (!out.some((x) => Math.abs(x - t) < 0.02)) out.push(t);
+  }
+  return out.length ? out : [0];
+}
+
+// Luminancia media (0–255, Rec. 709) de un buffer RGBA (ImageData.data).
+function meanLuminance(rgba) {
+  if (!rgba || rgba.length < 4) return 0;
+  const pixels = Math.floor(rgba.length / 4);
+  const step = Math.max(1, Math.floor(pixels / 4096));
+  let sum = 0;
+  let count = 0;
+  for (let i = 0; i < pixels; i += step) {
+    const o = i * 4;
+    sum += 0.2126 * rgba[o] + 0.7152 * rgba[o + 1] + 0.0722 * rgba[o + 2];
+    count++;
+  }
+  return count ? sum / count : 0;
+}
+
+const isDarkFrame = (rgba, threshold = THUMB_DARK_LUMA) => meanLuminance(rgba) < threshold;
