@@ -55,6 +55,8 @@ async function addFiles(fileList) {
   let added = 0;
   let dupes = 0;
   let failed = 0;
+  let noSpace = 0;
+  let storeErr = 0;
   const keys = new Set(state.tracks.map((t) => t.key));
   for (const [i, file] of files.entries()) {
     const key = fileKey(file);
@@ -62,10 +64,14 @@ async function addFiles(fileList) {
     keys.add(key);
     if (files.length > 5 && i % 10 === 0) toast(`Importando ${i + 1}/${files.length}…`, 60000);
     let id = null;
+    let storeFail = null;
     try {
-      try { id = await Storage.add(file); } catch { /* sin persistencia: se usa solo en memoria */ }
+      try { id = await Storage.add(file); }
+      catch (e) { storeFail = e?.name === "QuotaExceededError" ? "quota" : "other"; }
       state.tracks.push(await makeTrack(id, file));
       added++;
+      if (storeFail === "quota") noSpace++;
+      else if (storeFail) storeErr++;
       if (added % 25 === 0) render();
     } catch {
       failed++; // un archivo ilegible no debe detener el resto de la importación
@@ -84,12 +90,15 @@ async function addFiles(fileList) {
   if (added) msg.push(`${added} canción(es) añadida(s)`);
   if (dupes) msg.push(`${dupes} ya estaba(n) en la biblioteca`);
   if (failed) msg.push(`${failed} no se pudieron leer`);
+  if (noSpace) msg.push(`${noSpace} ${noSpace === 1 ? "pista" : "pistas"} solo para esta sesión: no hay espacio`);
+  if (storeErr) msg.push(`${storeErr} ${storeErr === 1 ? "pista" : "pistas"} solo para esta sesión: no se pudo guardar`);
   if (lyr?.matched) msg.push(`letra para ${lyr.matched}`);
   if (lyr?.missed) msg.push(`${lyr.missed} .lrc sin pareja`);
   if (resolved) msg.push(`${resolved} canción(es) completan listas importadas`);
   if (imp) msg.push(...importSummary(imp));
   if (all.length && !files.length && !lrcFiles.length && !listFiles.length) msg.push("No se encontró ningún archivo de audio");
-  if (msg.length && !(added === 1 && all.length === 1)) toast(msg.join(" · "));
+  const warnStore = noSpace > 0 || storeErr > 0;
+  if (msg.length && (warnStore || !(added === 1 && all.length === 1))) toast(msg.join(" · "), warnStore ? 5000 : undefined);
   else els.toast.hidden = true;
 }
 
