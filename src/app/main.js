@@ -21,7 +21,8 @@ function wireShortcuts() {
       case "KeyM": els.mute.click(); break;
       case "KeyL": toggleLyrics(); break;
       case "KeyF":
-        if (!e.repeat && (isVideoTrack(state.tracks[state.index]) || isFullscreen())) {
+        if (e.repeat || e.target.closest?.("input, select, textarea") || e.target.isContentEditable) break;
+        if (isVideoTrack(state.tracks[state.index]) || isFullscreen()) {
           e.preventDefault();
           toggleFullscreen();
         }

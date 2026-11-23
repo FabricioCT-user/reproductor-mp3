@@ -769,11 +769,14 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
       reqTargets.length === 0 && !ev("isFullscreen()") && bar.classList.contains("oculto"),
       `req=${reqTargets.length}`);
 
-    // 2. Con pista de video, F ignorado dentro de un input y activo fuera.
+    // 2. Con pista de video, F ignorado dentro de inputs (incluidos range) o select, y activo fuera.
     win.loadTrack(1, true, "all");
     await until(() => ev("media.videoWidth > 0 && media.currentTime > 0.2"), 4000);
     pressF(ev("els.filter"));
-    check("pantalla completa: F no actúa cuando el foco está en un input", reqTargets.length === 0);
+    pressF(ev("els.seek"));
+    pressF(ev("els.volume"));
+    pressF(ev("els.view"));
+    check("pantalla completa: F no actúa cuando el foco está en un input (incluidos range) o select", reqTargets.length === 0);
 
     pressF(win.document.body);
     check("pantalla completa: F llama requestFullscreen sobre #stage (no sobre <video>) y muestra la barra",
@@ -818,6 +821,23 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
       // Algunos MediaRecorder dejan duration = Infinity: probamos con una pista de duración conocida sin romper.
       check("pantalla completa: barra de progreso habilitada para la pista activa", !ev("els['fs-seek'].disabled"));
     }
+
+    // Con foco en los controles range (#fs-seek y #fs-volume), F no sale de pantalla completa, pero otros atajos siguen activos.
+    const fsSeek = ev("els['fs-seek']");
+    const fsVolume = ev("els['fs-volume']");
+    fsSeek.focus();
+    pressF(fsSeek);
+    fsVolume.focus();
+    pressF(fsVolume);
+    check("pantalla completa: F no sale de pantalla completa con foco en #fs-seek o #fs-volume",
+      exitCalls === 0 && ev("isFullscreen()"),
+      `exits=${exitCalls} fs=${ev("isFullscreen()")}`);
+    fsVolume.dispatchEvent(new win.KeyboardEvent("keydown", { code: "KeyM", bubbles: true, cancelable: true }));
+    const mutedFromRange = ev("media.muted");
+    fsVolume.dispatchEvent(new win.KeyboardEvent("keydown", { code: "KeyM", bubbles: true, cancelable: true }));
+    check("pantalla completa: otros atajos (M) siguen funcionando sobre input[type=range]",
+      mutedFromRange && !ev("media.muted"),
+      `mutedAfterFirst=${mutedFromRange} mutedAfterSecond=${ev("media.muted")}`);
 
     // 4. Inactividad de 3 s (con temporizadores controlados): oculta barra y cursor; mousemove los recupera.
     const realSetTimeout = win.setTimeout;
