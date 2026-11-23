@@ -32,6 +32,19 @@ function showTrack(t) {
   renderLyrics();
 }
 
+function updatePositionState() {
+  if (!("mediaSession" in navigator)) return;
+  const duration = media.duration;
+  if (!Number.isFinite(duration) || duration <= 0) return;
+  try {
+    navigator.mediaSession.setPositionState({
+      duration,
+      playbackRate: media.playbackRate,
+      position: Math.min(duration, Math.max(0, Number.isFinite(media.currentTime) ? media.currentTime : 0)),
+    });
+  } catch { /* El navegador puede no admitir el estado de posición. */ }
+}
+
 function loadTrack(i, autoplay, view = "all") {
   if (xfade && !xfade.starting) endCrossfade(); // un cambio manual corta el fundido en curso
   const t = state.tracks[i];
@@ -190,6 +203,7 @@ function setSpeed(v) {
   store.set("speed", v);
   els["speed-btn"].textContent = fmtSpeed(v);
   els["speed-btn"].classList.toggle("active", v !== 1);
+  updatePositionState();
 }
 
 // Salta a la velocidad predefinida anterior / siguiente.
@@ -233,17 +247,21 @@ function wirePlayer() {
 
   onMedia("play", () => {
     els["play-icon"].innerHTML = ICON_PAUSE;
+    updatePositionState();
     if (analyser && !vizRunning) { vizRunning = true; draw(); }
   });
 
-  onMedia("pause", () => { els["play-icon"].innerHTML = ICON_PLAY; if (xfade) endCrossfade(); });
+  onMedia("pause", () => { els["play-icon"].innerHTML = ICON_PLAY; updatePositionState(); if (xfade) endCrossfade(); });
 
-  onMedia("loadedmetadata", () => (els.duration.textContent = formatTime(media.duration)));
+  onMedia("loadedmetadata", () => { els.duration.textContent = formatTime(media.duration); updatePositionState(); });
 
   onMedia("timeupdate", () => {
     els.current.textContent = formatTime(media.currentTime);
     if (media.duration) els.seek.value = (media.currentTime / media.duration) * 100;
+    updatePositionState();
   });
+
+  onMedia("ratechange", updatePositionState);
 
   onMedia("ended", () => {
     if (sleep?.track) { finishSleep(); return; }
@@ -270,10 +288,30 @@ function wirePlayer() {
   });
 
   if ("mediaSession" in navigator) {
-    navigator.mediaSession.setActionHandler("play", play);
-    navigator.mediaSession.setActionHandler("pause", () => media.pause());
-    navigator.mediaSession.setActionHandler("previoustrack", () => step(-1));
-    navigator.mediaSession.setActionHandler("nexttrack", () => step(1));
+    const setHandler = (action, handler) => {
+      try { navigator.mediaSession.setActionHandler(action, handler); } catch { /* Acción no disponible en este navegador. */ }
+    };
+    setHandler("play", play);
+    setHandler("pause", () => media.pause());
+    setHandler("previoustrack", () => step(-1));
+    setHandler("nexttrack", () => step(1));
+    setHandler("seekto", ({ seekTime, fastSeek }) => {
+      if (!Number.isFinite(seekTime) || !Number.isFinite(media.duration)) return;
+      if (fastSeek && typeof media.fastSeek === "function") media.fastSeek(seekTime);
+      else media.currentTime = Math.min(media.duration, Math.max(0, seekTime));
+      updatePositionState();
+    });
+    setHandler("seekbackward", ({ seekOffset = 10 } = {}) => {
+      if (!Number.isFinite(media.duration)) return;
+      media.currentTime = Math.max(0, media.currentTime - (Number.isFinite(seekOffset) ? seekOffset : 10));
+      updatePositionState();
+    });
+    setHandler("seekforward", ({ seekOffset = 10 } = {}) => {
+      if (!Number.isFinite(media.duration)) return;
+      media.currentTime = Math.min(media.duration, media.currentTime + (Number.isFinite(seekOffset) ? seekOffset : 10));
+      updatePositionState();
+    });
+    setHandler("stop", () => { media.pause(); media.currentTime = 0; updatePositionState(); });
   }
 
   els["speed-btn"].addEventListener("click", (e) => {
