@@ -151,6 +151,20 @@
     </form>
   </dialog>
 
+  <dialog id="prompt-dialog" class="dialog prompt-dialog" aria-labelledby="prompt-title">
+    <form id="prompt-form" autocomplete="off">
+      <label class="field">
+        <span id="prompt-title" class="prompt-title"></span>
+        <input id="prompt-input" maxlength="300">
+      </label>
+      <div class="dialog-actions">
+        <span class="spacer"></span>
+        <button type="button" id="prompt-cancel" class="btn ghost">Cancelar</button>
+        <button type="submit" class="btn">Aceptar</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="menu" class="menu" hidden></div>
   <div id="toast" class="toast" role="status" hidden></div>
   <audio id="audio"></audio>

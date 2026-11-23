@@ -117,9 +117,17 @@ async function openApp(prepare) {
   await new Promise((r) => frame.addEventListener("load", r, { once: true }));
   const win = frame.contentWindow;
   const ready = await waitReady(win);
-  win.prompt = () => "Mi lista";
   win.confirm = () => true;
   return { frame, win, ready, ev: (code) => win.eval(code) };
+}
+
+async function responderDialogo(win, valor) {
+  await until(() => win.document.getElementById("prompt-dialog")?.open, 2000, 20);
+  if (valor === null) { win.document.getElementById("prompt-cancel").click(); return; }
+  win.document.getElementById("prompt-input").value = valor;
+  // Enter en el campo = envío implícito del formulario; requestSubmit() es ese mismo camino
+  // (un keydown sintético no dispara el envío implícito en ningún navegador).
+  win.document.getElementById("prompt-form").requestSubmit();
 }
 
 async function scenario(title, fn, prepare) {
@@ -209,11 +217,39 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
 
   await scenario("Listas, exportar e importar", async ({ win, ev }) => {
     await win.addFiles([wav(win, "a.wav", { mtime: 1 }), wav(win, "b.wav", { freq: 550, mtime: 2 }), wav(win, "c.wav", { freq: 660, mtime: 3 })]);
-    const p = win.createPlaylist();
+    const cancelCreate = win.createPlaylist();
+    await responderDialogo(win, null);
+    check("crear lista: cancelar no crea nada", (await cancelCreate) === null && ev("state.playlists.length") === 0);
+
+    // Escape: el navegador lanza «cancel» y cierra el <dialog> sin pasar por el formulario.
+    const escCreate = win.createPlaylist();
+    await until(() => win.document.getElementById("prompt-dialog")?.open, 2000, 20);
+    const dlg = win.document.getElementById("prompt-dialog");
+    win.document.getElementById("prompt-input").value = "No debe crearse";
+    dlg.dispatchEvent(new win.Event("cancel", { cancelable: true }));
+    dlg.close();
+    check("diálogo: Escape cancela y no crea nada", (await escCreate) === null && ev("state.playlists.length") === 0 && !dlg.open);
+
+    const createP = win.createPlaylist();
+    await until(() => win.document.getElementById("prompt-dialog")?.open, 2000, 20);
+    check("diálogo: foco en el campo", win.document.activeElement === win.document.getElementById("prompt-input"));
+    await responderDialogo(win, "Mi lista");
+    const p = await createP;
     check("crear lista", p && ev("state.playlists.length") === 1);
     win.togglePlaylistMember(p, ev("state.tracks[2]"));
     win.togglePlaylistMember(p, ev("state.tracks[0]"));
     win.setView(p.id);
+    const cancelRename = win.renamePlaylist();
+    await responderDialogo(win, null);
+    await cancelRename;
+    check("renombrar lista: cancelar mantiene el nombre", ev("state.playlists[0].name") === "Mi lista");
+    const doRename = win.renamePlaylist();
+    await responderDialogo(win, "Renombrada");
+    await doRename;
+    check("renombrar lista: aceptar cambia el nombre", ev("state.playlists[0].name") === "Renombrada");
+    const restoreRename = win.renamePlaylist();
+    await responderDialogo(win, "Mi lista");
+    await restoreRename;
     check("la lista muestra sus canciones en su orden", titles(ev, "listTracks(state.view)") === "c,a", titles(ev, "listTracks(state.view)"));
     win.moveTrack(1, 0);
     check("reordenar dentro de la lista", titles(ev, "listTracks(state.view)") === "a,c");
@@ -316,6 +352,16 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     check("temporizador: muestra la cuenta atrás", /⏲ 0:0\d/.test(ev("els['sleep-btn'].textContent")), ev("els['sleep-btn'].textContent"));
     await sleep(4000);
     check("temporizador: detiene la música y restaura el volumen", ev("media.paused") && ev("media.volume") === +ev("els.volume.value"), `paused=${ev("media.paused")} vol=${ev("media.volume")}`);
+
+    ev("els['sleep-btn'].click()");
+    ev("[...els.menu.querySelectorAll('button')].find(b => b.textContent.includes('Personalizado')).click()");
+    await responderDialogo(win, null);
+    check("temporizador personalizado: cancelar no lo activa", ev("sleep === null"));
+    ev("els['sleep-btn'].click()");
+    ev("[...els.menu.querySelectorAll('button')].find(b => b.textContent.includes('Personalizado')).click()");
+    await responderDialogo(win, "15");
+    check("temporizador personalizado: aceptar lo activa", ev("sleep !== null") && /⏲ 14:5\d|⏲ 15:00/.test(ev("els['sleep-btn'].textContent")), ev("els['sleep-btn'].textContent"));
+    ev("setSleep(null)");
 
     win.setCrossfade(2);
     const first = ev("media");
