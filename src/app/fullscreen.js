@@ -84,6 +84,7 @@ function syncFullscreenControls() {
   syncFsVolume();
   syncFsProgress();
   if (typeof syncSubButtons === "function") syncSubButtons();
+  if (typeof syncPipButtons === "function") syncPipButtons();
 }
 
 // Mantiene la barra y el estado de pantalla completa alineados con el DOM y la pista activa.
@@ -127,6 +128,9 @@ function wireFullscreen() {
   els["fs-seek"].addEventListener("input", () => seekToPercent(els["fs-seek"].value));
   els["fs-subs"].addEventListener("click", (e) => {
     if (typeof openSubtitlesMenu === "function") openSubtitlesMenu(e.currentTarget);
+  });
+  els["fs-pip"].addEventListener("click", () => {
+    if (typeof togglePictureInPicture === "function") togglePictureInPicture();
   });
   els["fs-exit"].addEventListener("click", toggleFullscreen);
 

@@ -239,8 +239,9 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .playlist li.active { background: var(--accent-soft); }
 .playlist li.active .t-name { color: var(--accent); }
 .thumb { width: 40px; height: 40px; border-radius: 6px; background: var(--tile) center / cover; flex: none; display: grid; place-items: center; color: var(--muted); }
-.thumb.video-thumb { position: relative; color: #fff; background-color: #090a0d; }
+.thumb.video-thumb { width: 64px; height: 36px; aspect-ratio: 16 / 9; position: relative; overflow: hidden; color: #fff; background-color: #090a0d; }
 .video-mark { font-size: .8rem; text-shadow: 0 1px 3px #000; }
+.video-duration { position: absolute; right: 3px; bottom: 2px; padding: 1px 4px; border-radius: 3px; background: #000c; color: #fff; font-size: .62rem; line-height: 1.15; font-variant-numeric: tabular-nums; }
 .t-text { flex: 1; min-width: 0; }
 .t-name, .t-sub, .t-warn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .t-name { font-size: .92rem; }

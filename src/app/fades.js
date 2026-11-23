@@ -84,6 +84,7 @@ function startCrossfade(secs) {
   if (typeof clearSubTracks === "function") clearSubTracks(out);
   xfade = { out, inn, secs, starting: true, timer: 0 };
   media = inn; // la canción nueva pasa a ser la activa
+  if (typeof syncPip === "function") syncPip();
   inn._gain.gain.cancelScheduledValues(0);
   inn._gain.gain.value = 0;
   step(1); // carga la siguiente en `inn` y la arranca en silencio

@@ -198,6 +198,33 @@ test("setSubs y add con subs: solo persiste campos permitidos en tracks sin toca
   assert.equal("subs" in rec, false, "lista vacía borra el campo subs");
 });
 
+test("setThumb y add con thumb: guarda Blob de miniatura en tracks sin tocar files y descarta valores inválidos", async () => {
+  const idb = createFakeIndexedDB();
+  const S = loadStorage(idb);
+  const f = song("video.mp4");
+  const thumb1 = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], { type: "image/jpeg" });
+  const id = await S.add(f, { kind: "video", thumb: thumb1 });
+  let [rec] = raw(idb, "tracks");
+  assert.equal(rec.thumb, thumb1);
+
+  let filePuts = 0;
+  idb.fail = (store) => { if (store === "files") filePuts++; return null; };
+  const thumb2 = new Blob([new Uint8Array([1, 2, 3, 4, 5])], { type: "image/jpeg" });
+  await S.setThumb(id, thumb2);
+  assert.equal(filePuts, 0);
+  [rec] = raw(idb, "tracks");
+  assert.equal(rec.thumb, thumb2);
+
+  // Un Blob vacío o un valor que no es Blob borra o no guarda el campo
+  await S.setThumb(id, new Blob([], { type: "image/jpeg" }));
+  [rec] = raw(idb, "tracks");
+  assert.equal("thumb" in rec, false);
+
+  const id2 = await S.add(song("v2.mp4"), { kind: "video", thumb: "no-es-blob" });
+  const rec2 = raw(idb, "tracks").find((r) => r.id === id2);
+  assert.equal("thumb" in rec2, false);
+});
+
 test("remove y clear borran en los dos almacenes", async () => {
   const idb = createFakeIndexedDB();
   const S = loadStorage(idb);
