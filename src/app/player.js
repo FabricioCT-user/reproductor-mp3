@@ -48,7 +48,7 @@ function updatePositionState() {
 function loadTrack(i, autoplay, view = "all") {
   if (xfade && !xfade.starting) endCrossfade(); // un cambio manual corta el fundido en curso
   const t = state.tracks[i];
-  if (!t) return;
+  if (!t || t.unavailable) return;
   state.index = i;
   state.playView = view;
   media.src = t.url;
@@ -80,11 +80,16 @@ async function ensureSound() {
 }
 
 // Pistas entre las que se navega: la vista desde la que se empezó a reproducir.
-const contextList = () => listTracks(state.playView);
+const contextList = () => listTracks(state.playView).filter((t) => !t.unavailable);
 
 function step(dir) {
   if (!state.tracks.length) return;
-  if (dir > 0 && state.queue.length) return loadTrack(state.tracks.indexOf(state.queue.shift()), true, state.playView);
+  if (dir > 0 && state.queue.length) {
+    while (state.queue.length) {
+      const queued = state.queue.shift();
+      if (!queued.unavailable) return loadTrack(state.tracks.indexOf(queued), true, state.playView);
+    }
+  }
   const list = contextList();
   const n = list.length;
   if (!n) return;
@@ -101,8 +106,9 @@ function step(dir) {
 }
 
 function togglePlay() {
-  if (!state.tracks.length) return;
-  if (state.index === -1) return loadTrack(0, true, "all");
+  const playable = state.tracks.findIndex((t) => !t.unavailable);
+  if (playable < 0) return;
+  if (state.index === -1 || state.tracks[state.index]?.unavailable) return loadTrack(playable, true, "all");
   media.paused ? play() : media.pause();
 }
 
