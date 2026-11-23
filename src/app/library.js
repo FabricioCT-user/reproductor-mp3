@@ -22,6 +22,22 @@ async function makeTrack(id, file, userLyrics = "", edits = null) {
   return t;
 }
 
+// Conserva en la biblioteca los metadatos de un registro cuyo archivo ya no está disponible.
+async function makeUnavailableTrack(rec) {
+  const meta = rec.meta || {};
+  const fileName = rec.name || "Archivo sin nombre";
+  const fallback = fileName.replace(/\.[^.]+$/, "");
+  const t = {
+    id: rec.id, file: null, fileBase: fallback.toLowerCase(), fileName,
+    size: rec.size || 0, key: `${fileName}|${rec.size || 0}|${rec.lastModified || 0}`,
+    dir: "", embeddedLyrics: null, userLyrics: rec.lyrics || "", url: null, unavailable: true,
+    orig: { title: meta.title || fallback, artist: meta.artist || "", album: meta.album || "", coverUrl: null },
+    edits: rec.edits || null,
+  };
+  applyEdits(t);
+  return t;
+}
+
 // ediciones: { title?, artist?, album?, cover?: Blob | false (quitar) } — solo los campos que difieren del archivo.
 function applyEdits(t) {
   const e = t.edits || {};
@@ -221,6 +237,7 @@ function render() {
     ...rows.map(({ t, pos }) => {
       const i = indexOf.get(t);
       const li = document.createElement("li");
+      li.classList.toggle("unavailable", t.unavailable);
       li.tabIndex = 0; // se puede recorrer con Tab y activar con Intro
       li.classList.toggle("active", t === current);
       li.classList.toggle("selected", state.selected.has(t));
@@ -243,7 +260,7 @@ function render() {
       const sub = document.createElement("div");
       sub.className = "t-sub";
       const qpos = state.queue.indexOf(t) + 1;
-      sub.textContent = (qpos ? `En cola #${qpos} · ` : "") + ([t.artist, t.album].filter(Boolean).join(" · ") || "Artista desconocido");
+      sub.textContent = (t.unavailable ? "No disponible · " : "") + (qpos ? `En cola #${qpos} · ` : "") + ([t.artist, t.album].filter(Boolean).join(" · ") || "Artista desconocido");
       text.append(name, sub);
 
       const btn = (cls, title, label, fn) => {
@@ -256,6 +273,7 @@ function render() {
       };
       const qb = btn("t-btn", qpos ? "Quitar de la cola" : "Reproducir a continuación", qpos ? "−" : "+", () => toggleQueue(t));
       const eb = btn("t-btn", "Editar etiquetas", "✎", () => openEditor(t));
+      qb.disabled = eb.disabled = !!t.unavailable;
       const pb = btn("t-btn", "Añadir a una lista", "♫", (b) => openMenu(b, t));
       const rm = pl
         ? btn("t-btn remove", "Quitar de esta lista", "✕", () => removeFromPlaylist(pl, t))
@@ -264,6 +282,7 @@ function render() {
       li.append(...(state.selecting ? [check] : []), thumb, text, qb, pb, eb, rm);
       li.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target === li) li.click(); });
       li.addEventListener("click", (e) => {
+        if (t.unavailable) { toast("Este archivo no está disponible", 4000); return; }
         if (state.selecting) return toggleSelect(t, shown, e.shiftKey);
         if (e.ctrlKey || e.metaKey) { setSelecting(true); return toggleSelect(t, shown, false); } // atajo para entrar en el modo
         loadTrack(i, true, state.view);
