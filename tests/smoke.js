@@ -1140,6 +1140,185 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     e2("media.pause()");
   });
 
+  await scenario("Miniaturas de video", async ({ frame, win, ev }) => {
+    // Video cuyos primeros ~0,5 s son negros y el resto brillante (para probar también el salto si el fotograma en 10 % es casi negro).
+    async function makeDarkStartWebm(name, seconds = 2.4) {
+      const canvas = win.document.createElement("canvas");
+      canvas.width = 64;
+      canvas.height = 36;
+      const ctx = canvas.getContext("2d");
+      const t0 = Date.now();
+      const paint = () => {
+        const elapsed = (Date.now() - t0) / 1000;
+        ctx.fillStyle = elapsed < 0.5 ? "#000000" : "#40b8ff";
+        ctx.fillRect(0, 0, 64, 36);
+      };
+      paint();
+      const timer = win.setInterval(paint, 50);
+      const stream = canvas.captureStream(20);
+      const mime = "video/webm";
+      const rec = win.MediaRecorder.isTypeSupported(mime) ? new win.MediaRecorder(stream, { mimeType: mime }) : new win.MediaRecorder(stream);
+      const chunks = [];
+      rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+      const stopped = new Promise((r) => { rec.onstop = r; });
+      rec.start();
+      await sleep(seconds * 1000);
+      rec.stop();
+      await stopped;
+      win.clearInterval(timer);
+      stream.getTracks().forEach((t) => t.stop());
+      return new win.File(chunks, name, { type: mime, lastModified: 501 });
+    }
+
+    // MP4 con pista de video (hdlr="vide", tkhd 320×180, mvhd 125 s) y átomo covr JPEG.
+    function makeMp4WithCovr(name) {
+      const u32 = (n) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
+      const u16 = (n) => [(n >>> 8) & 255, n & 255];
+      const str = (s) => [...s].map((c) => c.charCodeAt(0));
+      const cat = (...parts) => Uint8Array.from(parts.flatMap((p) => [...p]));
+      const box = (type, ...content) => { const b = cat(...content); return cat(u32(8 + b.length), str(type), b); };
+      const mvhd = box("mvhd", u32(0), u32(0), u32(0), u32(1000), u32(125000), new Uint8Array(80));
+      const matrix = cat(u32(0x00010000), u32(0), u32(0), u32(0), u32(0x00010000), u32(0), u32(0), u32(0), u32(0x40000000));
+      const tkhd = box("tkhd", u32(3), u32(0), u32(0), u32(1), u32(0), u32(125000), new Uint8Array(8), u16(0), u16(0), u16(0), u16(0), matrix, u32(320 << 16), u32(180 << 16));
+      const hdlr = box("hdlr", u32(0), u32(0), str("vide"), new Uint8Array(12), [0]);
+      const trak = box("trak", tkhd, box("mdia", hdlr));
+      const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 0xff, 0xd9]);
+      const covr = box("covr", box("data", u32(13), u32(0), jpegBytes));
+      const udta = box("udta", box("meta", u32(0), box("ilst", covr)));
+      return new win.File([box("ftyp", str("isom"), u32(0)), box("moov", mvhd, trak, udta)], name, { type: "video/mp4", lastModified: 502 });
+    }
+
+    const createdUrls = [];
+    const revokedUrls = [];
+    const realCreate = win.URL.createObjectURL.bind(win.URL);
+    const realRevoke = win.URL.revokeObjectURL.bind(win.URL);
+    win.URL.createObjectURL = (obj) => { const u = realCreate(obj); createdUrls.push({ u, obj }); return u; };
+    win.URL.revokeObjectURL = (u) => { revokedUrls.push(u); return realRevoke(u); };
+
+    let captureCalls = 0;
+    let activeCaptures = 0;
+    let maxActiveCaptures = 0;
+    const realCapture = win.captureVideoThumb;
+    win.captureVideoThumb = async (...a) => {
+      captureCalls++;
+      activeCaptures++;
+      maxActiveCaptures = Math.max(maxActiveCaptures, activeCaptures);
+      try {
+        return await realCapture(...a);
+      } finally {
+        activeCaptures--;
+      }
+    };
+
+    const darkStartVideo = await makeDarkStartWebm("sin-covr.webm", 2.4);
+    const secondVideo = await makeWebm(win, "segundo.webm", { withVideo: true, seconds: 1.4, mtime: 504 });
+    const covrVideo = makeMp4WithCovr("con-covr.mp4");
+    const audioTrack = wav(win, "cancion.wav", { seconds: 2, mtime: 503 });
+
+    await win.addFiles([darkStartVideo, secondVideo, covrVideo, audioTrack]);
+
+    // Esperar a que la cola en segundo plano termine las miniaturas de los dos videos sin covr.
+    const thumbReady = await until(() => ev("state.tracks[0]?.thumb instanceof Blob && state.tracks[0].thumb.size > 0 && state.tracks[1]?.thumb instanceof Blob && state.tracks[1].thumb.size > 0"), 12000);
+    const t0Thumb = ev("state.tracks[0]?.thumb");
+    check("miniaturas: tras importar un video sin covr, thumb es un Blob image/jpeg no vacío",
+      thumbReady && t0Thumb instanceof win.Blob && t0Thumb.type === "image/jpeg" && t0Thumb.size > 0,
+      `type=${t0Thumb?.type} size=${t0Thumb?.size}`);
+    check("miniaturas: la cola procesa los videos de uno en uno en segundo plano",
+      maxActiveCaptures === 1 && captureCalls === 2,
+      `maxActive=${maxActiveCaptures} calls=${captureCalls}`);
+
+    // Comprobar que el fotograma capturado mide 320 px de ancho y que evitó el inicio negro (luminancia media > 16).
+    if (t0Thumb instanceof win.Blob && t0Thumb.size > 0) {
+      const bmp = await win.createImageBitmap(t0Thumb);
+      const c = win.document.createElement("canvas");
+      c.width = bmp.width;
+      c.height = bmp.height;
+      const cx = c.getContext("2d");
+      cx.drawImage(bmp, 0, 0);
+      const luma = win.meanLuminance(cx.getImageData(0, 0, c.width, c.height).data);
+      check("miniaturas: canvas de 320 px de ancho y evita fotograma casi negro probando otro punto",
+        bmp.width === 320 && luma >= 16,
+        `width=${bmp.width} height=${bmp.height} luma=${luma.toFixed(1)}`);
+    } else {
+      check("miniaturas: canvas de 320 px de ancho y evita fotograma casi negro probando otro punto", false, "sin blob");
+    }
+
+    // En la web, el blob URL temporal del <video> auxiliar se revoca al terminar.
+    const fileUrls = createdUrls.filter((x) => x.obj === darkStartVideo).map((x) => x.u);
+    check("miniaturas: en la web el blob URL del <video> auxiliar se revoca al terminar",
+      fileUrls.length >= 2 && fileUrls.some((u) => revokedUrls.includes(u)),
+      `fileUrls=${fileUrls.length} revoked=${revokedUrls.length}`);
+
+    // Si hay covr, se usa y no se captura fotograma con <video>.
+    await until(() => ev("!!state.tracks[2]?.coverUrl"), 3000);
+    check("miniaturas: si hay covr se usa y no genera fotograma con <video>",
+      captureCalls === 2 && ev("state.tracks[2].meta.hasCover === true && state.tracks[2].thumb === null && !!state.tracks[2].orig.coverUrl"),
+      `captureCalls=${captureCalls} hasCover=${ev("state.tracks[2]?.meta?.hasCover")}`);
+
+    // En Electron (LinkedFile) usa __media/<id> sin crear blob URL, y respeta el tiempo límite por video.
+    const linkedProbe = ev("new LinkedFile({ name: 'enlazado.mp4', size: 1024, type: 'video/mp4' }, { linkId: 'a'.repeat(32) })");
+    const urlsBeforeLinked = createdUrls.length;
+    const linkedRes = await realCapture({ file: linkedProbe, meta: { duration: 20 } }, 150);
+    check("miniaturas: LinkedFile usa __media/<id> sin crear blob URL y corta al superar el tiempo límite",
+      linkedRes === null && createdUrls.length === urlsBeforeLinked,
+      `res=${linkedRes} urlsDelta=${createdUrls.length - urlsBeforeLinked}`);
+
+    // En la lista: miniatura 16:9 en lugar del cuadrado para los videos, con la duración encima.
+    const uiInfo = ev(`(() => {
+      const items = [...els.playlist.querySelectorAll("li:not(.empty)")];
+      const v0 = items[0]?.querySelector(".thumb");
+      const v2 = items[2]?.querySelector(".thumb");
+      const a0 = items[3]?.querySelector(".thumb");
+      return {
+        v0Ratio: v0 ? v0.offsetWidth / v0.offsetHeight : 0,
+        v0Bg: v0?.style.backgroundImage || "",
+        v0Dur: v0?.querySelector(".video-duration")?.textContent || "",
+        v2Dur: v2?.querySelector(".video-duration")?.textContent || "",
+        a0Square: a0 ? a0.offsetWidth === 40 && a0.offsetHeight === 40 : false,
+      };
+    })()`);
+    check("miniaturas: en la lista los videos tienen miniatura 16:9 (no cuadrada) con la duración encima",
+      Math.abs(uiInfo.v0Ratio - 16 / 9) < 0.06 && uiInfo.v0Bg.includes("blob:") && /^\d+:\d{2}$/.test(uiInfo.v0Dur)
+      && uiInfo.v2Dur === "2:05" && uiInfo.a0Square,
+      JSON.stringify(uiInfo));
+
+    // Se guarda en tracks.thumb en IndexedDB.
+    const savedInDb = await until(async () => {
+      const db = await openDbAsIs();
+      const rec = (await getAll(db, "tracks")).find((r) => r.name === "sin-covr.webm");
+      db.close();
+      return rec?.thumb instanceof Blob && rec.thumb.type === "image/jpeg" && rec.thumb.size > 0;
+    }, 3000);
+    check("miniaturas: se guarda en tracks.thumb en IndexedDB", savedInDb);
+
+    // Al recargar, no se regenera si ya existe en tracks.thumb.
+    const loaded = new Promise((r) => frame.addEventListener("load", r, { once: true }));
+    frame.contentWindow.location.reload();
+    await loaded;
+    await waitReady(frame.contentWindow);
+    const w2 = frame.contentWindow;
+    const e2 = (c) => w2.eval(c);
+    let regenCalls = 0;
+    const realCap2 = w2.captureVideoThumb;
+    w2.captureVideoThumb = (...a) => { regenCalls++; return realCap2(...a); };
+    await sleep(300);
+    check("miniaturas: al recargar se restaura tracks.thumb y no se regenera",
+      regenCalls === 0 && e2("state.tracks[0]?.thumb instanceof Blob && state.tracks[0].thumb.type === 'image/jpeg' && !!state.tracks[0].thumbUrl && !!state.tracks[0].coverUrl"),
+      `regenCalls=${regenCalls}`);
+
+    // Al quitar una pista, se revocan sus URL (archivo y miniatura).
+    const revokedOnRemove = [];
+    const realRev2 = w2.URL.revokeObjectURL.bind(w2.URL);
+    w2.URL.revokeObjectURL = (u) => { revokedOnRemove.push(u); return realRev2(u); };
+    const trackUrl = e2("state.tracks[0].url");
+    const thumbUrl = e2("state.tracks[0].thumbUrl");
+    e2("removeTrack(0)");
+    check("miniaturas: al quitar una pista se revocan sus URL (pista y miniatura)",
+      !!trackUrl && !!thumbUrl && revokedOnRemove.includes(trackUrl) && revokedOnRemove.includes(thumbUrl),
+      `revoked=${JSON.stringify(revokedOnRemove)}`);
+    w2.URL.revokeObjectURL = realRev2;
+  });
+
   /* ---------- Resultado ---------- */
   const fails = results.filter((r) => !r.ok);
   document.getElementById("summary").textContent = fails.length ? `${fails.length} FALLO(S) de ${results.length}` : `Todo correcto: ${results.length} comprobaciones`;

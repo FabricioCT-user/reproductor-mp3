@@ -108,6 +108,7 @@ const Storage = (() => {
         const subs = cleanSubs(extra.subs);
         if (subs.length) rec.subs = subs;
       }
+      if (extra.thumb instanceof Blob && extra.thumb.size > 0) rec.thumb = extra.thumb;
       tracks.add(rec).onsuccess = (e) => (out.result = e.target.result);
       return;
     }
@@ -118,6 +119,8 @@ const Storage = (() => {
       if (key === "subs") {
         const subs = cleanSubs(value);
         if (subs.length) rec.subs = subs;
+      } else if (key === "thumb") {
+        if (value instanceof Blob && value.size > 0) rec.thumb = value;
       } else {
         rec[key] = value;
       }
@@ -174,6 +177,7 @@ const Storage = (() => {
       const cleaned = cleanSubs(subs);
       return setField(id, "subs", cleaned.length ? cleaned : null);
     },
+    setThumb: (id, thumb) => setField(id, "thumb", thumb instanceof Blob && thumb.size > 0 ? thumb : null),
     setMeta,
     add,
     getFile,

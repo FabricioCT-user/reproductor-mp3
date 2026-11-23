@@ -84,7 +84,7 @@ function assessTrackCompat(t) {
   t.ac3Unsupported = res.ac3Unsupported;
 }
 
-async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = null, savedSubs = []) {
+async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = null, savedSubs = [], savedThumb = null) {
   const meta = cachedMeta || await Tags.read(file);
   let probedCached = false;
   if (isMp4File(file) && (!cachedMeta || cachedMeta.codecs == null)) {
@@ -107,6 +107,8 @@ async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = n
   if (probedCached && id != null) Storage.setMeta(id, savedMeta, META_VERSION).catch(() => {});
   const fallback = file.name.replace(/\.[^.]+$/, "");
   const subs = typeof normalizeSubs === "function" ? normalizeSubs(savedSubs) : [];
+  const thumb = savedThumb instanceof Blob && savedThumb.size > 0 ? savedThumb : null;
+  const thumbUrl = thumb ? URL.createObjectURL(thumb) : null;
   const t = {
     id,
     file,                 // el archivo original, para poder generar copias con etiquetas
@@ -121,6 +123,8 @@ async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = n
     subs,
     subIndex: subs.length ? 0 : -1,
     _lastSubIndex: 0,
+    thumb,
+    thumbUrl,
     url: file instanceof LinkedFile ? file.url : URL.createObjectURL(file),
     linkId: file instanceof LinkedFile ? file.linkId : null,
     // Datos del archivo; lo que se muestra (title, artist, album, coverUrl) sale de aplicar las ediciones encima.
@@ -138,11 +142,14 @@ async function makeUnavailableTrack(rec) {
   const fileName = rec.name || "Archivo sin nombre";
   const fallback = fileName.replace(/\.[^.]+$/, "");
   const subs = typeof normalizeSubs === "function" ? normalizeSubs(rec.subs) : [];
+  const thumb = rec.thumb instanceof Blob && rec.thumb.size > 0 ? rec.thumb : null;
+  const thumbUrl = thumb ? URL.createObjectURL(thumb) : null;
   const t = {
     id: rec.id, file: null, fileBase: fallback.toLowerCase(), fileName,
     size: rec.size || 0, key: `${fileName}|${rec.size || 0}|${rec.lastModified || 0}`,
     meta,
     dir: "", embeddedLyrics: null, userLyrics: rec.lyrics || "", subs, subIndex: subs.length ? 0 : -1, _lastSubIndex: 0,
+    thumb, thumbUrl,
     url: null, unavailable: true,
     linkId: rec.source === "link" ? rec.linkId : null,
     orig: { title: meta.title || fallback, artist: meta.artist || "", album: meta.album || "", coverUrl: null },
@@ -168,11 +175,15 @@ function applyEdits(t) {
   } else {
     if (t._editCoverUrl) URL.revokeObjectURL(t._editCoverUrl);
     t._editCoverUrl = t._editCoverBlob = null;
-    t.coverUrl = e.cover === false ? null : t.orig.coverUrl;
+    t.coverUrl = e.cover === false ? null : (t.orig.coverUrl || t.thumbUrl);
   }
 }
 
-const revokeCovers = (t) => [t.orig.coverUrl, t._editCoverUrl].forEach((u) => u && URL.revokeObjectURL(u));
+const revokeCovers = (t) => {
+  [t.orig?.coverUrl, t._editCoverUrl, t.thumbUrl].forEach((u) => u && URL.revokeObjectURL(u));
+  if (t.orig) t.orig.coverUrl = null;
+  t._editCoverUrl = t.thumbUrl = t.coverUrl = null;
+};
 
 // Lee la carátula una sola vez por pista y comparte la lectura entre la lista, el reproductor y el editor.
 function loadCover(t) {
@@ -189,6 +200,178 @@ function loadCover(t) {
     render();
   }).catch(() => {}).finally(() => { t._coverPromise = null; });
   return t._coverPromise;
+}
+
+// Miniaturas de video (T5.2): si el video no lleva carátula (covr), se captura un fotograma con un <video muted>
+// auxiliar FUERA del grafo de Web Audio, de uno en uno en segundo plano.
+let THUMB_TIMEOUT_MS = 8000;
+const thumbQueue = [];
+let thumbBusy = false;
+
+const scheduleThumbIdle = (fn) => {
+  if (typeof requestIdleCallback === "function") requestIdleCallback(() => fn(), { timeout: 500 });
+  else setTimeout(fn, 0);
+};
+
+async function captureVideoThumb(t, timeoutMs = THUMB_TIMEOUT_MS) {
+  const file = t?.file;
+  if (!file) return null;
+  const isLinked = file instanceof LinkedFile && !!file.linkId;
+  const tempUrl = isLinked ? null : URL.createObjectURL(file);
+  const srcUrl = isLinked ? file.url : tempUrl;
+  const video = document.createElement("video");
+  video.muted = true;
+  video.defaultMuted = true;
+  video.playsInline = true;
+  video.preload = "auto";
+
+  let timedOut = false;
+  let onAbort = null;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    onAbort?.();
+  }, timeoutMs);
+
+  const waitEvent = (okEvent, maxMs = timeoutMs) => new Promise((resolve, reject) => {
+    if (timedOut) { reject(new Error("timeout")); return; }
+    let stepTimer = 0;
+    const cleanup = () => {
+      if (stepTimer) clearTimeout(stepTimer);
+      video.removeEventListener(okEvent, onOk);
+      video.removeEventListener("error", onErr);
+      if (onAbort === abort) onAbort = null;
+    };
+    const onOk = () => { cleanup(); resolve(); };
+    const onErr = () => { cleanup(); reject(new Error("error")); };
+    const abort = () => { cleanup(); reject(new Error("timeout")); };
+    onAbort = abort;
+    if (maxMs < timeoutMs) stepTimer = setTimeout(abort, maxMs);
+    video.addEventListener(okEvent, onOk, { once: true });
+    video.addEventListener("error", onErr, { once: true });
+  });
+
+  try {
+    const loaded = waitEvent("loadeddata");
+    video.src = srcUrl;
+    video.load();
+    await loaded;
+    if (timedOut || video.videoWidth <= 0 || video.videoHeight <= 0) return null;
+
+    let dur = Number.isFinite(video.duration) && video.duration > 0 ? video.duration
+      : Number.isFinite(t.meta?.duration) && t.meta.duration > 0 ? t.meta.duration : null;
+
+    // En WebM generados por MediaRecorder la duración inicial suele ser Infinity; saltar al final en un Blob local la resuelve.
+    if (dur === null && !isLinked) {
+      try {
+        const probed = waitEvent("seeked", Math.min(1500, timeoutMs));
+        video.currentTime = 1e6;
+        await probed;
+        if (Number.isFinite(video.duration) && video.duration > 0) dur = video.duration;
+      } catch { /* si no se resuelve, se usan los puntos por defecto */ }
+    }
+    if (timedOut) return null;
+
+    const width = THUMB_WIDTH;
+    const height = Math.max(1, Math.round((width * video.videoHeight) / video.videoWidth));
+    const canvas = Object.assign(document.createElement("canvas"), { width, height });
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+
+    const points = thumbSeekTimes(dur);
+    let drew = false;
+    for (const target of points) {
+      if (timedOut) return null;
+      if (Math.abs(video.currentTime - target) > 1e-4 || video.readyState < 2) {
+        const seeked = waitEvent("seeked");
+        video.currentTime = target;
+        await seeked;
+      }
+      if (timedOut) return null;
+      ctx.drawImage(video, 0, 0, width, height);
+      drew = true;
+      let rgba = null;
+      try { rgba = ctx.getImageData(0, 0, width, height).data; } catch {}
+      if (!rgba || !isDarkFrame(rgba, THUMB_DARK_LUMA)) break;
+    }
+    if (!drew || timedOut) return null;
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", THUMB_QUALITY));
+    if (timedOut || !(blob instanceof Blob) || blob.size <= 0) return null;
+    const finalDur = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : dur;
+    return { blob, duration: finalDur, width: video.videoWidth, height: video.videoHeight };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+    onAbort = null;
+    try {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    } catch {}
+    if (tempUrl) URL.revokeObjectURL(tempUrl);
+  }
+}
+
+async function generateThumbForTrack(t) {
+  if (!t || !state.tracks.includes(t) || t.unavailable || !t.file) return null;
+  if (t.meta?.kind !== "video" || t.meta?.hasCover || (t.thumb instanceof Blob && t.thumb.size > 0)) return t.thumb || null;
+  t._thumbDone = true;
+  const res = await captureVideoThumb(t);
+  if (!res?.blob || !state.tracks.includes(t)) return null;
+  if (t.meta?.kind !== "video" || t.meta?.hasCover || (t.thumb instanceof Blob && t.thumb.size > 0)) return t.thumb || null;
+  if (t.thumbUrl) URL.revokeObjectURL(t.thumbUrl);
+  t.thumb = res.blob;
+  t.thumbUrl = URL.createObjectURL(res.blob);
+  let metaUpdated = false;
+  if (Number.isFinite(res.duration) && res.duration > 0 && (!Number.isFinite(t.meta.duration) || t.meta.duration <= 0)) {
+    t.meta.duration = res.duration;
+    metaUpdated = true;
+  }
+  if (res.width > 0 && res.height > 0 && (!t.meta.width || !t.meta.height)) {
+    t.meta.width = res.width;
+    t.meta.height = res.height;
+    metaUpdated = true;
+  }
+  applyEdits(t);
+  if (t.id != null) {
+    Storage.setThumb(t.id, res.blob).catch(() => {});
+    if (metaUpdated) Storage.setMeta(t.id, t.meta, META_VERSION).catch(() => {});
+  }
+  if (state.tracks[state.index] === t) showMeta(t);
+  render();
+  return res.blob;
+}
+
+function pumpThumbQueue() {
+  if (thumbBusy || !thumbQueue.length) return;
+  thumbBusy = true;
+  scheduleThumbIdle(async () => {
+    const t = thumbQueue.shift();
+    if (t) t._thumbQueued = false;
+    try {
+      if (t && state.tracks.includes(t) && !t.unavailable && t.file && t.meta?.kind === "video" && !t.meta?.hasCover && !t.thumb) {
+        await generateThumbForTrack(t);
+      }
+    } finally {
+      thumbBusy = false;
+      if (thumbQueue.length) pumpThumbQueue();
+    }
+  });
+}
+
+function queueThumb(t) {
+  if (!t || t.unavailable || !t.file || t.meta?.kind !== "video" || t.meta?.hasCover) return;
+  if ((t.thumb instanceof Blob && t.thumb.size > 0) || t._thumbDone || t._thumbQueued) return;
+  t._thumbQueued = true;
+  thumbQueue.push(t);
+  pumpThumbQueue();
+}
+
+function dequeueThumb(t) {
+  const idx = thumbQueue.indexOf(t);
+  if (idx >= 0) thumbQueue.splice(idx, 1);
+  if (t) t._thumbQueued = false;
 }
 
 async function addFiles(fileList) {
@@ -225,6 +408,7 @@ async function addFiles(fileList) {
       try { id = await Storage.add(src, { meta: track.meta, metaVersion: META_VERSION, ...extra }); track.id = id; }
       catch (e) { storeFail = e?.name === "QuotaExceededError" ? "quota" : "other"; }
       state.tracks.push(track);
+      queueThumb(track);
       if (link?.companionSubs?.length) linkedSubs.push({ track, items: link.companionSubs });
       added++;
       if (track.compatWarning) { compatWarned++; lastCompatReason = track.compatWarning; }
@@ -398,6 +582,7 @@ function removeTrack(i) {
     Storage.remove(t.id).catch(() => {});
   }
   forgetLink(t);
+  dequeueThumb(t);
   URL.revokeObjectURL(t.url);
   revokeCovers(t);
 
@@ -419,7 +604,7 @@ async function clearLibrary() {
   endCrossfade();
   media.pause();
   media.removeAttribute("src");
-  state.tracks.forEach((t) => { URL.revokeObjectURL(t.url); revokeCovers(t); forgetLink(t); });
+  state.tracks.forEach((t) => { dequeueThumb(t); URL.revokeObjectURL(t.url); revokeCovers(t); forgetLink(t); });
   state.tracks = [];
   state.queue = [];
   state.playlists.forEach((p) => (p.ids = []));
@@ -481,8 +666,15 @@ function render() {
         playMark.setAttribute("aria-hidden", "true");
         playMark.textContent = "▶";
         thumb.append(playMark);
+        if (Number.isFinite(t.meta.duration) && t.meta.duration > 0) {
+          const dur = document.createElement("span");
+          dur.className = "video-duration";
+          dur.textContent = formatTime(t.meta.duration);
+          thumb.append(dur);
+        }
       }
       if (t.meta?.hasCover && t.edits?.cover !== false) loadCover(t);
+      else if (t.meta?.kind === "video") queueThumb(t);
       if (t.coverUrl) thumb.style.backgroundImage = `url(${t.coverUrl})`;
       else if (t.meta?.kind !== "video") {
         thumb.textContent = "♪";

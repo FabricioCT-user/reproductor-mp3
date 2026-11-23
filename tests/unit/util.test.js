@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { load, plain } = require("./helpers");
 
 const g = load("util.js");
-const U = Object.fromEntries(["clamp", "cleanPlaylists", "formatTime", "isLrc", "isSubtitle", "isCompanion", "isListFile", "isAudio", "isVideo", "isMedia", "subtitleLabel", "fileKey", "pathOf", "dirOf", "byPath", "safeName", "fmtFreq", "fmtGain", "fmtSpeed", "fmtClock", "extOf", "explainFailure", "checkCompatibility"].map((n) => [n, g(n)]));
+const U = Object.fromEntries(["clamp", "cleanPlaylists", "formatTime", "isLrc", "isSubtitle", "isCompanion", "isListFile", "isAudio", "isVideo", "isMedia", "subtitleLabel", "fileKey", "pathOf", "dirOf", "byPath", "safeName", "fmtFreq", "fmtGain", "fmtSpeed", "fmtClock", "extOf", "explainFailure", "checkCompatibility", "thumbSeekTimes", "meanLuminance", "isDarkFrame"].map((n) => [n, g(n)]));
 const file = (name, type = "", extra = {}) => ({ name, type, size: 10, lastModified: 5, ...extra });
 
 test("isAudio: por tipo MIME o por extensión", () => {
@@ -250,4 +250,42 @@ test("checkCompatibility y explainFailure: CodecID de Matroska/WebM con MIME equ
   // CodecID desconocido no falla falsamente en pre-check, pero explainFailure lo nombra si falla al reproducir
   assert.equal(U.checkCompatibility({ kind: "video", ext: "mkv", mime: "video/x-matroska", codecs: "V_RARO, A_AAC" }, electronCanPlay).ok, true);
   assert.match(U.explainFailure("video", "mkv", "V_RARO"), /V_RARO/);
+});
+
+test("thumbSeekTimes: empieza en min(10 % de la duración, 30 s) y ofrece puntos alternativos", () => {
+  const short = plain(U.thumbSeekTimes(100));
+  assert.equal(short[0], 10);
+  assert.ok(short.length > 1 && short[1] > short[0]);
+
+  const long = plain(U.thumbSeekTimes(600));
+  assert.equal(long[0], 30);
+  assert.deepEqual(long, [30, 150, 300, 450]);
+
+  const clip = plain(U.thumbSeekTimes(2.6));
+  assert.equal(clip[0], 0.26);
+  assert.ok(clip.every((t) => t >= 0 && t < 2.6));
+
+  const unknown = plain(U.thumbSeekTimes(NaN));
+  assert.ok(unknown.length > 0 && unknown[0] > 0);
+  assert.deepEqual(plain(U.thumbSeekTimes(Infinity)), unknown);
+});
+
+test("meanLuminance e isDarkFrame: detecta fotogramas casi negros", () => {
+  const black = new Uint8ClampedArray(16 * 4);
+  for (let i = 3; i < black.length; i += 4) black[i] = 255;
+  assert.equal(U.meanLuminance(black), 0);
+  assert.equal(U.isDarkFrame(black), true);
+
+  const nearBlack = new Uint8ClampedArray(16 * 4);
+  for (let i = 0; i < nearBlack.length; i += 4) {
+    nearBlack[i] = 8; nearBlack[i + 1] = 8; nearBlack[i + 2] = 8; nearBlack[i + 3] = 255;
+  }
+  assert.equal(U.isDarkFrame(nearBlack), true);
+
+  const bright = new Uint8ClampedArray(16 * 4);
+  for (let i = 0; i < bright.length; i += 4) {
+    bright[i] = 60; bright[i + 1] = 140; bright[i + 2] = 220; bright[i + 3] = 255;
+  }
+  assert.ok(U.meanLuminance(bright) > 100);
+  assert.equal(U.isDarkFrame(bright), false);
 });
