@@ -37,6 +37,15 @@ function fakeMp3(win, name, title) {
   return new win.File([head, frame, wavBytes({ seconds: 1 })], name, { type: "audio/mpeg", lastModified: 77 });
 }
 
+function fakeMp3WithCover(win, name) {
+  const enc = new TextEncoder();
+  const image = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+  const picture = new Uint8Array([0, ...enc.encode("image/png"), 0, 3, 0, ...image]);
+  const frame = new Uint8Array([...enc.encode("APIC"), 0, 0, 0, picture.length, 0, 0, ...picture]);
+  const head = new Uint8Array([73, 68, 51, 3, 0, 0, 0, 0, 0, frame.length]);
+  return new win.File([head, frame, wavBytes({ seconds: 1 })], name, { type: "audio/mpeg", lastModified: 78 });
+}
+
 /* ---------- Marco de pruebas ---------- */
 
 // Se vacían los almacenes en vez de borrar la base: borrarla se queda bloqueada si otra pestaña la tiene abierta.
@@ -427,6 +436,14 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     const rec = (await getAll(db, "tracks")).find((r) => r.name === "cache.wav");
     db.close();
     check("importación guarda los campos de meta y metaVersion", rec?.metaVersion === 1 && ["title", "artist", "album", "lyrics", "hasCover", "duration", "kind", "width", "height", "codecs"].every((k) => k in rec.meta), JSON.stringify(rec?.meta));
+  });
+
+  await scenario("Carátula perezosa en reproductor y Media Session", async ({ win, ev }) => {
+    await win.addFiles([fakeMp3WithCover(win, "portada.mp3")]);
+    const ready = await until(() => ev("!!state.tracks[0].coverUrl && !!els.cover.style.backgroundImage"));
+    const artwork = ev("navigator.mediaSession?.metadata?.artwork || []");
+    check("la carátula perezosa aparece en el reproductor", ready && ev("els.cover.classList.contains('has-art')"), ev("els.cover.style.backgroundImage"));
+    check("la carátula perezosa llega a Media Session", artwork.length > 0 && artwork[0].src === ev("state.tracks[0].coverUrl"), JSON.stringify(artwork));
   });
 
   await scenario("Robustez: un registro dañado no impide cargar el resto", async ({ ev }) => {

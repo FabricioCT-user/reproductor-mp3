@@ -69,6 +69,22 @@ function applyEdits(t) {
 
 const revokeCovers = (t) => [t.orig.coverUrl, t._editCoverUrl].forEach((u) => u && URL.revokeObjectURL(u));
 
+// Lee la carátula una sola vez por pista y comparte la lectura entre la lista, el reproductor y el editor.
+function loadCover(t) {
+  if (!t || !state.tracks.includes(t) || !t.file || !t.meta?.hasCover || t.edits?.cover === false) return Promise.resolve();
+  if (t._coverLoaded) return Promise.resolve();
+  if (t._coverPromise) return t._coverPromise;
+  t._coverPromise = Tags.readCover(t.file).then((cover) => {
+    if (!state.tracks.includes(t)) return;
+    t._coverLoaded = true;
+    if (cover) t.orig.coverUrl = URL.createObjectURL(cover);
+    applyEdits(t);
+    if (state.tracks[state.index] === t) showMeta(t);
+    render();
+  }).catch(() => {}).finally(() => { t._coverPromise = null; });
+  return t._coverPromise;
+}
+
 async function addFiles(fileList) {
   const all = [...fileList];
   // Con carpetas, ordena por ruta para que los álbumes queden en orden (01, 02, … 10).
@@ -259,18 +275,10 @@ function render() {
 
       const thumb = document.createElement("div");
       thumb.className = "thumb";
+      if (t.meta?.hasCover && t.edits?.cover !== false) loadCover(t);
       if (t.coverUrl) thumb.style.backgroundImage = `url(${t.coverUrl})`;
       else {
         thumb.textContent = "♪";
-        if (t.meta?.hasCover && t.edits?.cover !== false && t.file && !t._coverPromise && !t._coverLoaded) {
-          t._coverPromise = Tags.readCover(t.file).then((cover) => {
-            t._coverLoaded = true;
-            if (!cover) return;
-            t.orig.coverUrl = URL.createObjectURL(cover);
-            applyEdits(t);
-            if (t.coverUrl) { thumb.textContent = ""; thumb.style.backgroundImage = `url(${t.coverUrl})`; }
-          }).catch(() => {}).finally(() => { t._coverPromise = null; });
-        }
       }
 
       const text = document.createElement("div");

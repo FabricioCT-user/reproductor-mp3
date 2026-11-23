@@ -6,6 +6,7 @@ const ICON_PAUSE = '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
 
 // Título, artista y carátula (lo que cambia al editar etiquetas sin reiniciar la reproducción).
 function showMeta(t) {
+  if (t) loadCover(t);
   els.title.textContent = t ? t.title : "Nada en reproducción";
   els.artist.textContent = t ? [t.artist, t.album].filter(Boolean).join(" · ") || "Artista desconocido" : "Añade música para empezar";
   els.cover.style.backgroundImage = t?.coverUrl ? `url(${t.coverUrl})` : "";
