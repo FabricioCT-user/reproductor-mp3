@@ -25,7 +25,9 @@ const setVolume = (v) => decks.forEach((d) => (d.volume = v));
 const setMuted = (m) => decks.forEach((d) => (d.muted = m));
 
 const els = Object.fromEntries(
-  ["dropzone", "backdrop", "cover", "title", "artist", "viz", "seek", "current", "duration", "play", "play-icon",
+  ["dropzone", "backdrop", "cover", "stage", "fs-controls", "fs-current", "fs-seek", "fs-duration", "fs-play", "fs-play-icon",
+   "fs-mute", "fs-volume", "fs-exit",
+   "title", "artist", "viz", "seek", "current", "duration", "play", "play-icon",
    "prev", "next", "shuffle", "repeat", "mute", "volume", "filter", "file-input", "clear", "playlist",
    "view", "media-filter", "pl-new", "pl-more", "pl-import", "pl-rename", "pl-delete", "menu",
    "eq-toggle", "eq-panel", "eq-preset", "eq-on", "eq-reset", "eq-bands",

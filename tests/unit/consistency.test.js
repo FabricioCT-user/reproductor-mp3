@@ -86,7 +86,7 @@ test("la CSP autoriza exactamente el script en línea del tema (hash al día)", 
 });
 
 test("los botones que solo tienen icono tienen nombre accesible", () => {
-  for (const id of ["shuffle", "prev", "play", "next", "repeat", "mute"]) {
+  for (const id of ["shuffle", "prev", "play", "next", "repeat", "mute", "fs-play", "fs-mute", "fs-subs", "fs-pip", "fs-exit"]) {
     assert.match(html, new RegExp(`<button id="${id}"[^>]*aria-label="[^"]+"`), `el botón ${id} no tiene aria-label`);
   }
 });

@@ -6,7 +6,7 @@ function wireShortcuts() {
   document.addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest?.("dialog")) return;
     if (e.target.closest?.("select")) return; // deja que el selector maneje flechas, espacio y letras
-    const typing = e.target.tagName === "INPUT" && e.target.type !== "range";
+    const typing = (e.target.tagName === "INPUT" && e.target.type !== "range") || e.target.tagName === "TEXTAREA" || e.target.isContentEditable;
     if (typing) return;
     if (e.code === "Space" && e.target.closest?.("button, select, a, summary")) return; // activa el control enfocado
     switch (e.code) {
@@ -21,6 +21,13 @@ function wireShortcuts() {
       case "KeyR": els.repeat.click(); break;
       case "KeyM": els.mute.click(); break;
       case "KeyL": toggleLyrics(); break;
+      case "KeyF":
+        if (e.repeat || e.target.closest?.("input, select, textarea") || e.target.isContentEditable) break;
+        if (isVideoTrack(state.tracks[state.index]) || isFullscreen()) {
+          e.preventDefault();
+          toggleFullscreen();
+        }
+        break;
       case "BracketLeft": stepSpeed(-1); break;
       case "BracketRight": stepSpeed(1); break;
     }
@@ -33,6 +40,7 @@ wireSelection();
 wirePlaylists();
 wirePlayer();
 wireStage();
+wireFullscreen();
 wireEq();
 wireFades();
 wireLyrics();

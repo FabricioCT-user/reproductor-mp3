@@ -46,6 +46,53 @@ function fakeMp3WithCover(win, name) {
   return new win.File([head, frame, wavBytes({ seconds: 1 })], name, { type: "audio/mpeg", lastModified: 78 });
 }
 
+// WebM sintético generado en el propio navegador (canvas + AudioContext + MediaRecorder).
+async function makeWebm(win, name, { withVideo = true, seconds = 2.6, mtime } = {}) {
+  const ac = new win.AudioContext();
+  const osc = ac.createOscillator();
+  const gain = ac.createGain();
+  const dest = ac.createMediaStreamDestination();
+  osc.frequency.value = 440;
+  gain.gain.value = 0.25;
+  osc.connect(gain);
+  gain.connect(dest);
+  osc.start();
+
+  const tracks = [...dest.stream.getAudioTracks()];
+  let timer = 0;
+  if (withVideo) {
+    const canvas = win.document.createElement("canvas");
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext("2d");
+    let frameIdx = 0;
+    const paint = () => {
+      ctx.fillStyle = "#162030";
+      ctx.fillRect(0, 0, 64, 64);
+      ctx.fillStyle = "#4fa3ff";
+      ctx.fillRect((frameIdx++ * 6) % 48, 20, 16, 24);
+    };
+    paint();
+    timer = win.setInterval(paint, 100);
+    tracks.unshift(...canvas.captureStream(10).getVideoTracks());
+  }
+
+  const stream = new win.MediaStream(tracks);
+  const mime = withVideo ? "video/webm" : "audio/webm";
+  const rec = win.MediaRecorder.isTypeSupported(mime) ? new win.MediaRecorder(stream, { mimeType: mime }) : new win.MediaRecorder(stream);
+  const chunks = [];
+  rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  const stopped = new Promise((r) => { rec.onstop = r; });
+  rec.start();
+  await sleep(seconds * 1000);
+  rec.stop();
+  await stopped;
+  if (timer) win.clearInterval(timer);
+  tracks.forEach((t) => t.stop());
+  await ac.close().catch(() => {});
+  return new win.File(chunks, name, { type: mime, lastModified: mtime ?? (withVideo ? 101 : 102) });
+}
+
 /* ---------- Marco de pruebas ---------- */
 
 // Se vacían los almacenes en vez de borrar la base: borrarla se queda bloqueada si otra pestaña la tiene abierta.
@@ -613,54 +660,8 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
   });
 
   await scenario("Video en el escenario", async ({ win, ev }) => {
-    async function makeWebm(name, { withVideo = true, seconds = 2.6 } = {}) {
-      const ac = new win.AudioContext();
-      const osc = ac.createOscillator();
-      const gain = ac.createGain();
-      const dest = ac.createMediaStreamDestination();
-      osc.frequency.value = 440;
-      gain.gain.value = 0.25;
-      osc.connect(gain);
-      gain.connect(dest);
-      osc.start();
-
-      const tracks = [...dest.stream.getAudioTracks()];
-      let timer = 0;
-      if (withVideo) {
-        const canvas = win.document.createElement("canvas");
-        canvas.width = 64;
-        canvas.height = 64;
-        const ctx = canvas.getContext("2d");
-        let frameIdx = 0;
-        const paint = () => {
-          ctx.fillStyle = "#162030";
-          ctx.fillRect(0, 0, 64, 64);
-          ctx.fillStyle = "#4fa3ff";
-          ctx.fillRect((frameIdx++ * 6) % 48, 20, 16, 24);
-        };
-        paint();
-        timer = win.setInterval(paint, 100);
-        tracks.unshift(...canvas.captureStream(10).getVideoTracks());
-      }
-
-      const stream = new win.MediaStream(tracks);
-      const mime = withVideo ? "video/webm" : "audio/webm";
-      const rec = win.MediaRecorder.isTypeSupported(mime) ? new win.MediaRecorder(stream, { mimeType: mime }) : new win.MediaRecorder(stream);
-      const chunks = [];
-      rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-      const stopped = new Promise((r) => { rec.onstop = r; });
-      rec.start();
-      await sleep(seconds * 1000);
-      rec.stop();
-      await stopped;
-      if (timer) win.clearInterval(timer);
-      tracks.forEach((t) => t.stop());
-      await ac.close().catch(() => {});
-      return new win.File(chunks, name, { type: mime, lastModified: withVideo ? 101 : 102 });
-    }
-
-    const videoFile = await makeWebm("clip.webm", { withVideo: true, seconds: 2.6 });
-    const audioWebm = await makeWebm("solo-audio.webm", { withVideo: false, seconds: 1.5 });
+    const videoFile = await makeWebm(win, "clip.webm", { withVideo: true, seconds: 2.6 });
+    const audioWebm = await makeWebm(win, "solo-audio.webm", { withVideo: false, seconds: 1.5 });
     await win.addFiles([
       wav(win, "a.wav", { seconds: 3, mtime: 1 }),
       videoFile,
@@ -785,6 +786,183 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
 
     win.startCrossfade = realXfade;
     win.setCrossfade(0);
+    ev("media.pause()");
+  });
+
+  await scenario("Pantalla completa", async ({ win, ev }) => {
+    check("pantalla completa: toggleFullscreen existe como función global", typeof win.toggleFullscreen === "function");
+
+    const videoFile = await makeWebm(win, "fs-clip.webm", { withVideo: true, seconds: 2.2, mtime: 201 });
+    await win.addFiles([wav(win, "fs-audio.wav", { seconds: 3, mtime: 200 }), videoFile]);
+
+    const stage = ev("els.stage");
+    const bar = ev("els['fs-controls']");
+    let fsEl = null;
+    const reqTargets = [];
+    let exitCalls = 0;
+
+    Object.defineProperty(win.document, "fullscreenElement", { configurable: true, get: () => fsEl });
+    stage.requestFullscreen = () => {
+      reqTargets.push(stage);
+      fsEl = stage;
+      win.document.dispatchEvent(new win.Event("fullscreenchange"));
+      return Promise.resolve();
+    };
+    for (const d of ev("decks")) {
+      d.requestFullscreen = () => { reqTargets.push(d); return Promise.resolve(); };
+    }
+    win.document.exitFullscreen = () => {
+      exitCalls++;
+      fsEl = null;
+      win.document.dispatchEvent(new win.Event("fullscreenchange"));
+      return Promise.resolve();
+    };
+
+    const pressF = (target) => target.dispatchEvent(new win.KeyboardEvent("keydown", { code: "KeyF", bubbles: true, cancelable: true }));
+
+    // 1. Con pista de audio, F y toggleFullscreen no actúan.
+    win.loadTrack(0, false, "all");
+    pressF(win.document.body);
+    await win.toggleFullscreen();
+    check("pantalla completa: F y toggleFullscreen no actúan con pistas de audio",
+      reqTargets.length === 0 && !ev("isFullscreen()") && bar.classList.contains("oculto"),
+      `req=${reqTargets.length}`);
+
+    // 2. Con pista de video, F ignorado dentro de inputs (incluidos range) o select, y activo fuera.
+    win.loadTrack(1, true, "all");
+    await until(() => ev("media.videoWidth > 0 && media.currentTime > 0.2"), 4000);
+    pressF(ev("els.filter"));
+    pressF(ev("els.seek"));
+    pressF(ev("els.volume"));
+    pressF(ev("els.view"));
+    check("pantalla completa: F no actúa cuando el foco está en un input (incluidos range) o select", reqTargets.length === 0);
+
+    pressF(win.document.body);
+    check("pantalla completa: F llama requestFullscreen sobre #stage (no sobre <video>) y muestra la barra",
+      reqTargets.length === 1 && reqTargets[0] === stage && ev("isFullscreen()") && !bar.classList.contains("oculto"),
+      `targets=${reqTargets.map((t) => t.id).join(",")}`);
+    check("pantalla completa: huecos de subtítulos y PiP presentes y ocultos con clase oculto",
+      ev("!!$('fs-subs') && !!$('fs-pip') && $('fs-subs').classList.contains('oculto') && $('fs-pip').classList.contains('oculto') && getComputedStyle($('fs-subs')).display === 'none' && getComputedStyle($('fs-pip')).display === 'none'"));
+
+    // 3. Los controles reflejan el estado real y reusan la lógica del reproductor; no propagan clic/doble clic a #stage.
+    let stageClicks = 0;
+    let stageDblclicks = 0;
+    stage.addEventListener("click", () => stageClicks++);
+    stage.addEventListener("dblclick", () => stageDblclicks++);
+    ev("els['fs-play'].click()");
+    const fsPaused = await until(() => ev("media.paused && els['fs-play-icon'].innerHTML.includes('M8 5v14') && els['play-icon'].innerHTML.includes('M8 5v14')"), 1500);
+    check("pantalla completa: play/pausa en la barra pausa el medio y actualiza ambos iconos", fsPaused,
+      `paused=${ev("media.paused")} fs=${ev("els['fs-play-icon'].innerHTML")} main=${ev("els['play-icon'].innerHTML")}`);
+    bar.dispatchEvent(new win.MouseEvent("dblclick", { bubbles: true }));
+    check("pantalla completa: clics y doble clic en la barra no suben a #stage", stageClicks === 0 && stageDblclicks === 0,
+      `clicks=${stageClicks} dbl=${stageDblclicks}`);
+
+    ev("els['fs-volume'].value = '0.35'; els['fs-volume'].dispatchEvent(new Event('input', { bubbles: true }))");
+    check("pantalla completa: volumen sincronizado con el reproductor y guardado",
+      Math.abs(ev("media.volume") - 0.35) < 0.001 && Math.abs(+ev("els.volume.value") - 0.35) < 0.001 && ev("localStorage.getItem('volume')") === "0.35",
+      `vol=${ev("media.volume")} main=${ev("els.volume.value")}`);
+
+    ev("els['fs-mute'].click()");
+    const fsMuted = await until(() => ev("media.muted && els['fs-mute'].classList.contains('silenciado') && !els['fs-mute'].getAttribute('style')"), 1500);
+    check("pantalla completa: silenciar sincroniza estado y usa clase (sin style inline)", fsMuted,
+      `muted=${ev("media.muted")} cls=${ev("els['fs-mute'].className")}`);
+    ev("els['fs-mute'].click()");
+    const fsUnmuted = await until(() => ev("!media.muted && !els['fs-mute'].classList.contains('silenciado')"), 1500);
+    check("pantalla completa: quitar silencio restaura el botón", fsUnmuted);
+
+    const hasDur = await until(() => Number.isFinite(ev("media.duration")) && ev("media.duration") > 0, 2000);
+    if (hasDur) {
+      ev("els['fs-seek'].value = '50'; els['fs-seek'].dispatchEvent(new Event('input', { bubbles: true }))");
+      check("pantalla completa: progreso busca en el medio real",
+        Math.abs(ev("media.currentTime") - ev("media.duration") * 0.5) < 0.25,
+        `t=${ev("media.currentTime")} dur=${ev("media.duration")}`);
+    } else {
+      // Algunos MediaRecorder dejan duration = Infinity: probamos con una pista de duración conocida sin romper.
+      check("pantalla completa: barra de progreso habilitada para la pista activa", !ev("els['fs-seek'].disabled"));
+    }
+
+    // Con foco en los controles range (#fs-seek y #fs-volume), F no sale de pantalla completa, pero otros atajos siguen activos.
+    const fsSeek = ev("els['fs-seek']");
+    const fsVolume = ev("els['fs-volume']");
+    fsSeek.focus();
+    pressF(fsSeek);
+    fsVolume.focus();
+    pressF(fsVolume);
+    check("pantalla completa: F no sale de pantalla completa con foco en #fs-seek o #fs-volume",
+      exitCalls === 0 && ev("isFullscreen()"),
+      `exits=${exitCalls} fs=${ev("isFullscreen()")}`);
+    fsVolume.dispatchEvent(new win.KeyboardEvent("keydown", { code: "KeyM", bubbles: true, cancelable: true }));
+    const mutedFromRange = ev("media.muted");
+    fsVolume.dispatchEvent(new win.KeyboardEvent("keydown", { code: "KeyM", bubbles: true, cancelable: true }));
+    check("pantalla completa: otros atajos (M) siguen funcionando sobre input[type=range]",
+      mutedFromRange && !ev("media.muted"),
+      `mutedAfterFirst=${mutedFromRange} mutedAfterSecond=${ev("media.muted")}`);
+
+    // 4. Inactividad de 3 s (con temporizadores controlados): oculta barra y cursor; mousemove los recupera.
+    const realSetTimeout = win.setTimeout;
+    const realClearTimeout = win.clearTimeout;
+    const timers = new Map();
+    let nextTimerId = 10000;
+    try {
+      win.setTimeout = (fn, ms, ...args) => {
+        if (ms === ev("FS_IDLE_MS")) {
+          const id = nextTimerId++;
+          timers.set(id, { fn, ms, args });
+          return id;
+        }
+        return realSetTimeout.call(win, fn, ms, ...args);
+      };
+      win.clearTimeout = (id) => {
+        if (timers.has(id)) { timers.delete(id); return; }
+        return realClearTimeout.call(win, id);
+      };
+
+      stage.dispatchEvent(new win.MouseEvent("mousemove", { bubbles: true, clientX: 20, clientY: 20 }));
+      const [firstId, firstTimer] = [...timers.entries()].at(-1) || [];
+      check("pantalla completa: programa el ocultado a los 3000 ms", !!firstTimer && firstTimer.ms === 3000, firstTimer?.ms);
+
+      // Dispara el temporizador de inactividad
+      timers.delete(firstId);
+      firstTimer.fn(...firstTimer.args);
+      check("pantalla completa: tras 3 s sin mover el ratón se ocultan barra y cursor (con clases, sin style inline)",
+        stage.classList.contains("fs-inactivo")
+        && win.getComputedStyle(stage).cursor === "none"
+        && win.getComputedStyle(bar).display === "none"
+        && !stage.getAttribute("style") && !bar.getAttribute("style"),
+        `cls=${stage.className} cursor=${win.getComputedStyle(stage).cursor} disp=${win.getComputedStyle(bar).display}`);
+
+      // Mover el ratón vuelve a mostrar barra y cursor y reinicia el temporizador
+      stage.dispatchEvent(new win.MouseEvent("mousemove", { bubbles: true, clientX: 60, clientY: 40 }));
+      check("pantalla completa: al mover el ratón reaparecen la barra y el cursor y se reprograma el temporizador",
+        !stage.classList.contains("fs-inactivo")
+        && win.getComputedStyle(stage).cursor !== "none"
+        && win.getComputedStyle(bar).display !== "none"
+        && timers.size === 1,
+        `cls=${stage.className} disp=${win.getComputedStyle(bar).display} timers=${timers.size}`);
+
+      // 5. Botón salir y cambio a pista de audio salen de pantalla completa.
+      ev("els['fs-exit'].click()");
+      check("pantalla completa: botón salir llama exitFullscreen, oculta la barra y cancela el temporizador",
+        exitCalls === 1 && !ev("isFullscreen()") && bar.classList.contains("oculto") && !stage.classList.contains("fs-inactivo") && timers.size === 0,
+        `exits=${exitCalls} timers=${timers.size}`);
+
+      await win.toggleFullscreen();
+      check("pantalla completa: toggleFullscreen vuelve a entrar en video", ev("isFullscreen()") && !bar.classList.contains("oculto"));
+      win.document.dispatchEvent(new win.KeyboardEvent("keydown", { code: "Escape", bubbles: true, cancelable: true }));
+      check("pantalla completa: Escape sale de pantalla completa (necesario en Electron)",
+        exitCalls === 2 && !ev("isFullscreen()") && bar.classList.contains("oculto"),
+        `exits=${exitCalls}`);
+
+      await win.toggleFullscreen();
+      win.loadTrack(0, false, "all");
+      check("pantalla completa: pasar a pista de audio sale de pantalla completa",
+        exitCalls === 3 && !ev("isFullscreen()") && bar.classList.contains("oculto"),
+        `exits=${exitCalls}`);
+    } finally {
+      win.setTimeout = realSetTimeout;
+      win.clearTimeout = realClearTimeout;
+    }
+
     ev("media.pause()");
   });
 

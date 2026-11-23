@@ -58,6 +58,7 @@ npm start                          # sin npm: python3 launcher/servidor.py
 | `M` | Silenciar |
 | `[` / `]` | Velocidad más lenta / más rápida |
 | `L` | Mostrar / ocultar letra |
+| `F` | Pantalla completa (en video) |
 
 ## Uso
 

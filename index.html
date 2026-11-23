@@ -28,6 +28,34 @@
         <div id="stage" class="stage oculto">
           <video id="deck-a" class="stage-video" playsinline preload="metadata"></video>
           <video id="deck-b" class="stage-video" playsinline preload="metadata"></video>
+          <div id="fs-controls" class="fs-controls oculto" role="group" aria-label="Controles de pantalla completa">
+            <div class="fs-progress">
+              <span id="fs-current">0:00</span>
+              <input type="range" id="fs-seek" min="0" max="100" step="0.1" value="0" disabled aria-label="Progreso">
+              <span id="fs-duration">0:00</span>
+            </div>
+            <div class="fs-row">
+              <button id="fs-play" type="button" class="icon" aria-label="Reproducir o pausar" title="Reproducir / Pausar (Espacio)">
+                <svg viewBox="0 0 24 24" class="fill" id="fs-play-icon"><path d="M8 5v14l11-7z"/></svg>
+              </button>
+              <div class="fs-volume">
+                <button id="fs-mute" type="button" class="icon small" aria-label="Silenciar" title="Silenciar (M)" aria-pressed="false">
+                  <svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>
+                </button>
+                <input type="range" id="fs-volume" min="0" max="1" step="0.01" value="1" aria-label="Volumen">
+              </div>
+              <span class="spacer"></span>
+              <button id="fs-subs" type="button" class="icon small oculto" aria-label="Subtítulos" title="Subtítulos (C)">
+                <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 13h4M13 13h4M7 16h6"/></svg>
+              </button>
+              <button id="fs-pip" type="button" class="icon small oculto" aria-label="Imagen en imagen" title="Imagen en imagen (I)">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><rect x="12" y="11" width="7" height="5" rx="1" class="fill"/></svg>
+              </button>
+              <button id="fs-exit" type="button" class="icon small" aria-label="Salir de pantalla completa" title="Salir de pantalla completa (F o Esc)">
+                <svg viewBox="0 0 24 24"><path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/></svg>
+              </button>
+            </div>
+          </div>
         </div>
         <div id="lyrics" class="lyrics" hidden>
           <div id="lyrics-body" class="lyrics-body"></div>
@@ -189,6 +217,7 @@
   <script src="src/app/playlists.js"></script>
   <script src="src/app/lyrics-ui.js"></script>
   <script src="src/app/player.js"></script>
+  <script src="src/app/fullscreen.js"></script>
   <script src="src/app/eq.js"></script>
   <script src="src/app/fades.js"></script>
   <script src="src/app/editor.js"></script>
