@@ -83,8 +83,11 @@ const Storage = (() => {
   // Guarda un archivo nuevo. `extra` permite fijar otros metadatos (kind, source "link" + linkId…).
   // Devuelve el id.
   const add = (file, extra = {}) => tx("readwrite", ({ tracks, files }, out) => {
-    if (!files) { // base aún en v1
-      tracks.add({ name: file.name, blob: file, type: file.type }).onsuccess = (e) => (out.result = e.target.result);
+    if (!files) { // base aún en v1: un enlace no tiene archivo que guardar (la migración lo deja como está)
+      const rec = extra.source === "link"
+        ? { name: file.name, type: file.type, size: file.size, lastModified: file.lastModified, kind: extra.kind || "video", source: "link", linkId: extra.linkId }
+        : { name: file.name, blob: file, type: file.type };
+      tracks.add(rec).onsuccess = (e) => (out.result = e.target.result);
       return;
     }
     const allowed = new Set(["kind", "source", "linkId", "lyrics", "edits", "meta", "metaVersion", "subs", "thumb"]);

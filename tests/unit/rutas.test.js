@@ -63,7 +63,7 @@ test("validar: archivo regular de medio → datos con la ruta real", async () =>
   assert.equal(v.tamano, 5);
   assert.equal(v.tipo, "audio/mpeg");
   assert.equal(v.clase, "audio");
-  assert.equal(v.fecha, Math.round(fs.statSync(p).mtimeMs));
+  assert.equal(v.fecha, Math.floor(fs.statSync(p).mtimeMs));
   assert.equal((await rutas.validar(rutas.aRuta(pathToFileURL(p).href))).ruta, p);
 });
 
@@ -148,13 +148,17 @@ test("entregas: cada id se toma una sola vez; inventados o mal formados no valen
   assert.equal(e.tomar(id), null);
 });
 
-test("entregas: los videos se registran pero no se leen (los servirá T2.1 sin copiarlos)", () => {
+test("entregas: los videos no se leen; solo se toman para enlazarlos (y el audio no se enlaza)", () => {
   const e = new Entregas();
   const pub = e.registrar(v({ clase: "video", nombre: "p.mp4", tipo: "video/mp4" }));
   assert.equal(pub.kind, "video");
   assert.equal(e.tomar(pub.id), null);
   assert.equal(e.tamano, 1);
   assert.ok(e.tomar(e.registrar(v({ clase: "letra" })).id));
+  const audio = e.registrar(v());
+  assert.equal(e.tomar(audio.id, ["video"]), null);
+  assert.equal(e.tomar(pub.id, ["video"]).ruta, "/m/a.mp3");
+  assert.equal(e.tomar(pub.id, ["video"]), null, "una sola vez");
 });
 
 test("entregas: caducan y hay un máximo (se descartan las más viejas)", () => {

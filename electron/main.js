@@ -7,7 +7,9 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { analizar } = require("./lib/argumentos");
+const { Enlaces } = require("./lib/enlaces");
 const { Entregas } = require("./lib/entregas");
+const medios = require("./lib/medios");
 const rutas = require("./lib/rutas");
 const servir = require("./lib/servir");
 
@@ -37,11 +39,19 @@ const lista = servir.listaBlanca(fs.readFileSync(path.join(RAIZ, "sw.js"), "utf8
 const csp = servir.cspDeHtml(fs.readFileSync(path.join(RAIZ, "index.html"), "utf8"));
 if (!csp) throw new Error("index.html no tiene CSP");
 
+// Registro de videos enlazados (userData/enlaces.json). Se carga al arrancar; las peticiones lo esperan.
+let enlaces = null;
+let enlacesListos = null;
+
 async function manejarPeticion(req) {
   const r = servir.resolver(req.url, req.method, lista);
   if (r.estado !== 200) return new Response(null, { status: r.estado });
-  // __media/<id>: lo implementa T2.1 (Range propio con FileHandle, solo ids registrados). De momento, nada.
-  if (r.medio) return new Response(null, { status: 404 });
+  // __media/<id>: solo ids registrados; Range propio leyendo por trozos (medios.js).
+  if (r.medio) {
+    const reg = await enlacesListos;
+    const m = await medios.servir(reg.obtener(r.medio), req.method, req.headers.get("range"));
+    return new Response(m.cuerpo ?? null, { status: m.estado, headers: m.cabeceras });
+  }
   let datos;
   try { datos = await fs.promises.readFile(path.join(RAIZ, r.rel)); } catch { return new Response(null, { status: 404 }); }
   return new Response(req.method === "HEAD" ? null : datos, { status: 200, headers: servir.cabeceras(r.rel, csp) });
@@ -126,6 +136,20 @@ async function elegir(carpeta) {
   return items;
 }
 
+// Video que la persona eligió → enlace persistente. Llega como id de una entrega (argv, segunda instancia, diálogo)
+// o como ruta que el preload sacó de un File con webUtils.getPathForFile (arrastrar, <input>). Solo videos válidos.
+async function enlazar(x) {
+  let ruta = null;
+  if (typeof x?.entrega === "string") ruta = entregas.tomar(x.entrega, ["video"])?.ruta ?? null;
+  else if (typeof x?.ruta === "string") ruta = rutas.aRuta(x.ruta, null); // solo absolutas
+  if (!ruta) return null;
+  const v = await rutas.validar(ruta);
+  if (!v || v.clase !== "video") return null;
+  const reg = await enlacesListos;
+  const linkId = await reg.registrar(v);
+  return { linkId, name: v.nombre, size: v.tamano, lastModified: v.fecha, type: v.tipo };
+}
+
 function cablearIpc() {
   ipcMain.on("reproductor:info", (event) => {
     event.returnValue = deLaApp(event) ? { version: app.getVersion() } : null;
@@ -144,6 +168,18 @@ function cablearIpc() {
     const e = entregas.tomar(id);
     if (!e) return null; // inventado, caducado, ya leído o un video
     return rutas.leer(e.ruta).catch(() => null); // ya no está, es otra cosa o es demasiado grande
+  });
+  ipcMain.handle("reproductor:enlazar", async (event, x) => {
+    if (!deLaApp(event)) return null;
+    return enlazar(x).catch(() => null);
+  });
+  ipcMain.handle("reproductor:olvidar", async (event, id) => {
+    if (!deLaApp(event)) return false;
+    return (await enlacesListos).olvidar(id).catch(() => false);
+  });
+  ipcMain.handle("reproductor:estado-enlaces", async (event, ids) => {
+    if (!deLaApp(event)) return {};
+    return (await enlacesListos).estado(ids).catch(() => ({}));
   });
 }
 
@@ -193,7 +229,8 @@ async function correrSmoke(win) {
     estado = await win.webContents.executeJavaScript("({ done: window.__done === true, results: window.__results || [] })", true);
     if (estado.done) break;
   }
-  const resultados = [...(estado?.results || []), ...(await comprobacionesAbrir(win)), ...(await comprobacionesApp(win))];
+  const resultados = [...(estado?.results || []), ...(await comprobacionesAbrir(win)), ...(await comprobacionesEnlaces(win)),
+    ...(await comprobacionesApp(win))];
   const fallos = resultados.filter((r) => !r.ok);
   for (const r of resultados) console.log(`${r.ok ? "ok  " : "FALLO"} ${r.name}${r.detail ? ` — ${r.detail}` : ""}`);
   if (!estado?.done) console.log(`FALLO: la prueba de humo no terminó en ${SMOKE_LIMITE_MS / 1000} s`);
@@ -226,7 +263,8 @@ async function comprobacionesAbrir(win) {
     check("los dos archivos de argv entran en la biblioteca y suena el primero (con sonido, no mudo)",
       ok && d.nombres.includes("uno.wav") && d.nombres.includes("dos con espacios ñ.wav") && !/bloque/i.test(d.aviso), d);
     check("el segundo queda en la cola", d.cola[0] === "dos con espacios ñ.wav", d.cola);
-    check("ni el que no existe, ni la extensión falsa, ni el video (aún) entran", !d.nombres.some((n) => /nota|video|no-existe/.test(n)), d.nombres);
+    check("ni el que no existe ni la extensión falsa entran; el video sí (enlazado)",
+      !d.nombres.some((n) => /nota|no-existe/.test(n)) && d.nombres.includes("video.mp4"), d.nombres);
     check("la letra que acompaña al audio se asocia", await ev(`!!state.tracks.find((t) => t.fileName === "uno.wav")?.userLyrics`), d);
 
     // Segunda instancia real: otra app con la misma carpeta de datos le pasa su archivo a esta y se cierra.
@@ -270,6 +308,161 @@ async function comprobacionesAbrir(win) {
   return r;
 }
 
+// Videos enlazados por ruta (T2.1). comprobacionesAbrir dejó en la biblioteca «video.mp4» (llegó por argv; 5 min, ~8 MB).
+// smoke-app.js deja además «otro video.mp4» junto a la carpeta de los medios: entra por <input> (webUtils).
+async function comprobacionesEnlaces(win) {
+  const r = [];
+  const check = (name, ok, detail) => r.push({ name: `App, enlaces: ${name}`, ok: !!ok, detail: ok ? "" : JSON.stringify(detail) });
+  const ev = (js) => win.webContents.executeJavaScript(js, true);
+  const pausa = (ms) => new Promise((res) => setTimeout(res, ms));
+  const hasta = async (js, ms = 10000) => {
+    const fin = Date.now() + ms;
+    while (Date.now() < fin) { if (await ev(js)) return true; await pausa(100); }
+    return false;
+  };
+  const carpeta = path.dirname(rutas.aRuta(args.archivos[0], process.cwd()));
+  const rutaVideo = path.join(carpeta, "video.mp4");
+  const otro = path.join(path.dirname(carpeta), "otro video.mp4");
+  const archivoEnlaces = path.join(app.getPath("userData"), "enlaces.json");
+  // Descriptores del proceso principal abiertos sobre los videos de prueba.
+  const abiertos = () => fs.readdirSync("/proc/self/fd").filter((fd) => {
+    try { return [rutaVideo, otro].includes(fs.readlinkSync(`/proc/self/fd/${fd}`)); } catch { return false; }
+  }).length;
+  const hastaCerrados = async (ms = 5000) => {
+    const fin = Date.now() + ms;
+    while (Date.now() < fin) { if (abiertos() === 0) return true; await pausa(100); }
+    return abiertos() === 0;
+  };
+  const registro = (nombre) => ev(`(async () => {
+    const recs = await Storage.all();
+    const rec = recs.find((x) => x.name === ${JSON.stringify(nombre)}) || null;
+    const t = state.tracks.find((x) => x.fileName === ${JSON.stringify(nombre)});
+    return { rec, json: JSON.stringify(recs), archivo: rec ? (await Storage.getFile(rec.id)) !== null : null,
+      url: t?.url ?? null, linkId: t?.linkId ?? null, kind: t?.meta?.kind ?? null, noDisponible: !!t?.unavailable, hay: !!t };
+  })()`);
+  const leerEnlaces = () => { try { return fs.readFileSync(archivoEnlaces, "utf8"); } catch { return ""; } };
+  try {
+    // Lo que se guarda: en IndexedDB solo el id; la ruta solo en enlaces.json (0600).
+    let d = await registro("video.mp4");
+    const id = d.rec?.linkId;
+    check("el video de argv se enlaza: IndexedDB guarda source «link» + linkId, sin archivo ni ruta",
+      d.rec?.source === "link" && /^[0-9a-f]{32}$/.test(id) && d.archivo === false && d.linkId === id
+      && !d.json.includes(carpeta) && !d.json.includes(os.tmpdir()) && d.url === `__media/${id}` && d.kind === "video", d);
+    const texto = leerEnlaces();
+    check("el registro de enlaces está en userData con permisos 0600 y guarda la ruta real",
+      (fs.statSync(archivoEnlaces).mode & 0o777) === 0o600 && texto.includes(id) && texto.includes(JSON.stringify(rutaVideo).slice(1, -1)), texto);
+    const cabeza = await ev(`new LinkedFile({ name: "v", size: 100 }, { linkId: ${JSON.stringify(id)} }).slice(4, 8).arrayBuffer()
+      .then((b) => new TextDecoder().decode(b))`);
+    check("las etiquetas se leen por Range sin copiar el archivo (LinkedFile.slice)", cabeza === "ftyp", cabeza);
+
+    // Reproducir, con imagen y con sonido por Web Audio (mismo origen).
+    await ev(`loadTrack(state.tracks.findIndex((t) => t.fileName === "video.mp4"), true, "all"); 1`);
+    const suena = await hasta(`!media.paused && media.currentTime > 0.5 && media.videoWidth === 320
+      && media.webkitAudioDecodedByteCount > 0 && analyser?.context.state === "running"`);
+    const m = await ev(`({ src: media.currentSrc, t: media.currentTime, w: media.videoWidth, audio: media.webkitAudioDecodedByteCount,
+      ctx: analyser?.context.state, error: media.error?.code ?? null })`);
+    check("reproduce desde app://reproductor/__media/<id> con imagen y sonido", suena && m.src === `${servir.ORIGEN}/__media/${id}`, m);
+
+    // Saltar: a mitad y sigue sonando.
+    const t = await ev(`new Promise((res) => { media.addEventListener("seeked", () => res(media.currentTime), { once: true }); media.currentTime = 5; })`);
+    const sigue = await hasta("!media.paused && media.currentTime > 5.3");
+    check("salta a mitad del video y sigue reproduciendo", Math.abs(t - 5) < 0.1 && sigue, { t });
+
+    // Muchos saltos: cada uno puede abrir una petición nueva y cancelar la anterior; ninguna debe dejar el archivo abierto.
+    const n = await ev(`(async () => {
+      let hechos = 0;
+      for (let i = 0; i < 40; i++) {
+        await new Promise((res) => {
+          const tope = setTimeout(res, 3000);
+          media.addEventListener("seeked", () => { clearTimeout(tope); hechos++; res(); }, { once: true });
+          media.currentTime = ((i * 37) % 40) * 7; // de 0 a 273 s, saltando lejos
+        });
+      }
+      return hechos;
+    })()`);
+    const durante = abiertos();
+    await ev(`media.pause(); media.removeAttribute("src"); media.load(); 1`);
+    const cerrados = await hastaCerrados();
+    check("40 saltos seguidos: como mucho un par de descriptores abiertos a la vez", n === 40 && durante <= 3, { n, durante });
+    check("al soltar el video no queda ningún descriptor abierto (/proc/self/fd)", cerrados, { quedan: abiertos() });
+
+    // El protocolo, desde la página: Range, 416, ids falsos, salirse de __media.
+    const p = await ev(`(async () => {
+      const g = async (url, rango) => {
+        const res = await fetch(url, rango ? { headers: { Range: rango } } : undefined);
+        return { s: res.status, cr: res.headers.get("content-range"), ct: res.headers.get("content-type"), len: (await res.arrayBuffer()).byteLength };
+      };
+      const u = "__media/" + ${JSON.stringify(id)};
+      return { parcial: await g(u, "bytes=0-99"), sufijo: await g(u, "bytes=-10"), fuera: await g(u, "bytes=999999999-"),
+        falso: await g("__media/" + "0".repeat(32)), salir: await g("__media/%2e%2e%2findex.html"), corto: await g("__media/abc") };
+    })()`);
+    const tam = fs.statSync(rutaVideo).size;
+    check("Range: 206 con Content-Range y Content-Type por extensión; sufijo", p.parcial.s === 206 && p.parcial.cr === `bytes 0-99/${tam}`
+      && p.parcial.len === 100 && p.parcial.ct === "video/mp4" && p.sufijo.s === 206 && p.sufijo.len === 10, p);
+    check("Range fuera del archivo: 416 con bytes */tamaño", p.fuera.s === 416 && p.fuera.cr === `bytes */${tam}`, p.fuera);
+    check("__media con id falso, mal formado o «..»: 404", p.falso.s === 404 && p.salir.s === 404 && p.corto.s === 404, p);
+    check("las peticiones de la página no dejan descriptores abiertos", await hastaCerrados(), abiertos());
+
+    // Un File con ruta real (arrastrar o <input>): el preload saca la ruta con webUtils y se enlaza.
+    const dbg = win.webContents.debugger;
+    dbg.attach("1.3");
+    try {
+      const { root } = await dbg.sendCommand("DOM.getDocument");
+      const { nodeId } = await dbg.sendCommand("DOM.querySelector", { nodeId: root.nodeId, selector: "#file-input" });
+      await dbg.sendCommand("DOM.setFileInputFiles", { nodeId, files: [otro] });
+    } finally { dbg.detach(); }
+    await hasta(`state.tracks.some((t) => t.fileName === "otro video.mp4")`);
+    d = await registro("otro video.mp4");
+    const otroId = d.rec?.linkId;
+    check("un File de <input> o arrastrado (webUtils.getPathForFile) se enlaza sin copiarse",
+      d.rec?.source === "link" && /^[0-9a-f]{32}$/.test(otroId) && d.archivo === false && !d.json.includes(otro), d);
+
+    // Lo que no es un video con ruta no se enlaza: un File creado por la página se copia como en la web.
+    const api = await ev(`(async () => {
+      const bytes = await (await fetch("__media/" + ${JSON.stringify(id)})).arrayBuffer();
+      const sintetico = new File([bytes], "sintetico.mp4", { type: "video/mp4", lastModified: 1 });
+      const r = { inventado: await window.reproductor.enlazar("0".repeat(32)), sintetico: await window.reproductor.enlazar(sintetico),
+        objeto: await window.reproductor.enlazar({ ruta: "/etc/passwd" }), numero: await window.reproductor.enlazar(5) };
+      await addFiles([sintetico]);
+      r.copiado = (await Storage.all()).find((x) => x.name === "sintetico.mp4")?.source;
+      return r;
+    })()`);
+    check("ids inventados, Files sin ruta u objetos no se enlazan; el File sin ruta se copia",
+      api.inventado === null && api.sintetico === null && api.objeto === null && api.numero === null && api.copiado === "blob", api);
+
+    // Reinicio: la página recarga de IndexedDB y el principal relee enlaces.json.
+    await win.loadURL(`${servir.ORIGEN}/index.html`);
+    await ev("appReady.then(() => 1)");
+    d = await registro("video.mp4");
+    const relee = (await new Enlaces(archivoEnlaces).cargar()).obtener(id);
+    await ev(`loadTrack(state.tracks.findIndex((t) => t.fileName === "video.mp4"), true, "all"); 1`);
+    const suena2 = await hasta("!media.paused && media.currentTime > 0.3 && media.videoWidth === 320");
+    check("tras recargar (y releer enlaces.json) el video sigue enlazado y suena", d.hay && !d.noDisponible && d.url === `__media/${id}`
+      && relee?.ruta === rutaVideo && suena2, { d, relee: !!relee });
+    await ev(`media.pause(); media.removeAttribute("src"); media.load(); 1`);
+
+    // Borrar la pista olvida su enlace.
+    await ev(`removeTrack(state.tracks.findIndex((t) => t.fileName === "otro video.mp4")); 1`);
+    await pausa(300);
+    const borrado = await ev(`fetch("__media/" + ${JSON.stringify(otroId)}).then((r) => r.status)`);
+    check("al quitar la pista se olvida su enlace (404 y fuera de enlaces.json)", borrado === 404 && !leerEnlaces().includes(otroId)
+      && !leerEnlaces().includes("otro video"), { borrado });
+
+    // Si el archivo desaparece, al arrancar no se borra nada (T2.2 lo marcará).
+    fs.renameSync(rutaVideo, `${rutaVideo}.movido`);
+    try {
+      await win.loadURL(`${servir.ORIGEN}/index.html`);
+      await ev("appReady.then(() => 1)");
+      d = await registro("video.mp4");
+      check("un enlace cuyo archivo ya no está no se borra al arrancar", d.hay && d.rec?.linkId === id && leerEnlaces().includes(id), d);
+    } finally { fs.renameSync(`${rutaVideo}.movido`, rutaVideo); }
+    check("al final no queda ningún descriptor abierto", await hastaCerrados(), abiertos());
+  } catch (e) {
+    check("comprobaciones sin excepciones", false, String(e?.stack || e));
+  }
+  return r;
+}
+
 // Lo que solo existe en la app: se carga la página real (con su CSP) y se comprueba el endurecimiento desde dentro.
 async function comprobacionesApp(win) {
   const r = [];
@@ -301,7 +494,7 @@ async function comprobacionesApp(win) {
     check("no se registra el service worker", d.sw === 0, d.sw);
     check("la CSP de la cabecera es la del meta y bloquea eval", d.csp === csp && d.evalBloqueado && d.nosniff === "nosniff", d.csp);
     check("fuera de la lista blanca, 404 (tests/ se sirve solo por --smoke)", d.fueraDeLista.slice(0, 3).every((s) => s === 404) && d.fueraDeLista[3] === 200, d.fueraDeLista);
-    check("__media aún no sirve nada (T2.1)", d.medio === 404, d.medio);
+    check("__media con un id que no está registrado: 404", d.medio === 404, d.medio);
     check("la interfaz arranca", d.botones > 10, d.botones);
     await win.webContents.executeJavaScript('location.href = "https://example.com/"; 1');
     await new Promise((res) => setTimeout(res, 500));
@@ -318,6 +511,8 @@ app.whenReady().then(() => {
   if (!primera) return;
   if (app.isPackaged) Menu.setApplicationMenu(null);
   endurecerSesion(session.defaultSession);
+  enlaces = new Enlaces(path.join(app.getPath("userData"), "enlaces.json"));
+  enlacesListos = enlaces.cargar();
   protocol.handle("app", manejarPeticion);
   cablearIpc();
   const win = crearVentana();

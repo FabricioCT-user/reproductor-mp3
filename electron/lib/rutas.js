@@ -66,7 +66,7 @@ async function validar(ruta) {
   if (!st.isFile()) return null;
   const c = clasificar(real);
   if (!c) return null;
-  return { ruta: real, nombre: path.basename(real), tamano: st.size, fecha: Math.round(st.mtimeMs), tipo: c.tipo, clase: c.clase };
+  return { ruta: real, nombre: path.basename(real), tamano: st.size, fecha: Math.floor(st.mtimeMs), tipo: c.tipo, clase: c.clase };
 }
 
 // Carpeta elegida en el diálogo → archivos válidos de dentro (subcarpetas incluidas), ordenados por ruta, cada uno con

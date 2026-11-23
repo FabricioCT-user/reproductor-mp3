@@ -1,8 +1,8 @@
 // Archivos que el sistema entregó a la app y la interfaz aún no ha recogido. Sin Electron: se prueba con node:test.
 // La ruta real se queda aquí; la interfaz solo recibe { id, name, size, lastModified, type, kind, rel? } y pide los
 // bytes por id (una sola vez). Los ids caducan: un id viejo, repetido o inventado no lee nada.
-// Los videos no se copian: T2.1 pasará su entrada al registro persistente de enlaces (enlaces.js) y los servirá por
-// app://reproductor/__media/<id>. Hasta entonces se registran igual (mismo formato de id) pero no se leen.
+// Los videos no se leen ni se copian: la interfaz los enlaza (tomar(id, ["video"]) → enlaces.js, T2.1) y se sirven
+// por app://reproductor/__media/<linkId>.
 "use strict";
 
 const crypto = require("node:crypto");
@@ -31,12 +31,13 @@ class Entregas {
     return pub;
   }
 
-  // id → entrada { ruta, clase, tamano, fecha } si existe, no ha caducado y se puede leer (no video). Se consume.
-  tomar(id) {
+  // id → entrada { ruta, clase, tamano, fecha } si existe, no ha caducado y es de una de las `clases` (por defecto,
+  // las que se leen: nunca video). Se consume.
+  tomar(id, clases = LEIBLES) {
     this.limpiar();
     if (typeof id !== "string" || !ID.test(id)) return null;
     const e = this.mapa.get(id);
-    if (!e || !LEIBLES.has(e.clase)) return null;
+    if (!e || !new Set(clases).has(e.clase)) return null;
     this.mapa.delete(id);
     return e;
   }
