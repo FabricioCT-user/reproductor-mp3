@@ -502,6 +502,7 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
       { name: "texto.mp3", blob: "no soy un archivo", type: "audio/mpeg" }, // blob que no es Blob
       { name: "bueno.wav", blob: new File([wavBytes({ seconds: 1 })], "bueno.wav", { type: "audio/wav" }), type: "audio/wav" },
     ]);
+  });
 
   /* ---------- Resultado ---------- */
   const fails = results.filter((r) => !r.ok);
