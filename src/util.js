@@ -17,13 +17,60 @@ const formatTime = (s) => {
 
 const isLrc = (f) => /\.lrc$/i.test(f.name);
 
+const isSubtitle = (f) => /\.(srt|vtt)$/i.test(f.name);
+
+const isCompanion = (f) => isLrc(f) || isSubtitle(f);
+
 const isListFile = (f) => /\.(json|m3u8?)$/i.test(f.name);
 
 // Los .m3u8 a veces llegan con tipo audio/*: no son canciones.
-const isAudio = (f) => !isLrc(f) && !isListFile(f) && (f.type.startsWith("audio/") || /\.(mp3|flac|ogg|oga|opus|m4a|aac|wav|weba)$/i.test(f.name));
+const isAudio = (f) => !isCompanion(f) && !isListFile(f) && (f.type.startsWith("audio/") || /\.(mp3|flac|ogg|oga|opus|m4a|aac|wav|weba)$/i.test(f.name));
 
-const isVideo = (f) => !isLrc(f) && !isListFile(f) && (f.type.startsWith("video/") || /\.(mp4|m4v|webm|mov|mkv)$/i.test(f.name));
+const isVideo = (f) => !isCompanion(f) && !isListFile(f) && (f.type.startsWith("video/") || /\.(mp4|m4v|webm|mov|mkv)$/i.test(f.name));
 const isMedia = (f) => isAudio(f) || isVideo(f);
+
+const SUB_LANGS = {
+  es: "Español", spa: "Español", en: "Inglés", eng: "Inglés", fr: "Francés", fra: "Francés", fre: "Francés",
+  de: "Alemán", deu: "Alemán", ger: "Alemán", it: "Italiano", ita: "Italiano", pt: "Portugués", por: "Portugués",
+  ja: "Japonés", jpn: "Japonés", ko: "Coreano", kor: "Coreano", zh: "Chino", zho: "Chino", chi: "Chino",
+  ru: "Ruso", rus: "Ruso", ca: "Catalán", cat: "Catalán", gl: "Gallego", glg: "Gallego", eu: "Euskera", eus: "Euskera",
+  nl: "Neerlandés", pl: "Polaco", sv: "Sueco", ar: "Árabe",
+};
+const SUB_NON_LANG = new Set(["sdh", "cc", "hi", "sub", "srt", "vtt", "raw", "old", "new", "dvd", "web", "rip", "hd", "mp4", "mkv", "mov", "m4v", "webm"]);
+
+// Extrae etiqueta legible e idioma opcional (BCP-47) a partir del nombre de un .srt/.vtt y la base del video.
+function subtitleLabel(fileName, trackBase = "") {
+  const stem = String(fileName || "").replace(/\.[^.]+$/, "").trim();
+  const lower = stem.toLowerCase();
+  const base = String(trackBase || "").toLowerCase();
+  let suffix = stem;
+  if (base && lower === base) suffix = "";
+  else if (base && lower.startsWith(base + ".")) suffix = stem.slice(base.length + 1);
+  const parts = suffix.split(".").map((p) => p.trim()).filter(Boolean);
+  if (base && parts.length > 1 && /^(mp4|m4v|webm|mov|mkv)$/i.test(parts[0])) parts.shift();
+
+  let lang;
+  if (parts.length) {
+    const candidate = base ? parts[0] : (parts.length > 1 ? parts[parts.length - 1] : parts[0]);
+    const head = candidate.split("-")[0].toLowerCase();
+    if (/^[a-z]{2,3}(?:-[a-z0-9]{2,8})?$/i.test(candidate) && !SUB_NON_LANG.has(head) && (head.length === 2 || Object.hasOwn(SUB_LANGS, head))) {
+      lang = candidate.toLowerCase();
+    }
+  }
+
+  let label;
+  if (!parts.length) {
+    label = "Subtítulos";
+  } else if (base && lang && parts[0].toLowerCase() === lang) {
+    const langName = SUB_LANGS[lang.split("-")[0]] || lang;
+    const region = lang.includes("-") ? ` (${lang.slice(lang.indexOf("-") + 1).toUpperCase()})` : "";
+    const rest = parts.slice(1).join(" ");
+    label = `${langName}${region}${rest ? ` · ${rest}` : ""}`;
+  } else {
+    label = parts.join(" ");
+  }
+  return lang ? { label, lang } : { label };
+}
 
 // Clave para no importar dos veces el mismo archivo.
 const fileKey = (f) => `${f.name}|${f.size}|${f.lastModified}`;

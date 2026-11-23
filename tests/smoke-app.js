@@ -56,7 +56,14 @@ function mp4(destino, segundos, audioCodec = "aac") {
   return destino;
 }
 const video = mp4(path.join(medios, "video.mp4"), 300);
+escribir("video.srt", "1\n00:00:00,200 --> 00:00:04,000\nSubtítulo automático\n"); // junto al video, NO en argv (T4.2)
+const privadoArgv = escribir("privado.srt", "1\n00:00:00,200 --> 00:00:04,000\nSecreto argv\n");
+fs.symlinkSync(privadoArgv, path.join(medios, "video.priv.srt"));
 mp4(path.join(path.dirname(medios), "otro video.mp4"), 3); // fuera de la carpeta: se arrastra/elige con <input>
+fs.writeFileSync(path.join(path.dirname(medios), "otro video.es.srt"), "1\n00:00:00,200 --> 00:00:02,500\nSubtítulo enlazado\n");
+const privadoEnlazado = path.join(path.dirname(medios), "privado-enlazado.srt");
+fs.writeFileSync(privadoEnlazado, "1\n00:00:00,200 --> 00:00:02,500\nSecreto enlazado\n");
+fs.symlinkSync(privadoEnlazado, path.join(path.dirname(medios), "otro video.priv.srt"));
 mp4(path.join(path.dirname(medios), "ac3.mp4"), 3, "ac3"); // MP4 H.264 + AC-3 para probar el aviso de compatibilidad (T3.1)
 fs.symlinkSync(uno, path.join(medios, "enlace.wav"));
 

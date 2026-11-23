@@ -841,8 +841,8 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     check("pantalla completa: F llama requestFullscreen sobre #stage (no sobre <video>) y muestra la barra",
       reqTargets.length === 1 && reqTargets[0] === stage && ev("isFullscreen()") && !bar.classList.contains("oculto"),
       `targets=${reqTargets.map((t) => t.id).join(",")}`);
-    check("pantalla completa: huecos de subtítulos y PiP presentes y ocultos con clase oculto",
-      ev("!!$('fs-subs') && !!$('fs-pip') && $('fs-subs').classList.contains('oculto') && $('fs-pip').classList.contains('oculto') && getComputedStyle($('fs-subs')).display === 'none' && getComputedStyle($('fs-pip')).display === 'none'"));
+    check("pantalla completa: botón de subtítulos visible y hueco de PiP oculto con clase oculto",
+      ev("!!$('fs-subs') && !$('fs-subs').classList.contains('oculto') && getComputedStyle($('fs-subs')).display !== 'none' && !!$('fs-pip') && $('fs-pip').classList.contains('oculto') && getComputedStyle($('fs-pip')).display === 'none'"));
 
     // 3. Los controles reflejan el estado real y reusan la lógica del reproductor; no propagan clic/doble clic a #stage.
     let stageClicks = 0;
@@ -1035,6 +1035,109 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     check("compatibilidad: AVI no soportado muestra sugerencia de remux",
       !ev("els.toast.hidden") && ev("els.toast.textContent").includes("ffmpeg -i entrada.avi -c copy salida.mp4"),
       ev("els.toast.textContent"));
+  });
+
+  await scenario("Subtítulos", async ({ frame, win, ev }) => {
+    const videoFile = await makeWebm(win, "sub-clip.webm", { withVideo: true, seconds: 3.6, mtime: 401 });
+    // SRT en Latin-1/windows-1252 para comprobar decodificación + emparejado por nombre al importar.
+    const latin1Bytes = (s) => Uint8Array.from([...s].map((ch) => ch.charCodeAt(0) & 0xff));
+    const srtBytes = latin1Bytes("1\n00:00:00,400 --> 00:00:01,800\n¿Hola, niño?\n");
+    const companionSrt = new win.File([srtBytes], "sub-clip.es.srt", { type: "application/x-subrip", lastModified: 402 });
+
+    await win.addFiles([videoFile, companionSrt]);
+    check("subtítulos: .srt acompañante se empareja al importar, decodifica windows-1252 y extrae idioma",
+      ev("state.tracks.length === 1 && state.tracks[0].subs.length === 1 && state.tracks[0].subs[0].lang === 'es' && state.tracks[0].subs[0].label === 'Español' && state.tracks[0].subs[0].text.includes('¿Hola, niño?')"),
+      JSON.stringify(ev("state.tracks[0]?.subs")));
+
+    // Cargar un VTT adicional (como con «Cargar subtítulos…»).
+    const vttText = "WEBVTT\n\n00:00:00.500 --> 00:00:01.800\nPrimera línea\n\n00:00:02.200 --> 00:00:03.200\nSegunda línea\n";
+    const vttFile = new win.File([vttText], "extra.en.vtt", { type: "text/vtt", lastModified: 403 });
+    await win.loadSubtitleFiles(ev("state.tracks[0]"), [vttFile]);
+    check("subtítulos: cargar VTT lo añade, lo activa y monta <track kind='subtitles' src='blob:…'>",
+      ev("state.tracks[0].subs.length === 2 && state.tracks[0].subIndex === 1 && media.querySelectorAll('track').length === 1 && media.querySelector('track').kind === 'subtitles' && media.querySelector('track').src.startsWith('blob:')"),
+      ev("media.querySelector('track')?.outerHTML || 'sin track'"));
+
+    // Comprobar activeCues en el tiempo esperado.
+    win.loadTrack(0, true, "all");
+    await until(() => ev("media.readyState >= 2"), 4000);
+    ev("media.pause(); media.currentTime = 1.0;");
+    const activeAt1 = await until(() => ev("media.textTracks[0]?.activeCues?.length === 1 && media.textTracks[0].activeCues[0].text === 'Primera línea'"), 3000);
+    check("subtítulos: activeCues muestra la cue esperada en t = 1,0 s", activeAt1,
+      ev("JSON.stringify([...(media.textTracks[0]?.activeCues || [])].map(c => c.text))"));
+
+    // Desfase (+1,5 s mediante pasos y ajuste guardado): la cue se desplaza de 0,5–1,8 s a 2,0–3,3 s.
+    await win.adjustSubOffset(ev("state.tracks[0]"), 1.4);
+    ev("els['lyrics-toggle'].click()");
+    const menuBtns = ev("[...els.menu.querySelectorAll('button')].map(b => b.textContent)");
+    check("subtítulos: el menú ofrece pistas, desactivar, desfase y «Cargar subtítulos…»",
+      menuBtns.some((t) => /Desactivados/.test(t)) && menuBtns.some((t) => /Español/.test(t))
+      && menuBtns.some((t) => /Desfase: \+1,4 s/.test(t)) && menuBtns.some((t) => /Cargar subtítulos/.test(t)),
+      menuBtns.join(" | "));
+    ev("[...els.menu.querySelectorAll('button')].find(b => b.textContent.includes('+0,1 s')).click()");
+    await until(() => ev("state.tracks[0].subs[1].offset === 1.5"), 1500);
+    ev("closeMenu()");
+
+    ev("media.currentTime = 1.0;");
+    const emptyAt1 = await until(() => ev("media.textTracks[0]?.cues?.length > 0 && media.textTracks[0].activeCues.length === 0"), 3000);
+    ev("media.currentTime = 2.5;");
+    const shiftedAt25 = await until(() => ev("media.textTracks[0]?.activeCues?.length === 1 && media.textTracks[0].activeCues[0].text === 'Primera línea'"), 3000);
+    check("subtítulos: el desfase (+1,5 s) desplaza activeCues al tiempo esperado", emptyAt1 && shiftedAt25,
+      `emptyAt1=${emptyAt1} shiftedAt25=${shiftedAt25} offset=${ev("state.tracks[0].subs[1].offset")}`);
+
+    // Desactivar subtítulos (menú / tecla C) quita el <track> y revoca la blob: URL.
+    const revoked = [];
+    const realRevoke = win.URL.revokeObjectURL.bind(win.URL);
+    win.URL.revokeObjectURL = (u) => { revoked.push(u); return realRevoke(u); };
+    const trackUrlBeforeOff = ev("media.querySelector('track')?.src || ''");
+    win.document.body.dispatchEvent(new win.KeyboardEvent("keydown", { code: "KeyC", bubbles: true, cancelable: true }));
+    check("subtítulos: tecla C desactiva, quita <track> y revoca su blob: URL",
+      ev("state.tracks[0].subIndex === -1 && media.querySelectorAll('track').length === 0 && els['lyrics-toggle'].getAttribute('aria-pressed') === 'false'")
+      && revoked.includes(trackUrlBeforeOff),
+      `revoked=${revoked.length}`);
+    win.document.body.dispatchEvent(new win.KeyboardEvent("keydown", { code: "KeyC", bubbles: true, cancelable: true }));
+    check("subtítulos: volver a pulsar C restaura la pista activa",
+      ev("state.tracks[0].subIndex === 1 && media.querySelectorAll('track').length === 1 && els['lyrics-toggle'].getAttribute('aria-pressed') === 'true'"));
+
+    // Cambio de deck: quitar <track> del deck anterior y revocar su URL.
+    const oldDeck = ev("media");
+    const oldUrl = oldDeck.querySelector("track")?.src || "";
+    ev("const prev = media; media = otherDeck(); syncSubtitles();");
+    check("subtítulos: al cambiar de deck se quitan los <track> del anterior y se revoca su URL",
+      oldDeck.querySelectorAll("track").length === 0 && revoked.includes(oldUrl) && ev("media.querySelectorAll('track').length === 1"),
+      `oldTracks=${oldDeck.querySelectorAll("track").length} revoked=${revoked.includes(oldUrl)}`);
+    win.URL.revokeObjectURL = realRevoke;
+
+    // Botón #fs-subs en pantalla completa abre el menú dentro de #stage.
+    const stage = ev("els.stage");
+    let fsEl = null;
+    Object.defineProperty(win.document, "fullscreenElement", { configurable: true, get: () => fsEl });
+    stage.requestFullscreen = () => { fsEl = stage; win.document.dispatchEvent(new win.Event("fullscreenchange")); return Promise.resolve(); };
+    win.document.exitFullscreen = () => { fsEl = null; win.document.dispatchEvent(new win.Event("fullscreenchange")); return Promise.resolve(); };
+    await win.toggleFullscreen();
+    ev("els['fs-subs'].click()");
+    check("subtítulos: en pantalla completa #fs-subs es visible y abre el menú dentro de #stage",
+      ev("!els['fs-subs'].classList.contains('oculto') && !els.menu.hidden && els.stage.contains(els.menu) && els.menu.textContent.includes('Cargar subtítulos')"));
+    await win.exitFullscreen();
+
+    // Recarga: conserva subtítulos y desfase en IndexedDB.
+    await sleep(200);
+    const loaded = new Promise((r) => frame.addEventListener("load", r, { once: true }));
+    frame.contentWindow.location.reload();
+    await loaded;
+    await waitReady(frame.contentWindow);
+    const e2 = (c) => frame.contentWindow.eval(c);
+    check("subtítulos: tras recargar se conservan pistas, textos y desfase guardado",
+      e2("state.tracks.length === 1 && state.tracks[0].subs.length === 2 && state.tracks[0].subs[0].label === 'Español' && state.tracks[0].subs[1].offset === 1.5"),
+      JSON.stringify(e2("state.tracks[0]?.subs?.map(s => ({ label: s.label, lang: s.lang, offset: s.offset }))")));
+
+    // Seleccionar la pista con desfase +1,5 s tras recargar y comprobar activeCues.
+    e2("setActiveSub(state.tracks[0], 1)");
+    await until(() => e2("media.readyState >= 2"), 4000);
+    e2("media.currentTime = 2.5;");
+    const activeAfterReload = await until(() => e2("media.textTracks[0]?.activeCues?.length === 1 && media.textTracks[0].activeCues[0].text === 'Primera línea'"), 3000);
+    check("subtítulos: tras recargar el <track> aplica el desfase guardado en activeCues", activeAfterReload,
+      e2("JSON.stringify([...(media.textTracks[0]?.activeCues || [])].map(c => c.text))"));
+    e2("media.pause()");
   });
 
   /* ---------- Resultado ---------- */

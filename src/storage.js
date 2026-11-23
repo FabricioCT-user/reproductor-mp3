@@ -80,6 +80,23 @@ const Storage = (() => {
     });
   }
 
+  // Limpia la lista de subtítulos antes de guardarla (solo texto y metadatos permitidos, nunca rutas ni blobs).
+  function cleanSubs(list) {
+    if (!Array.isArray(list)) return [];
+    const out = [];
+    for (const s of list) {
+      if (!s || typeof s !== "object" || typeof s.text !== "string") continue;
+      const entry = {
+        label: typeof s.label === "string" && s.label.trim() ? s.label.trim().slice(0, 120) : "Subtítulos",
+        text: s.text,
+        offset: Number.isFinite(Number(s.offset)) ? Math.round(Number(s.offset) * 1000) / 1000 : 0,
+      };
+      if (typeof s.lang === "string" && s.lang.trim()) entry.lang = s.lang.trim().slice(0, 32);
+      out.push(entry);
+    }
+    return out;
+  }
+
   // Guarda un archivo nuevo. `extra` permite fijar otros metadatos (kind, source "link" + linkId…).
   // Devuelve el id.
   const add = (file, extra = {}) => tx("readwrite", ({ tracks, files }, out) => {
@@ -87,12 +104,24 @@ const Storage = (() => {
       const rec = extra.source === "link"
         ? { name: file.name, type: file.type, size: file.size, lastModified: file.lastModified, kind: extra.kind || "video", source: "link", linkId: extra.linkId }
         : { name: file.name, blob: file, type: file.type };
+      if (extra.subs) {
+        const subs = cleanSubs(extra.subs);
+        if (subs.length) rec.subs = subs;
+      }
       tracks.add(rec).onsuccess = (e) => (out.result = e.target.result);
       return;
     }
     const allowed = new Set(["kind", "source", "linkId", "lyrics", "edits", "meta", "metaVersion", "subs", "thumb"]);
     const rec = { name: file.name, type: file.type, size: file.size, kind: "audio", source: "blob" };
-    for (const [key, value] of Object.entries(extra)) if (allowed.has(key)) rec[key] = value;
+    for (const [key, value] of Object.entries(extra)) {
+      if (!allowed.has(key)) continue;
+      if (key === "subs") {
+        const subs = cleanSubs(value);
+        if (subs.length) rec.subs = subs;
+      } else {
+        rec[key] = value;
+      }
+    }
     if (Number.isFinite(file.lastModified)) rec.lastModified = file.lastModified;
     tracks.add(rec).onsuccess = (e) => {
       out.result = e.target.result;
@@ -141,6 +170,10 @@ const Storage = (() => {
   return {
     setLyrics: (id, text) => setField(id, "lyrics", text),
     setEdits: (id, edits) => setField(id, "edits", edits),
+    setSubs: (id, subs) => {
+      const cleaned = cleanSubs(subs);
+      return setField(id, "subs", cleaned.length ? cleaned : null);
+    },
     setMeta,
     add,
     getFile,

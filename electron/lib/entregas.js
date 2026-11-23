@@ -25,14 +25,21 @@ class Entregas {
     this.limpiar();
     while (this.mapa.size >= this.maximo) this.mapa.delete(this.mapa.keys().next().value);
     const id = crypto.randomBytes(16).toString("hex");
-    this.mapa.set(id, { ruta: v.ruta, clase: v.clase, tamano: v.tamano, fecha: v.fecha, hasta: this.ahora() + this.caducidad });
+    this.mapa.set(id, {
+      ruta: v.ruta,
+      clase: v.clase,
+      tamano: v.tamano,
+      fecha: v.fecha,
+      identidad: v.identidad ?? null,
+      hasta: this.ahora() + this.caducidad,
+    });
     const pub = { id, name: v.nombre, size: v.tamano, lastModified: v.fecha, type: v.tipo, kind: v.clase };
     if (typeof v.rel === "string") pub.rel = v.rel;
     return pub;
   }
 
-  // id → entrada { ruta, clase, tamano, fecha } si existe, no ha caducado y es de una de las `clases` (por defecto,
-  // las que se leen: nunca video). Se consume.
+  // id → entrada { ruta, clase, tamano, fecha, identidad } si existe, no ha caducado y es de una de las `clases`
+  // (por defecto, las que se leen: nunca video). Se consume.
   tomar(id, clases = LEIBLES) {
     this.limpiar();
     if (typeof id !== "string" || !ID.test(id)) return null;

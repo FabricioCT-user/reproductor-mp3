@@ -21,6 +21,9 @@ function wireShortcuts() {
       case "KeyR": els.repeat.click(); break;
       case "KeyM": els.mute.click(); break;
       case "KeyL": toggleLyrics(); break;
+      case "KeyC": toggleSubtitles(); break;
+      case "KeyZ": stepSubOffset(-0.1); break;
+      case "KeyX": stepSubOffset(0.1); break;
       case "KeyF":
         if (e.repeat || e.target.closest?.("input, select, textarea") || e.target.isContentEditable) break;
         if (isVideoTrack(state.tracks[state.index]) || isFullscreen()) {
@@ -44,6 +47,7 @@ wireFullscreen();
 wireEq();
 wireFades();
 wireLyrics();
+wireSubtitles();
 wireEditor();
 wireTheme();
 wireShortcuts();
@@ -73,7 +77,7 @@ const appReady = (async function init() {
           meta = trackMeta({ ...parsed, hasCover: !!parsed.cover }, file);
           Storage.setMeta(rec.id, meta, META_VERSION).catch(() => {});
         }
-        state.tracks.push(await makeTrack(rec.id, file, rec.lyrics || "", rec.edits || null, meta));
+        state.tracks.push(await makeTrack(rec.id, file, rec.lyrics || "", rec.edits || null, meta, rec.subs || []));
       } catch { // este archivo no se puede cargar: se omite (un enlace se conserva como no disponible)
         if (rec.source === "link") state.tracks.push(await makeUnavailableTrack(rec));
       }

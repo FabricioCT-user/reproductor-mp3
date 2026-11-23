@@ -25,6 +25,7 @@ test("los scripts se cargan en un orden válido (lo que usa cada uno ya está de
   const order = scripts.map((s) => path.basename(s));
   const before = (a, b) => assert.ok(order.indexOf(a) >= 0 && order.indexOf(a) < order.indexOf(b), `${a} debe cargarse antes que ${b}`);
   before("lyrics.js", "tags.js");
+  before("subtitles.js", "subtitles-ui.js");
   before("id3.js", "tags.js");
   before("mp4.js", "tags.js");
   before("mkv.js", "library.js");

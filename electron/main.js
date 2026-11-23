@@ -133,9 +133,19 @@ let porAbrir = []; // lo que llegó del sistema y la interfaz aún no ha recogid
 
 async function registrar(argumentos, cwd) {
   const items = [];
+  const vistos = new Set();
+  const agregar = (v) => {
+    if (!v || vistos.has(v.ruta)) return;
+    vistos.add(v.ruta);
+    items.push(entregas.registrar(v));
+  };
   for (const a of argumentos) {
     const v = await rutas.validar(rutas.aRuta(a, cwd));
-    if (v) items.push(entregas.registrar(v));
+    if (!v) continue;
+    agregar(v);
+    if (v.clase === "video") {
+      for (const s of await rutas.subtitulosAcompanantes(v.ruta)) agregar(s);
+    }
   }
   return items;
 }
@@ -171,7 +181,7 @@ async function elegir(carpeta) {
     const extensiones = Object.keys(rutas.EXTENSIONES).map((e) => e.slice(1));
     r = await dialog.showOpenDialog(ventana, carpeta
       ? { title: "Añadir carpeta", properties: ["openDirectory", "multiSelections"] }
-      : { title: "Añadir archivos", properties: ["openFile", "multiSelections"], filters: [{ name: "Audio, video y letras", extensions: extensiones }] });
+      : { title: "Añadir archivos", properties: ["openFile", "multiSelections"], filters: [{ name: "Audio, video, letras y subtítulos", extensions: extensiones }] });
   }
   if (r.canceled) return [];
   const items = [];
@@ -186,14 +196,20 @@ async function elegir(carpeta) {
 // o como ruta que el preload sacó de un File con webUtils.getPathForFile (arrastrar, <input>). Solo videos válidos.
 async function enlazar(x) {
   let ruta = null;
+  const desdeRuta = typeof x?.ruta === "string";
   if (typeof x?.entrega === "string") ruta = entregas.tomar(x.entrega, ["video"])?.ruta ?? null;
-  else if (typeof x?.ruta === "string") ruta = rutas.aRuta(x.ruta, null); // solo absolutas
+  else if (desdeRuta) ruta = rutas.aRuta(x.ruta, null); // solo absolutas
   if (!ruta) return null;
   const v = await rutas.validar(ruta);
   if (!v || v.clase !== "video") return null;
   const reg = await enlacesListos;
   const linkId = await reg.registrar(v);
-  return { linkId, name: v.nombre, size: v.tamano, lastModified: v.fecha, type: v.tipo };
+  const res = { linkId, name: v.nombre, size: v.tamano, lastModified: v.fecha, type: v.tipo };
+  if (desdeRuta) {
+    const acomp = await rutas.subtitulosAcompanantes(v.ruta);
+    if (acomp.length) res.subtitulos = acomp.map((s) => entregas.registrar(s));
+  }
+  return res;
 }
 
 function cablearIpc() {
@@ -213,7 +229,8 @@ function cablearIpc() {
     if (!deLaApp(event)) return null;
     const e = entregas.tomar(id);
     if (!e) return null; // inventado, caducado, ya leído o un video
-    return rutas.leer(e.ruta).catch(() => null); // ya no está, es otra cosa o es demasiado grande
+    const limite = e.clase === "subtitulo" ? rutas.MAX_SUBTITULO : rutas.MAX_LECTURA;
+    return rutas.leer(e, { limite }).catch(() => null); // ya no está, es otra cosa o es demasiado grande
   });
   ipcMain.handle("reproductor:enlazar", async (event, x) => {
     if (!deLaApp(event)) return null;
@@ -409,6 +426,12 @@ async function comprobacionesEnlaces(win) {
       ctx: analyser?.context.state, error: media.error?.code ?? null })`);
     check("reproduce desde app://reproductor/__media/<id> con imagen y sonido", suena && m.src === `${servir.ORIGEN}/__media/${id}`, m);
 
+    const subAuto = await hasta(`media.textTracks[0]?.activeCues?.length === 1 && media.textTracks[0].activeCues[0].text === "Subtítulo automático"`, 5000);
+    const subInfo = await ev(`({ subs: state.tracks[state.index]?.subs?.map((s) => ({ label: s.label, offset: s.offset })),
+      cues: [...(media.textTracks[0]?.activeCues || [])].map((c) => c.text) })`);
+    check("encuentra solo el .srt regular junto al video de argv (ignora symlinks) y muestra activeCues",
+      subAuto && subInfo.subs?.length === 1, subInfo);
+
     // Saltar: a mitad y sigue sonando.
     const t = await ev(`new Promise((res) => { media.addEventListener("seeked", () => res(media.currentTime), { once: true }); media.currentTime = 5; })`);
     const sigue = await hasta("!media.paused && media.currentTime > 5.3");
@@ -458,10 +481,16 @@ async function comprobacionesEnlaces(win) {
       await dbg.sendCommand("DOM.setFileInputFiles", { nodeId, files: [otro] });
     } finally { dbg.detach(); }
     await hasta(`state.tracks.some((t) => t.fileName === "otro video.mp4")`);
+    await hasta(`state.tracks.find((t) => t.fileName === "otro video.mp4")?.subs?.length === 1`, 5000);
     d = await registro("otro video.mp4");
+    const otroSubs = await ev(`state.tracks.find((t) => t.fileName === "otro video.mp4")?.subs || []`);
     const otroId = d.rec?.linkId;
     check("un File de <input> o arrastrado (webUtils.getPathForFile) se enlaza sin copiarse",
       d.rec?.source === "link" && /^[0-9a-f]{32}$/.test(otroId) && d.archivo === false && !d.json.includes(otro), d);
+    check("al enlazar un video por <input>/arrastrar encuentra solo el .es.srt regular de su misma carpeta (ignora symlinks)",
+      otroSubs.length === 1 && otroSubs[0].lang === "es" && otroSubs[0].label === "Español"
+      && otroSubs[0].text.includes("Subtítulo enlazado") && !otroSubs.some((s) => s.text.includes("Secreto"))
+      && !d.json.includes(path.dirname(otro)), otroSubs);
 
     // Lo que no es un video con ruta no se enlaza: un File creado por la página se copia como en la web.
     const api = await ev(`(async () => {

@@ -2,6 +2,7 @@
 // No necesitan Electron: usan una carpeta temporal real (enlaces simbólicos, carpetas, nombres con espacios).
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -123,6 +124,106 @@ test("leer: devuelve los bytes; falla con enlaces simbólicos, carpetas o por en
   await assert.rejects(rutas.leer(path.join(dir, "leer-enlace.mp3")));
   await assert.rejects(rutas.leer(path.join(dir, "con espacios")));
   await assert.rejects(rutas.leer(p, { limite: 3 }));
+});
+
+test("subtitulosAcompanantes: encuentra nombre.srt / nombre.*.srt / .vtt en la misma carpeta y aplica seguridad y tope", async () => {
+  const v = crear("subs/Peli.mp4", "mp4");
+  crear("subs/Peli.srt", "1\n00:00:01,000 --> 00:00:02,000\nUno\n");
+  crear("subs/peli.es.srt", "1\n00:00:01,000 --> 00:00:02,000\nDos\n");
+  crear("subs/peli.en.forced.vtt", "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nThree\n");
+  crear("subs/peli2.srt", "no coincide");
+  crear("subs/otro.srt", "no coincide");
+  crear("subs/peli.txt", "no es subtitulo");
+  crear("subs/.peli.srt", "oculto");
+  crear("subs/subcarpeta/peli.fr.srt", "en subcarpeta no");
+  crear("subs/peli.grande.srt", "x".repeat(200));
+  const fuera = crear("fuera.srt", "fuera de la carpeta");
+  const secreto = crear("subs/secreto.txt", "secreto");
+  const privado = crear("subs/privado.srt", "privado de la misma carpeta");
+  fs.symlinkSync(fuera, path.join(dir, "subs", "peli.fuera.srt"));
+  fs.symlinkSync(secreto, path.join(dir, "subs", "peli.disfraz.srt"));
+  fs.symlinkSync(privado, path.join(dir, "subs", "peli.priv.srt"));
+  fs.symlinkSync(path.join(dir, "subs", "peli.es.srt"), path.join(dir, "subs", "peli.alias.srt"));
+  fs.symlinkSync(path.join(dir, "subs", "peli.priv.srt"), path.join(dir, "subs", "peli.cadena.srt"));
+
+  const r = await rutas.subtitulosAcompanantes(v, { maxTamano: 100 });
+  assert.deepEqual(r.map((x) => x.nombre), ["peli.en.forced.vtt", "peli.es.srt", "Peli.srt"]);
+  assert.ok(r.every((x) => x.clase === "subtitulo" && path.dirname(x.ruta) === path.dirname(v)));
+
+  const limitado = await rutas.subtitulosAcompanantes(v, { maxArchivos: 1, maxTamano: 100 });
+  assert.equal(limitado.length, 1);
+  assert.deepEqual(await rutas.subtitulosAcompanantes(path.join(dir, "no-existe.mp4")), []);
+});
+
+test("subtitulosAcompanantes + leer: si el archivo se sustituye por un symlink entre comprobación y lectura, leer falla", async () => {
+  const v = crear("toctou/Cine.mp4", "mp4");
+  const sub = crear("toctou/Cine.srt", "1\n00:00:01,000 --> 00:00:02,000\nOriginal\n");
+  const privado = crear("toctou/privado.srt", "secreto");
+  const r = await rutas.subtitulosAcompanantes(v);
+  assert.deepEqual(r.map((x) => x.ruta), [sub]);
+
+  fs.unlinkSync(sub);
+  fs.symlinkSync(privado, sub);
+  await assert.rejects(rutas.leer(r[0], { limite: rutas.MAX_SUBTITULO }));
+});
+
+test("subtitulosAcompanantes + leer: si se sustituye por otro archivo regular (mismo tamaño), leer falla por identidad", async () => {
+  const v = crear("toctou-reg/Cine.mp4", "mp4");
+  const sub = crear("toctou-reg/Cine.srt", "Original");
+  const r = await rutas.subtitulosAcompanantes(v);
+  assert.equal((await rutas.leer(r[0], { limite: rutas.MAX_SUBTITULO })).toString(), "Original");
+
+  const otro = crear("toctou-reg/otro.tmp", "Sustitut");
+  fs.unlinkSync(sub);
+  fs.renameSync(otro, sub);
+  await assert.rejects(rutas.leer(r[0], { limite: rutas.MAX_SUBTITULO }));
+});
+
+test("subtitulosAcompanantes + leer: si se sustituye por una FIFO, leer falla sin colgarse", { skip: process.platform === "win32" }, async () => {
+  const v = crear("toctou-fifo/Cine.mp4", "mp4");
+  const sub = crear("toctou-fifo/Cine.srt", "Original");
+  const r = await rutas.subtitulosAcompanantes(v);
+
+  fs.unlinkSync(sub);
+  execFileSync("mkfifo", [sub]);
+
+  const conTope = (p) => Promise.race([
+    p,
+    new Promise((_, rej) => setTimeout(() => rej(new Error("se colgó abriendo FIFO")), 1500)),
+  ]);
+  await assert.rejects(conTope(rutas.leer(r[0], { limite: rutas.MAX_SUBTITULO })), (e) => !/colgó/.test(e.message));
+  await assert.rejects(conTope(rutas.leer(sub, { limite: rutas.MAX_SUBTITULO })), (e) => !/colgó/.test(e.message));
+});
+
+test("subtitulosAcompanantes + leer: si el directorio padre se sustituye por un symlink, leer falla", async () => {
+  const v = crear("toctou-padre/real/Cine.mp4", "mp4");
+  const sub = crear("toctou-padre/real/Cine.srt", "Original");
+  const falso = crear("toctou-padre/otro/Cine.srt", "Privado!");
+  const r = await rutas.subtitulosAcompanantes(v);
+
+  const dirReal = path.dirname(sub);
+  const dirOtro = path.dirname(falso);
+  fs.rmSync(dirReal, { recursive: true, force: true });
+  fs.symlinkSync(dirOtro, dirReal);
+  await assert.rejects(rutas.leer(r[0], { limite: rutas.MAX_SUBTITULO }));
+});
+
+test("entregas + leer: conserva la identidad sin exponerla a la interfaz y rechaza sustituciones", async () => {
+  const p = crear("toctou-entregas/tema.mp3", "datos-1");
+  const v = await rutas.validar(p);
+  const e = new Entregas();
+  const pub = e.registrar(v);
+  assert.equal(pub.identidad, undefined);
+  assert.ok(!JSON.stringify(pub).includes(String(v.identidad.ino)));
+
+  const tomada = e.tomar(pub.id);
+  assert.equal((await rutas.leer(tomada)).toString(), "datos-1");
+
+  const pub2 = e.registrar(v);
+  const otro = crear("toctou-entregas/otro.tmp", "datos-2");
+  fs.unlinkSync(p);
+  fs.renameSync(otro, p);
+  await assert.rejects(rutas.leer(e.tomar(pub2.id)));
 });
 
 /* ----- entregas.js ----- */

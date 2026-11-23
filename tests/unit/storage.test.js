@@ -21,7 +21,7 @@ function loadStorage(idb) {
 
 // Los objetos creados dentro del contexto aislado tienen otros prototipos: se copian (sin tocar los Blob) antes de comparar.
 const norm = (v) => (v instanceof Blob || v === null || typeof v !== "object" ? v
-  : Array.isArray(v) ? v.map(norm) : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, norm(x)])));
+  : Array.isArray(v) ? Array.from(v, norm) : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, norm(x)])));
 
 const song = (name, n = 600, mtime = 1234) => new File([fakeAudio(n)], name, { type: "audio/mpeg", lastModified: mtime });
 
@@ -138,6 +138,33 @@ test("setLyrics / setEdits solo tocan tracks: el archivo guardado no se reescrib
   [rec] = raw(idb, "tracks");
   assert.equal("lyrics" in rec, false, "null borra el campo");
   assert.equal(raw(idb, "files")[0].blob, f);
+});
+
+test("setSubs y add con subs: solo persiste campos permitidos en tracks sin tocar files", async () => {
+  const idb = createFakeIndexedDB();
+  const S = loadStorage(idb);
+  const f = song("video.mp4");
+  const id = await S.add(f, {
+    kind: "video",
+    subs: [{ label: "Español", lang: "es", text: "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHola\n", offset: 0.2, path: "/privado/a.srt" }],
+  });
+  let [rec] = raw(idb, "tracks");
+  assert.deepEqual(norm(rec.subs), [{ label: "Español", lang: "es", text: "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHola\n", offset: 0.2 }]);
+  assert.equal("path" in rec.subs[0], false, "no se guardan campos extra dentro de subs");
+
+  let filePuts = 0;
+  idb.fail = (store) => { if (store === "files") filePuts++; return null; };
+  await S.setSubs(id, [
+    { label: "Inglés", lang: "en", text: "1\n00:00:01,000 --> 00:00:02,000\nHi\n", offset: -0.3, ruta: "/no" },
+    { label: "roto" }, // sin text: se descarta
+  ]);
+  assert.equal(filePuts, 0);
+  [rec] = raw(idb, "tracks");
+  assert.deepEqual(norm(rec.subs), [{ label: "Inglés", lang: "en", text: "1\n00:00:01,000 --> 00:00:02,000\nHi\n", offset: -0.3 }]);
+
+  await S.setSubs(id, []);
+  [rec] = raw(idb, "tracks");
+  assert.equal("subs" in rec, false, "lista vacía borra el campo subs");
 });
 
 test("remove y clear borran en los dos almacenes", async () => {

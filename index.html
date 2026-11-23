@@ -142,7 +142,7 @@
         <input type="search" id="filter" placeholder="Buscar en la biblioteca…" aria-label="Buscar">
         <label class="btn">
           + Añadir
-          <input type="file" id="file-input" accept="audio/*,video/*,.mp4,.m4v,.webm,.mov,.mkv,.flac,.m4a,.ogg,.opus,.lrc" multiple hidden>
+          <input type="file" id="file-input" accept="audio/*,video/*,.mp4,.m4v,.webm,.mov,.mkv,.flac,.m4a,.ogg,.opus,.lrc,.srt,.vtt" multiple hidden>
         </label>
         <label class="btn" title="Importar todas las pistas de una carpeta (incluye subcarpetas)">
           + Carpeta
@@ -203,9 +203,11 @@
   </dialog>
 
   <div id="menu" class="menu" hidden></div>
+  <input type="file" id="sub-input" accept=".srt,.vtt" multiple hidden>
   <div id="toast" class="toast" role="status" hidden></div>
   <script src="src/util.js"></script>
   <script src="src/lyrics.js"></script>
+  <script src="src/subtitles.js"></script>
   <script src="src/playlist-io.js"></script>
   <script src="src/id3.js"></script>
   <script src="src/mp4.js"></script>
@@ -217,6 +219,7 @@
   <script src="src/app/library.js"></script>
   <script src="src/app/playlists.js"></script>
   <script src="src/app/lyrics-ui.js"></script>
+  <script src="src/app/subtitles-ui.js"></script>
   <script src="src/app/player.js"></script>
   <script src="src/app/fullscreen.js"></script>
   <script src="src/app/eq.js"></script>

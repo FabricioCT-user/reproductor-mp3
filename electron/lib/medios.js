@@ -6,7 +6,7 @@
 
 const fs = require("node:fs");
 const rango = require("./rango");
-const { clasificar } = require("./rutas");
+const { clasificar, abrirSeguro } = require("./rutas");
 
 const TROZO = 512 * 1024;
 
@@ -33,15 +33,14 @@ function flujo(fh, inicio, fin, trozo = TROZO) {
 }
 
 // (entrada del registro o null, método, cabecera Range) → { estado, cabeceras, cuerpo? }.
-// Nunca lanza: lo que no se puede abrir es 404. O_NOFOLLOW: si alguien cambió el archivo por un enlace simbólico, falla.
+// Nunca lanza: lo que no se puede abrir es 404. abrirSeguro impide symlinks (O_NOFOLLOW), FIFOs (O_NONBLOCK + fstat) y carpetas.
 async function servir(entrada, metodo, cabeceraRange, { trozo = TROZO } = {}) {
   if (metodo !== "GET" && metodo !== "HEAD") return { estado: 405, cabeceras: {} };
   if (!entrada) return { estado: 404, cabeceras: {} };
   let fh;
   try {
-    fh = await fs.promises.open(entrada.ruta, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
-    const st = await fh.stat();
-    if (!st.isFile()) throw new Error("no es un archivo");
+    let st;
+    ({ fh, st } = await abrirSeguro(entrada.ruta));
     const r = rango.analizar(cabeceraRange, st.size);
     const cab = rango.cabeceras(r, st.size, clasificar(entrada.ruta)?.tipo); // por extensión
     if (r.estado === 416 || metodo === "HEAD" || st.size === 0) {
