@@ -7,8 +7,8 @@ const dev = (...a) => analizar(["/ruta/electron", ".", ...a]);
 const pkg = (...a) => analizar(["/opt/Reproductor/reproductor", ...a], { empaquetada: true });
 
 test("sin argumentos", () => {
-  assert.deepEqual(dev(), { smoke: false, datos: null, archivos: [] });
-  assert.deepEqual(pkg(), { smoke: false, datos: null, archivos: [] });
+  assert.deepEqual(dev(), { smoke: false, instalarEscritorio: false, datos: null, archivos: [] });
+  assert.deepEqual(pkg(), { smoke: false, instalarEscritorio: false, datos: null, archivos: [] });
 });
 
 test("en desarrollo se salta la carpeta de la app; empaquetada no", () => {
@@ -20,6 +20,15 @@ test("--smoke solo en desarrollo", () => {
   assert.equal(dev("--smoke").smoke, true);
   assert.equal(pkg("--smoke").smoke, false);
   assert.equal(dev("--smoke=1").smoke, false);
+});
+
+test("--instalar-escritorio en desarrollo y empaquetada; tras «--» es archivo", () => {
+  assert.equal(dev("--instalar-escritorio").instalarEscritorio, true);
+  assert.equal(pkg("--instalar-escritorio").instalarEscritorio, true);
+  assert.equal(pkg("--instalar-escritorio=1").instalarEscritorio, false);
+  const tras = pkg("--", "--instalar-escritorio");
+  assert.equal(tras.instalarEscritorio, false);
+  assert.deepEqual(tras.archivos, ["--instalar-escritorio"]);
 });
 
 test("--user-data-dir solo con ruta absoluta, normalizada", () => {
@@ -45,8 +54,13 @@ test("archivos con espacios, acentos y URLs file:// se pasan tal cual (rutas.js 
     ["/m/dos  espacios ñ.mp3", "file:///m/a%20b.mp3", "relativa con espacio.flac"]);
 });
 
-test("argv de una segunda instancia (con opciones que añade Chromium) da solo los archivos", () => {
+test("argv de una segunda instancia (con opciones que añade Chromium y «--») da solo los archivos", () => {
   const r = pkg("--enable-features=X", "/m/a.mp3", "--user-data-dir=/tmp/d", "/m/b c.ogg");
   assert.deepEqual(r.archivos, ["/m/a.mp3", "/m/b c.ogg"]);
   assert.equal(r.smoke, false);
+
+  const conSeparador = pkg("--enable-features=X", "--", "/m/a.mp3", "--raro.mp3", "/m/b c.ogg");
+  assert.deepEqual(conSeparador.archivos, ["/m/a.mp3", "--raro.mp3", "/m/b c.ogg"]);
+  assert.equal(conSeparador.smoke, false);
+  assert.equal(conSeparador.instalarEscritorio, false);
 });

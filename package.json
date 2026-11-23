@@ -2,9 +2,12 @@
   "name": "reproductor-mp3",
   "version": "1.0.0",
   "private": true,
-  "description": "Reproductor de música local: en el navegador o como app de escritorio (Electron)",
+  "description": "Reproductor de música y video local: en el navegador o como app de escritorio (Electron)",
+  "author": "FabricioCT-user <fabricioct-user@users.noreply.github.com>",
+  "homepage": "https://github.com/FabricioCT-user/reproductor-mp3",
   "license": "MIT",
   "main": "electron/main.js",
+  "desktopName": "reproductor.desktop",
   "scripts": {
     "start": "python3 launcher/servidor.py",
     "test": "node --test tests/unit/*.test.js",
@@ -17,8 +20,9 @@
     "electron-builder": "26.18.1"
   },
   "build": {
-    "appId": "io.github.fabricioct_user.reproductor",
+    "appId": "io.github.fabricioct-user.reproductor",
     "productName": "Reproductor",
+    "publish": null,
     "directories": {
       "output": "dist"
     },
@@ -34,12 +38,81 @@
       "electron/**/*.js"
     ],
     "asar": true,
+    "fileAssociations": [
+      { "ext": "mp3", "name": "Audio MP3", "role": "Viewer" },
+      { "ext": "flac", "name": "Audio FLAC", "role": "Viewer" },
+      { "ext": "ogg", "name": "Audio Ogg", "role": "Viewer" },
+      { "ext": "oga", "name": "Audio Ogg", "role": "Viewer" },
+      { "ext": "opus", "name": "Audio Opus", "role": "Viewer" },
+      { "ext": "m4a", "name": "Audio M4A", "role": "Viewer" },
+      { "ext": "aac", "name": "Audio AAC", "role": "Viewer" },
+      { "ext": "wav", "name": "Audio WAV", "role": "Viewer" },
+      { "ext": "weba", "name": "Audio WebM", "role": "Viewer" },
+      { "ext": "mp4", "name": "Video MP4", "role": "Viewer" },
+      { "ext": "m4v", "name": "Video M4V", "role": "Viewer" },
+      { "ext": "webm", "name": "Video WebM", "role": "Viewer" },
+      { "ext": "mkv", "name": "Video Matroska", "role": "Viewer" },
+      { "ext": "mov", "name": "Video QuickTime", "role": "Viewer" }
+    ],
     "linux": {
       "target": [
-        "dir"
+        "pacman",
+        "AppImage",
+        "deb"
       ],
-      "category": "AudioVideo",
-      "icon": "icon-512.png"
+      "executableName": "reproductor",
+      "syncDesktopName": true,
+      "maintainer": "FabricioCT-user <fabricioct-user@users.noreply.github.com>",
+      "synopsis": "Reproductor de música y video local",
+      "category": "AudioVideo;Audio;Video;Player",
+      "icon": "icon-512.png",
+      "mimeTypes": [
+        "audio/mpeg",
+        "audio/flac",
+        "audio/x-flac",
+        "audio/ogg",
+        "audio/x-vorbis+ogg",
+        "audio/opus",
+        "audio/mp4",
+        "audio/x-m4a",
+        "audio/aac",
+        "audio/wav",
+        "audio/x-wav",
+        "audio/webm",
+        "video/mp4",
+        "video/x-m4v",
+        "video/webm",
+        "video/x-matroska",
+        "video/quicktime"
+      ],
+      "desktop": {
+        "entry": {
+          "StartupNotify": "false"
+        }
+      }
+    },
+    "pacman": {
+      "executableArgs": [
+        "--",
+        "%F"
+      ],
+      "depends": [
+        "gtk3",
+        "nss",
+        "libxss",
+        "alsa-lib",
+        "libnotify",
+        "xdg-utils"
+      ]
+    },
+    "deb": {
+      "executableArgs": [
+        "--",
+        "%F"
+      ]
+    },
+    "appImage": {
+      "executableArgs": []
     },
     "electronFuses": {
       "runAsNode": false,

@@ -9,6 +9,7 @@ const path = require("node:path");
 const { analizar } = require("./lib/argumentos");
 const { Enlaces } = require("./lib/enlaces");
 const { Entregas } = require("./lib/entregas");
+const escritorio = require("./lib/escritorio");
 const medios = require("./lib/medios");
 const rutas = require("./lib/rutas");
 const servir = require("./lib/servir");
@@ -16,6 +17,50 @@ const servir = require("./lib/servir");
 const RAIZ = path.join(__dirname, "..");
 const args = analizar(process.argv, { empaquetada: app.isPackaged });
 const SMOKE_LIMITE_MS = 10 * 60 * 1000;
+const MENSAJE_SIN_SANDBOX = "El Reproductor no se ejecuta sin sandbox. Usa el paquete .deb/.pacman o habilita los espacios de nombres de usuario.";
+
+// Muestra diálogo gráfico solo cuando se lanza desde un entorno de escritorio sin consola
+// (stderr en /dev/null o journald de systemd), nunca en terminal, pipes ni pruebas automáticas.
+function esLanzamientoGrafico() {
+  if (args.smoke) return false;
+  if (!process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) return false;
+  if (process.stderr.isTTY) return false;
+  try {
+    const st = fs.fstatSync(2);
+    if (st.isCharacterDevice()) return true;
+    if (st.isSocket() && process.env.JOURNAL_STREAM === `${st.dev}:${st.ino}`) return true;
+  } catch {}
+  return false;
+}
+
+// Política de seguridad (TE.1/TE.3): negarse a arrancar sin sandbox (cubre también el fallback
+// silencioso a --no-sandbox que añade el AppRun de electron-builder si fallan los userns).
+if (app.commandLine.hasSwitch("no-sandbox")) {
+  console.error(MENSAJE_SIN_SANDBOX);
+  if (esLanzamientoGrafico()) {
+    app.whenReady().then(() => {
+      dialog.showErrorBox("Reproductor", MENSAJE_SIN_SANDBOX);
+      app.exit(1);
+    }).catch(() => app.exit(1));
+  } else {
+    app.exit(1);
+  }
+  return;
+}
+
+// Integración opcional del AppImage en el escritorio: escribe .desktop e icono y sale sin abrir ventana.
+if (args.instalarEscritorio) {
+  escritorio.instalar({ raiz: RAIZ }).then((r) => {
+    console.log(`Instalado: ${r.escritorio}`);
+    console.log(`Icono: ${r.icono}`);
+    console.log(`Ejecutable: ${r.ejecutable}`);
+    app.exit(0);
+  }).catch((e) => {
+    console.error(`Error al instalar la entrada de escritorio: ${e.message}`);
+    app.exit(1);
+  });
+  return;
+}
 
 // La prueba de humo vacía la base de datos: nunca sobre la carpeta de datos real.
 if (args.smoke && !args.datos) {
@@ -274,7 +319,7 @@ async function comprobacionesAbrir(win) {
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
     const codigo = await new Promise((res) => {
-      const hijo = spawn(process.execPath, [RAIZ, `--user-data-dir=${args.datos}`, tres], { stdio: "ignore", env });
+      const hijo = spawn(process.execPath, [RAIZ, `--user-data-dir=${args.datos}`, "--", tres], { stdio: "ignore", env });
       const t = setTimeout(() => { hijo.kill(); res("no se cerró"); }, 20000);
       hijo.on("exit", (c) => { clearTimeout(t); res(c); });
     });
@@ -500,6 +545,20 @@ async function comprobacionesApp(win) {
     await win.webContents.executeJavaScript('location.href = "https://example.com/"; 1');
     await new Promise((res) => setTimeout(res, 500));
     check("la navegación fuera de la app se bloquea", servir.esUrlDeApp(win.webContents.getURL()), win.webContents.getURL());
+
+    // Política de sandbox: arrancar con --no-sandbox debe negarse y salir con código != 0.
+    const { spawn } = require("node:child_process");
+    const env = { ...process.env };
+    delete env.ELECTRON_RUN_AS_NODE;
+    const sinSandbox = await new Promise((res) => {
+      let stderr = "";
+      const hijo = spawn(process.execPath, [RAIZ, "--no-sandbox"], { stdio: ["ignore", "pipe", "pipe"], env });
+      hijo.stderr.on("data", (chunk) => { stderr += chunk; });
+      const t = setTimeout(() => { hijo.kill(); res({ codigo: "timeout", stderr }); }, 15000);
+      hijo.on("exit", (codigo) => { clearTimeout(t); res({ codigo, stderr }); });
+    });
+    check("se niega a arrancar con --no-sandbox (código != 0 y aviso claro)",
+      sinSandbox.codigo === 1 && /sin sandbox/i.test(sinSandbox.stderr), sinSandbox);
   } catch (e) {
     check("comprobaciones sin excepciones", false, String(e?.stack || e));
   }
