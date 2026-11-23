@@ -54,13 +54,18 @@ Con `npm install`, `npm start` abre la app de escritorio (Electron).
 |---|---|
 | `Espacio` | Reproducir / pausar |
 | `←` / `→` | Retroceder / avanzar 5 s |
+| `Mayús` + `←` / `→` | Retroceder / avanzar 30 s |
+| `,` / `.` | Fotograma anterior / siguiente (en video en pausa) |
 | `↑` / `↓` | Volumen |
 | `N` / `P` | Siguiente / anterior |
 | `S` / `R` | Aleatorio / repetir |
 | `M` | Silenciar |
 | `[` / `]` | Velocidad más lenta / más rápida |
-| `L` | Mostrar / ocultar letra |
+| `L` | Mostrar / ocultar letra (en audio) |
 | `F` | Pantalla completa (en video) |
+| `I` | Imagen en imagen / Picture-in-Picture (en video) |
+| `C` | Activar / desactivar subtítulos (en video) |
+| `Z` / `X` | Adelantar / retrasar subtítulos 0,1 s (en video) |
 
 ## Uso
 
