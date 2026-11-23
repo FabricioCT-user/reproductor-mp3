@@ -5,7 +5,7 @@
 function wireShortcuts() {
   document.addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest?.("dialog")) return;
-    const typing = e.target.tagName === "INPUT" && e.target.type !== "range";
+    const typing = (e.target.tagName === "INPUT" && e.target.type !== "range") || e.target.tagName === "TEXTAREA" || e.target.isContentEditable;
     if (typing) return;
     if (e.code === "Space" && e.target.closest?.("button, select, a, summary")) return; // activa el control enfocado
     switch (e.code) {
@@ -20,6 +20,12 @@ function wireShortcuts() {
       case "KeyR": els.repeat.click(); break;
       case "KeyM": els.mute.click(); break;
       case "KeyL": toggleLyrics(); break;
+      case "KeyF":
+        if (!e.repeat && (isVideoTrack(state.tracks[state.index]) || isFullscreen())) {
+          e.preventDefault();
+          toggleFullscreen();
+        }
+        break;
       case "BracketLeft": stepSpeed(-1); break;
       case "BracketRight": stepSpeed(1); break;
     }
@@ -31,6 +37,7 @@ wireLibrary();
 wireSelection();
 wirePlaylists();
 wirePlayer();
+wireFullscreen();
 wireEq();
 wireFades();
 wireLyrics();

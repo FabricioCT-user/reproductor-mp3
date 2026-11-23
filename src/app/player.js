@@ -9,7 +9,7 @@ const isVideoTrack = (t) => t?.meta?.kind === "video";
 // Muestra el escenario (solo el deck activo) y oculta el visualizador mientras suena un video.
 function syncStage(t) {
   const video = isVideoTrack(t);
-  $("stage")?.classList.toggle("oculto", !video);
+  els.stage?.classList.toggle("oculto", !video);
   decks.forEach((d) => d.classList.toggle("oculto", d !== media));
   els.viz.hidden = video;
   if (video) {
@@ -19,6 +19,7 @@ function syncStage(t) {
     vizRunning = true;
     draw();
   }
+  if (typeof syncFullscreen === "function") syncFullscreen();
 }
 
 // Título, artista y carátula (lo que cambia al editar etiquetas sin reiniciar la reproducción).
@@ -269,6 +270,23 @@ function stepSpeed(dir) {
 // Si una canción no se puede reproducir se salta, pero sin dar vueltas para siempre si ninguna funciona.
 let failures = 0;
 
+function applyVolume(v) {
+  const val = clamp(Number(v), 0, 1);
+  els.volume.value = val;
+  setVolume(val);
+  setMuted(false);
+  store.set("volume", val);
+}
+
+function toggleMute() {
+  setMuted(!media.muted);
+}
+
+function seekToPercent(pct) {
+  const p = clamp(Number(pct), 0, 100);
+  if (media.duration) media.currentTime = (p / 100) * media.duration;
+}
+
 // Transporte, volumen, progreso, eventos de audio, teclas multimedia y menú de velocidad.
 function wirePlayer() {
   els.play.addEventListener("click", togglePlay);
@@ -288,19 +306,13 @@ function wirePlayer() {
 
   setVolume(els.volume.value);
 
-  els.volume.addEventListener("input", () => {
-    setVolume(els.volume.value);
-    setMuted(false);
-    store.set("volume", els.volume.value);
-  });
+  els.volume.addEventListener("input", () => applyVolume(els.volume.value));
 
-  els.mute.addEventListener("click", () => setMuted(!media.muted));
+  els.mute.addEventListener("click", toggleMute);
 
   onMedia("volumechange", () => (els.mute.style.opacity = media.muted ? 0.35 : ""));
 
-  els.seek.addEventListener("input", () => {
-    if (media.duration) media.currentTime = (els.seek.value / 100) * media.duration;
-  });
+  els.seek.addEventListener("input", () => seekToPercent(els.seek.value));
 
   onMedia("play", () => {
     els["play-icon"].innerHTML = ICON_PAUSE;
