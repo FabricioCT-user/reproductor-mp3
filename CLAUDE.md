@@ -17,7 +17,7 @@ npm test       # pruebas unitarias (node:test, tests/unit/*.test.js, ~80)
 
 ```
 index.html  style.css  sw.js  manifest.webmanifest  icon*.{svg,png}
-src/              módulos sin DOM: util, lyrics, playlist-io, id3, tags, tag-writer, storage
+src/              módulos sin DOM: util, lyrics, playlist-io, id3, mp4, tags, tag-writer, storage
 src/app/          la aplicación: core, library, playlists, lyrics-ui, player, eq, fades, launcher, editor, theme, main
 launcher/         servidor.py (estático + cola «Abrir con…»), reproductor (lanzador), instalar.sh (.desktop en Linux), comun.py
 tests/unit/       node:test; helpers.js construye MP3/FLAC/Ogg/MP4 sintéticos

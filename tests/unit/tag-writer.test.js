@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const h = require("./helpers");
 const { cat, bytesOf, sameBytes, fakeImage, fakeAudio, flacPicture, flacFile, flacBlocks, id3Tag, textFrame, apicFrame, id3Frame, mp3File, plain, STREAMINFO } = h;
 
-const g = h.load("lyrics.js", "id3.js", "tags.js", "tag-writer.js");
+const g = h.load("lyrics.js", "id3.js", "mp4.js", "tags.js", "tag-writer.js");
 const Tags = g("Tags");
 const ID3 = g("ID3");
 const TagWriter = g("TagWriter");

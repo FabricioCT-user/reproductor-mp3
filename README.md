@@ -124,6 +124,7 @@ src/
   lyrics.js        analizador de letras LRC
   playlist-io.js   formato JSON y M3U8 de las listas
   id3.js           lector ID3v2 (y analizador compartido con el escritor)
+  mp4.js           recorrido de átomos MP4 (64 bits, size=0, lectura incremental sin cargar mdat/stbl)
   tags.js          lector de etiquetas: FLAC, Ogg/Opus, M4A (MP3 se delega en id3.js)
   tag-writer.js    escritor de etiquetas para copias de MP3 y FLAC
   storage.js       biblioteca en IndexedDB

@@ -112,59 +112,30 @@ const Tags = (() => {
 
   /* ----- MP4 / M4A ----- */
 
-  function* boxes(b, start = 0, end = b.length) {
-    let o = start;
-    while (o + 8 <= end) {
-      const size = be32(b, o);
-      if (size < 8 || o + size > end) return;
-      yield { type: ascii(b, o + 4, 4), start: o + 8, end: o + size };
-      o += size;
-    }
-  }
-
-  const child = (b, parent, type) => {
-    for (const bx of boxes(b, parent.start, parent.end)) if (bx.type === type) return bx;
-  };
-
-  function parseMoov(moov, meta, file, base) {
-    const root = { start: 0, end: moov.length };
-    const udta = child(moov, root, "udta");
-    const metaBox = udta && child(moov, udta, "meta");
-    if (!metaBox) return;
-    const ilst = child(moov, { start: metaBox.start + 4, end: metaBox.end }, "ilst"); // «meta» lleva 4 bytes de versión
+  async function readMp4(file, meta) {
+    const ilst = await MP4.findPath(file, await MP4.moov(file), ["udta", "meta", "ilst"]);
     if (!ilst) return;
     let albumArtist = "";
-    for (const item of boxes(moov, ilst.start, ilst.end)) {
-      const data = child(moov, item, "data");
-      if (!data) continue;
-      const flags = be32(moov, data.start) & 0xffffff;
-      const payload = moov.subarray(data.start + 8, data.end);
+    for (const item of await MP4.children(file, ilst)) {
+      const data = await MP4.find(file, item, "data");
+      if (!data || data.end - data.start < 8) continue;
+      // «data»: 4 bytes de banderas + 4 de configuración regional, y luego el contenido.
+      const from = data.start + 8;
+      if (item.type === "covr") {
+        if (meta.cover) continue;
+        const flags = be32(await bytes(file, data.start, 4), 0) & 0xffffff;
+        meta.cover = file.slice(from, data.end, flags === 14 ? "image/png" : "image/jpeg"); // sin copiar a memoria
+        continue;
+      }
+      if (data.end - from > MAX_BLOCK) continue;
+      const payload = await bytes(file, from, data.end - from);
       if (item.type === "©nam") meta.title ||= utf8(payload);
       else if (item.type === "©ART") meta.artist ||= utf8(payload);
       else if (item.type === "aART") albumArtist ||= utf8(payload);
       else if (item.type === "©alb") meta.album ||= utf8(payload);
       else if (item.type === "©lyr") setLyrics(meta, utf8(payload));
-      else if (item.type === "covr" && !meta.cover) meta.cover = file.slice(base + data.start + 8, base + data.end, flags === 14 ? "image/png" : "image/jpeg");
     }
     meta.artist ||= albumArtist;
-  }
-
-  async function readMp4(file, meta) {
-    let off = 0;
-    for (let i = 0; i < 64; i++) {
-      const h = await bytes(file, off, 16);
-      if (h.length < 8) return;
-      let size = be32(h, 0);
-      let hdr = 8;
-      if (size === 1) { size = be32(h, 8) * 2 ** 32 + be32(h, 12); hdr = 16; }
-      else if (size === 0) size = file.size - off;
-      if (size < hdr) return;
-      if (ascii(h, 4, 4) === "moov") {
-        if (size <= MAX_BLOCK) parseMoov(await bytes(file, off + hdr, size - hdr), meta, file, off + hdr);
-        return;
-      }
-      off += size;
-    }
   }
 
   /* ----- Entrada ----- */
