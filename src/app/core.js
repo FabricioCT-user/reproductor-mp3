@@ -30,7 +30,8 @@ const els = Object.fromEntries(
    "lyrics", "lyrics-body", "lyrics-toggle", "lyrics-clear", "lrc-input", "toast", "folder-input",
    "speed-btn", "sleep-btn", "theme-btn", "xfade-btn",
    "select-btn", "select-bar", "select-count", "select-all", "select-none", "select-edit", "select-done",
-   "edit-heading", "edit-note", "edit-dialog", "edit-form", "edit-cover", "edit-cover-input", "edit-cover-clear", "edit-title", "edit-artist", "edit-album", "edit-reset", "edit-cancel", "edit-download"]
+   "edit-heading", "edit-note", "edit-dialog", "edit-form", "edit-cover", "edit-cover-input", "edit-cover-clear", "edit-title", "edit-artist", "edit-album", "edit-reset", "edit-cancel", "edit-download",
+   "prompt-dialog", "prompt-form", "prompt-title", "prompt-input", "prompt-cancel"]
     .map((id) => [id, $(id)])
 );
 
@@ -94,4 +95,40 @@ function wireMenu() {
   document.addEventListener("click", (e) => { if (!els.menu.contains(e.target)) closeMenu(); }, true);
 
   document.addEventListener("keydown", (e) => { if (e.code === "Escape") closeMenu(); });
+
+  els["prompt-form"].addEventListener("submit", (e) => {
+    e.preventDefault();
+    finishPrompt(els["prompt-input"].value);
+    els["prompt-dialog"].close();
+  });
+  els["prompt-cancel"].addEventListener("click", () => {
+    finishPrompt(null);
+    els["prompt-dialog"].close();
+  });
+  els["prompt-dialog"].addEventListener("close", () => finishPrompt(null));
+}
+
+let promptResolve = null;
+
+function finishPrompt(value) {
+  const resolve = promptResolve;
+  if (!resolve) return;
+  promptResolve = null;
+  resolve(value);
+}
+
+// Diálogo modal propio para pedir un texto (sustituye a window.prompt, ausente en Electron).
+function pedirTexto({ titulo = "", valor = "", placeholder = "" } = {}) {
+  finishPrompt(null);
+  const dlg = els["prompt-dialog"];
+  const input = els["prompt-input"];
+  els["prompt-title"].textContent = titulo;
+  input.value = valor ?? "";
+  input.placeholder = placeholder ?? "";
+  return new Promise((resolve) => {
+    promptResolve = resolve;
+    dlg.showModal();
+    input.focus();
+    input.select();
+  });
 }

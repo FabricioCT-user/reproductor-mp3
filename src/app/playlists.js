@@ -28,8 +28,8 @@ function setView(v) {
   render();
 }
 
-function createPlaylist() {
-  const name = prompt("Nombre de la nueva lista:")?.trim();
+async function createPlaylist() {
+  const name = (await pedirTexto({ titulo: "Nombre de la nueva lista:", placeholder: "Mi lista" }))?.trim();
   if (!name) return null;
   const p = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, ids: [] };
   state.playlists.push(p);
@@ -38,9 +38,10 @@ function createPlaylist() {
   return p;
 }
 
-function renamePlaylist() {
+async function renamePlaylist() {
   const p = currentPlaylist();
-  const name = p && prompt("Nuevo nombre:", p.name)?.trim();
+  if (!p) return;
+  const name = (await pedirTexto({ titulo: "Nuevo nombre:", valor: p.name }))?.trim();
   if (!name) return;
   p.name = name;
   savePlaylists();
@@ -177,7 +178,7 @@ function openMenu(anchor, t) {
     ? [{ label: "No disponible: el navegador no permite guardar la biblioteca", disabled: true }]
     : [
         ...state.playlists.map((p) => ({ label: `${p.ids.includes(t.id) ? "✓" : "\u2003"} ${p.name}`, fn: () => togglePlaylistMember(p, t) })),
-        { label: "+ Nueva lista…", fn: () => { const p = createPlaylist(); if (p) togglePlaylistMember(p, t); } },
+        { label: "+ Nueva lista…", fn: async () => { const p = await createPlaylist(); if (p) togglePlaylistMember(p, t); } },
       ]);
 }
 
@@ -185,7 +186,7 @@ function openMenu(anchor, t) {
 function wirePlaylists() {
   els.view.addEventListener("change", () => setView(els.view.value));
 
-  els["pl-new"].addEventListener("click", () => { const p = createPlaylist(); if (p) setView(p.id); });
+  els["pl-new"].addEventListener("click", async () => { const p = await createPlaylist(); if (p) setView(p.id); });
 
   els["pl-rename"].addEventListener("click", renamePlaylist);
 

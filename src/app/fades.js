@@ -121,8 +121,9 @@ function wireFades() {
       ...(sleep ? [{ label: sleep.track ? "✕ Cancelar (al terminar la canción)" : `✕ Cancelar (quedan ${fmtClock(sleep.endAt - Date.now())})`, fn: () => setSleep(null) }] : []),
       ...[15, 30, 45, 60, 90].map((m) => ({ label: `${mark(false)} ${m} minutos`, fn: () => setSleep(m) })),
       { label: `${mark(sleep?.track)} Al terminar la canción`, fn: () => setSleep("track") },
-      { label: `${mark(false)} Personalizado…`, fn: () => {
-          const m = parseFloat(String(prompt("¿Cuántos minutos?", "20")).replace(",", "."));
+      { label: `${mark(false)} Personalizado…`, fn: async () => {
+          const res = await pedirTexto({ titulo: "¿Cuántos minutos?", valor: "20" });
+          const m = parseFloat(String(res ?? "").replace(",", "."));
           if (m > 0 && m <= 720) setSleep(m);
         } },
     ]);
