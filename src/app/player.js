@@ -120,7 +120,9 @@ function loadTrack(i, autoplay, view = "all") {
   if (autoplay) play();
 }
 
-function play() {
+async function play() {
+  const t = state.tracks[state.index];
+  if (t?.linkId && !await comprobarEnlaceAntesDeReproducir(t)) return;
   startAnalyser();
   return media.play().then(ensureSound).catch((e) => {
     if (e?.name === "NotAllowedError") toast("El navegador bloqueó la reproducción automática: pulsa ▶", 5000);
@@ -172,7 +174,13 @@ function step(dir) {
   if (dir > 0 && state.queue.length) {
     while (state.queue.length) {
       const queued = state.queue.shift();
-      if (!queued.unavailable) return loadTrack(state.tracks.indexOf(queued), true, state.playView);
+      if (!queued.unavailable) {
+        if (queued.linkId) comprobarEnlaceAntesDeReproducir(queued).then((ok) => {
+          if (ok) loadTrack(state.tracks.indexOf(queued), true, state.playView);
+        });
+        else loadTrack(state.tracks.indexOf(queued), true, state.playView);
+        return;
+      }
     }
   }
   const list = contextList();
@@ -191,7 +199,10 @@ function step(dir) {
     next = list[(pos + dir + n) % n];
   }
   if (!next) return;
-  loadTrack(state.tracks.indexOf(next), true, state.playView);
+  if (next.linkId) comprobarEnlaceAntesDeReproducir(next).then((ok) => {
+    if (ok) loadTrack(state.tracks.indexOf(next), true, state.playView);
+  });
+  else loadTrack(state.tracks.indexOf(next), true, state.playView);
 }
 
 function togglePlay() {
@@ -416,6 +427,17 @@ function wirePlayer() {
   onMedia("error", () => {
     if (!media.getAttribute("src")) return;
     const t = state.tracks[state.index];
+    if (t?.linkId) {
+      comprobarEnlaceAntesDeReproducir(t).then((ok) => {
+        if (!ok) return; // enlace roto: la fila queda «No encontrado», sin falso aviso de códec ni salto
+        manejarErrorDeReproduccion(t);
+      });
+      return;
+    }
+    manejarErrorDeReproduccion(t);
+  });
+
+  function manejarErrorDeReproduccion(t) {
     const title = t?.title ?? "la pista";
     const reason = t ? explainFailure(t.meta?.kind, extOf(t.fileName), t.meta?.codecs) : "";
     if (t && reason && !t.compatWarning) { t.compatWarning = reason; render(); }
@@ -427,7 +449,7 @@ function wirePlayer() {
     }
     toast(`No se puede reproducir «${title}» (${reason}); se salta`, 5000);
     step(1);
-  });
+  }
 
   if ("mediaSession" in navigator) {
     const setHandler = (action, handler) => {

@@ -534,12 +534,15 @@ async function comprobacionesEnlaces(win) {
     // T2.2: archivo renombrado entre reinicios → fila no disponible; volver a enlazar conserva sus datos y posición.
     const t2 = await ev(`(async () => {
       const t = state.tracks.find((x) => x.fileName === "video.mp4");
+      const thumb = new Blob([new Uint8Array([7, 22, 28, 9])], { type: "image/png" });
+      await Storage.setThumb(t.id, thumb);
+      t.thumb = thumb;
       await Storage.setLyrics(t.id, "Letra T2.2");
       await Storage.setEdits(t.id, { title: "Título T2.2" });
       await Storage.setSubs(t.id, [{ label: "Guardado", text: "subtítulo conservado", offset: 0 }]);
       const lista = { id: "t22-smoke", name: "T2.2", ids: [t.id] };
       state.playlists.push(lista); savePlaylists();
-      return { id: t.id, pos: state.tracks.indexOf(t), lista: lista.id };
+      return { id: t.id, pos: state.tracks.indexOf(t), lista: lista.id, thumb: Array.from(new Uint8Array(await thumb.arrayBuffer())) };
     })()`);
     fs.renameSync(rutaVideo, `${rutaVideo}.movido`);
     try {
@@ -555,12 +558,19 @@ async function comprobacionesEnlaces(win) {
       const avisa = await hasta(`!els.toast.hidden && /no encontrado/i.test(els.toast.textContent)`, 5000);
       const fila = await ev(`({ aviso: els.toast.textContent, actual: state.tracks[state.index]?.id ?? null, pausado: media.paused })`);
       check("pulsar una fila «No encontrado» avisa y no la reproduce", avisa && (fila.actual !== t2.id || fila.pausado), fila);
+      const inicio = await ev(`(() => { const t = state.tracks.find((x) => x.id === ${JSON.stringify(t2.id)}); return {
+        noDisponible: t.unavailable && t.unavailableReason === "link", sinCompat: !t.compatWarning,
+        noEsActual: state.tracks[state.index] !== t, pausado: media.paused,
+      }; })()`);
+      check("al arrancar con la última pista enlazada rota no se carga ni se salta automáticamente ni muestra compatibilidad",
+        inicio.noDisponible && inicio.sinCompat && inicio.noEsActual && inicio.pausado, inicio);
     } finally { fs.renameSync(`${rutaVideo}.movido`, rutaVideo); }
     // «Buscar…» (el diálogo de la prueba devuelve el video de argv, ya en su sitio): enlace nuevo, mismos datos.
     const pulsado = await ev(`(() => {
       const li = [...els.playlist.querySelectorAll("li")].find((x) => x.textContent.includes("Título T2.2"));
       const b = [...(li?.querySelectorAll("button") || [])].find((x) => x.textContent === "Buscar…");
       b?.click();
+      b?.click(); // doble activación concurrente: solo la primera puede iniciar el diálogo y actualizar IndexedDB
       return !!b;
     })()`);
     const sel = `state.tracks.find((t) => t.id === ${JSON.stringify(t2.id)})`;
@@ -571,6 +581,8 @@ async function comprobacionesEnlaces(win) {
       const t = ${sel};
       const rec = (await Storage.all()).find((x) => x.id === t.id);
       return { pulsado: ${pulsado}, anterior: ${JSON.stringify(id)}, pos: state.tracks.indexOf(t), rec,
+        thumb: t.thumb ? Array.from(new Uint8Array(await t.thumb.arrayBuffer())) : null,
+        thumbPersistida: rec?.thumb ? Array.from(new Uint8Array(await rec.thumb.arrayBuffer())) : null,
         playlist: state.playlists.find((p) => p.id === ${JSON.stringify(t2.lista)})?.ids.includes(t.id),
         disponible: !t.unavailable, unavailableReason: t.unavailableReason ?? null, estado: await window.reproductor.estadoEnlaces([t.linkId]),
         subs: t.subs, userLyrics: t.userLyrics, title: t.title, linkId: t.linkId, url: t.url, aviso: els.toast.textContent,
@@ -580,13 +592,33 @@ async function comprobacionesEnlaces(win) {
       recuperado && datosRecuperados.pos === t2.pos && datosRecuperados.playlist && datosRecuperados.disponible
       && datosRecuperados.rec?.lyrics === "Letra T2.2" && datosRecuperados.rec?.edits?.title === "Título T2.2"
       && datosRecuperados.rec?.subs?.[0]?.text === "subtítulo conservado" && datosRecuperados.rec?.linkId === datosRecuperados.linkId
+      && JSON.stringify(datosRecuperados.thumb) === JSON.stringify(t2.thumb)
+      && JSON.stringify(datosRecuperados.thumbPersistida) === JSON.stringify(t2.thumb)
       && datosRecuperados.userLyrics === "Letra T2.2" && datosRecuperados.title === "Título T2.2" && datosRecuperados.subs?.[0]?.text === "subtítulo conservado"
       && datosRecuperados.linkId !== id && datosRecuperados.url === `__media/${datosRecuperados.linkId}` && !/No encontrado/.test(datosRecuperados.fila)
       && !leerEnlaces().includes(id) && leerEnlaces().includes(datosRecuperados.linkId), datosRecuperados);
     await ev(`(() => { const li = [...els.playlist.querySelectorAll("li")].find((x) => x.textContent.includes("Título T2.2")); li.click(); return 1; })()`);
     const suena3 = await hasta(`!media.paused && media.currentTime > 0.3 && media.currentSrc.endsWith("/__media/" + ${sel}.linkId)`);
-    await ev(`media.pause(); media.removeAttribute("src"); media.load(); 1`);
     check("la pista vuelta a enlazar suena al pulsarla", suena3, await ev(`({ src: media.currentSrc, error: media.error?.code ?? null })`));
+    fs.renameSync(rutaVideo, `${rutaVideo}.desaparecido`);
+    try {
+      const playAlDesaparecer = await ev(`(async () => {
+        const t = ${sel}; media.pause(); await togglePlay();
+        await new Promise((resolve, reject) => {
+          const limite = setTimeout(() => reject(new Error("no se marcó el enlace desaparecido")), 5000);
+          const revisar = () => {
+            if (t.unavailable && media.paused) { clearTimeout(limite); resolve(); }
+            else requestAnimationFrame(revisar);
+          };
+          revisar();
+        });
+        return { marcada: t.unavailable && t.unavailableReason === "link", sinCompat: !t.compatWarning,
+          pausado: media.paused, actual: state.tracks[state.index] === t };
+      })()`);
+      check("Play sobre un enlace que desaparece marca No encontrado sin compatWarning ni salto", playAlDesaparecer.marcada
+        && playAlDesaparecer.sinCompat && playAlDesaparecer.pausado && playAlDesaparecer.actual, playAlDesaparecer);
+    } finally { fs.renameSync(`${rutaVideo}.desaparecido`, rutaVideo); }
+    await ev(`media.removeAttribute("src"); media.load(); 1`);
     check("al final no queda ningún descriptor abierto", await hastaCerrados(), abiertos());
   } catch (e) {
     check("comprobaciones sin excepciones", false, String(e?.stack || e));

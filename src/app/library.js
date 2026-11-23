@@ -123,17 +123,17 @@ async function comprobarEnlaceAntesDeReproducir(t) {
 // Los metadatos se releen del archivo elegido (puede ser otra copia u otra versión).
 async function buscarEnlace(t) {
   const app = window.reproductor;
-  if (!app?.elegirArchivos || !app.enlazar) return;
-  let items;
-  try { items = await app.elegirArchivos({ video: true }); } catch { toast("No se pudo abrir el diálogo", 5000); return; }
-  if (!items.length) return; // cancelado
-  const elegido = items.find((it) => it?.kind === "video" && typeof it.id === "string");
-  if (!elegido) { toast("Elige un archivo de video", 4000); return; }
-  if (!state.tracks.includes(t)) return; // se quitó mientras el diálogo estaba abierto
+  if (!app?.elegirArchivos || !app.enlazar || buscandoEnlaces.has(t)) return;
+  buscandoEnlaces.add(t);
   let link = null;
   try {
+    const items = await app.elegirArchivos({ video: true });
+    if (!items.length) return; // cancelado
+    const elegido = items.find((it) => it?.kind === "video" && typeof it.id === "string");
+    if (!elegido) { toast("Elige un archivo de video", 4000); return; }
+    if (!state.tracks.includes(t)) return; // se quitó mientras el diálogo estaba abierto
     link = await linkVideo(new LinkedFile(elegido, { entrega: elegido.id }));
-    const nueva = await makeTrack(t.id, link, t.userLyrics, t.edits, null, t.subs);
+    const nueva = await makeTrack(t.id, link, t.userLyrics, t.edits, null, t.subs, t.thumb);
     if (!state.tracks.includes(t)) throw new Error("la pista se quitó mientras se enlazaba");
     if (t.id != null) {
       await Storage.updateLink(t.id, link, link.linkId, { kind: nueva.meta.kind, meta: nueva.meta, metaVersion: META_VERSION });
@@ -141,6 +141,7 @@ async function buscarEnlace(t) {
     await forgetLink(t); // el enlace viejo ya no está en enlaces.json al terminar
     if (!state.tracks.includes(t)) throw new Error("la pista se quitó mientras se enlazaba");
     const i = state.tracks.indexOf(t);
+    dequeueThumb(t);
     state.tracks[i] = nueva;
     state.queue = state.queue.map((q) => (q === t ? nueva : q));
     if (state.selected.delete(t)) state.selected.add(nueva);
@@ -151,8 +152,12 @@ async function buscarEnlace(t) {
   } catch {
     if (link?.linkId) app.olvidar(link.linkId).catch(() => {});
     toast("No se pudo volver a enlazar el archivo", 5000);
+  } finally {
+    buscandoEnlaces.delete(t);
   }
 }
+
+const buscandoEnlaces = new WeakSet();
 
 const isMp4File = (f) => /\.(mp4|m4v|m4a|mov)$/i.test(f.name)
   || /^video\/(mp4|quicktime|x-m4v)$/i.test(f.type || "")
@@ -275,7 +280,7 @@ const revokeCovers = (t) => {
 
 // Lee la carátula una sola vez por pista y comparte la lectura entre la lista, el reproductor y el editor.
 function loadCover(t) {
-  if (!t || !state.tracks.includes(t) || !t.file || !t.meta?.hasCover || t.edits?.cover === false) return Promise.resolve();
+  if (!t || t.unavailable || !state.tracks.includes(t) || !t.file || !t.meta?.hasCover || t.edits?.cover === false) return Promise.resolve();
   if (t._coverLoaded) return Promise.resolve();
   if (t._coverPromise) return t._coverPromise;
   t._coverPromise = Tags.readCover(t.file).then(async (cover) => {

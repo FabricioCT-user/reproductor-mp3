@@ -115,6 +115,8 @@ const appReady = (async function init() {
         if (rec.source === "link") state.tracks.push(await makeUnavailableTrack(rec));
       }
     }
+    // Los enlaces se verifican antes de fijar media.src: un 404 de un archivo ausente no es un fallo de códec.
+    await comprobarEstadoEnlaces();
     const last = state.tracks.findIndex((t) => String(t.id) === store.get("lastId") && !t.unavailable);
     const firstPlayable = state.tracks.findIndex((t) => !t.unavailable);
     if (firstPlayable >= 0) loadTrack(last >= 0 ? last : firstPlayable, false, "all");
@@ -129,9 +131,6 @@ const appReady = (async function init() {
   toggleLyrics(store.get("lyrics") !== "1");
   renderViews();
   render();
-  // Con la biblioteca ya cargada: marca los videos enlazados cuyo archivo falta o cambió (T2.2). Sin esperar: un disco
-  // lento no retrasa el arranque ni lo que llega por «Abrir con…»; las filas se actualizan al llegar la respuesta.
-  comprobarEstadoEnlaces().catch(() => {});
 })();
 
 // Archivos abiertos desde el sistema: app web instalada, lanzador local o app de escritorio.
