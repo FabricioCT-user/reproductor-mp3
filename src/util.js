@@ -22,6 +22,9 @@ const isListFile = (f) => /\.(json|m3u8?)$/i.test(f.name);
 // Los .m3u8 a veces llegan con tipo audio/*: no son canciones.
 const isAudio = (f) => !isLrc(f) && !isListFile(f) && (f.type.startsWith("audio/") || /\.(mp3|flac|ogg|oga|opus|m4a|aac|wav|weba)$/i.test(f.name));
 
+const isVideo = (f) => !isLrc(f) && !isListFile(f) && (f.type.startsWith("video/") || /\.(mp4|m4v|webm|mov|mkv)$/i.test(f.name));
+const isMedia = (f) => isAudio(f) || isVideo(f);
+
 // Clave para no importar dos veces el mismo archivo.
 const fileKey = (f) => `${f.name}|${f.size}|${f.lastModified}`;
 

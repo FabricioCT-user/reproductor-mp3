@@ -9,6 +9,10 @@ const trackMeta = (m, file) => ({
 
 async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = null) {
   const meta = cachedMeta || await Tags.read(file);
+  if (/\.(mp4|m4v|mov)$/i.test(file.name) || file.type === "video/mp4" || file.type === "video/quicktime") {
+    try { meta.kind = await MP4.kind(file) || meta.kind; } catch { /* tipo MIME como alternativa */ }
+  }
+  if (!meta.kind && isVideo(file)) meta.kind = "video";
   const savedMeta = trackMeta(meta, file);
   const fallback = file.name.replace(/\.[^.]+$/, "");
   const t = {
@@ -91,7 +95,7 @@ async function addFiles(fileList) {
   if (all.some((f) => pathOf(f).includes("/"))) all.sort(byPath);
   const lrcFiles = all.filter(isLrc);
   const listFiles = all.filter(isListFile);
-  const files = all.filter(isAudio);
+  const files = all.filter(isMedia);
 
   let added = 0;
   let dupes = 0;
@@ -138,7 +142,7 @@ async function addFiles(fileList) {
   if (lyr?.missed) msg.push(`${lyr.missed} .lrc sin pareja`);
   if (resolved) msg.push(`${resolved} canción(es) completan listas importadas`);
   if (imp) msg.push(...importSummary(imp));
-  if (all.length && !files.length && !lrcFiles.length && !listFiles.length) msg.push("No se encontró ningún archivo de audio");
+  if (all.length && !files.length && !lrcFiles.length && !listFiles.length) msg.push("No se encontró ningún archivo multimedia");
   const warnStore = noSpace > 0 || storeErr > 0;
   if (msg.length && (warnStore || !(added === 1 && all.length === 1))) toast(msg.join(" · "), warnStore ? 5000 : undefined);
   else els.toast.hidden = true;
@@ -148,14 +152,14 @@ async function addFiles(fileList) {
 // se añaden a la biblioteca, suena el primero y los demás quedan en la cola.
 // Los .lrc que llegan junto al audio se asocian por nombre.
 async function openFromSystem(files) {
-  const audioFiles = files.filter(isAudio);
-  if (!audioFiles.length) return;
-  await addFiles([...audioFiles, ...files.filter(isLrc)]);
+  const mediaFiles = files.filter(isMedia);
+  if (!mediaFiles.length) return;
+  await addFiles([...mediaFiles, ...files.filter(isLrc)]);
   const trackOf = (f) => state.tracks.find((t) => t.key === fileKey(f));
-  const first = trackOf(audioFiles[0]);
+  const first = trackOf(mediaFiles[0]);
   if (!first) return;
   loadTrack(state.tracks.indexOf(first), true, "all");
-  for (const f of audioFiles.slice(1)) {
+  for (const f of mediaFiles.slice(1)) {
     const t = trackOf(f);
     if (t && t !== first && !state.queue.includes(t)) state.queue.push(t);
   }
@@ -172,14 +176,11 @@ async function consumeLaunch({ files: handles = [] } = {}) {
 }
 
 // App de escritorio (window.reproductor): el proceso principal entrega { id, name, size, lastModified, type, kind, rel? }
-// (nunca rutas) y los bytes del audio y las letras se piden por id para copiarlos a IndexedDB como cualquier otro archivo.
-// Los videos llegan pero aún no se abren (T2.1 los enlazará sin copiarlos); los subtítulos, con T4.2.
+// (nunca rutas) y los bytes multimedia y las letras se piden por id para copiarlos a IndexedDB.
 async function filesFromApp(items) {
   const files = [];
-  let videos = 0;
   for (const it of items || []) {
-    if (it?.kind === "video") { videos++; continue; }
-    if (it?.kind !== "audio" && it?.kind !== "letra") continue;
+    if (it?.kind !== "audio" && it?.kind !== "video" && it?.kind !== "letra") continue;
     try {
       const bytes = await window.reproductor.leer(it.id);
       if (!bytes) continue; // el archivo ya no está o el id caducó
@@ -188,7 +189,6 @@ async function filesFromApp(items) {
       files.push(f);
     } catch { /* el archivo ya no está o el id caducó: se omite */ }
   }
-  if (videos && !files.some(isAudio)) toast(`${videos === 1 ? "Este video" : "Estos videos"}: todavía no se pueden abrir en la app`, 5000);
   return files;
 }
 
