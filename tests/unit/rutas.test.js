@@ -125,6 +125,31 @@ test("leer: devuelve los bytes; falla con enlaces simbólicos, carpetas o por en
   await assert.rejects(rutas.leer(p, { limite: 3 }));
 });
 
+test("subtitulosAcompanantes: encuentra nombre.srt / nombre.*.srt / .vtt en la misma carpeta y aplica seguridad y tope", async () => {
+  const v = crear("subs/Peli.mp4", "mp4");
+  crear("subs/Peli.srt", "1\n00:00:01,000 --> 00:00:02,000\nUno\n");
+  crear("subs/peli.es.srt", "1\n00:00:01,000 --> 00:00:02,000\nDos\n");
+  crear("subs/peli.en.forced.vtt", "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nThree\n");
+  crear("subs/peli2.srt", "no coincide");
+  crear("subs/otro.srt", "no coincide");
+  crear("subs/peli.txt", "no es subtitulo");
+  crear("subs/.peli.srt", "oculto");
+  crear("subs/subcarpeta/peli.fr.srt", "en subcarpeta no");
+  crear("subs/peli.grande.srt", "x".repeat(200));
+  const fuera = crear("fuera.srt", "fuera de la carpeta");
+  const secreto = crear("subs/secreto.txt", "secreto");
+  fs.symlinkSync(fuera, path.join(dir, "subs", "peli.fuera.srt"));
+  fs.symlinkSync(secreto, path.join(dir, "subs", "peli.disfraz.srt"));
+
+  const r = await rutas.subtitulosAcompanantes(v, { maxTamano: 100 });
+  assert.deepEqual(r.map((x) => x.nombre), ["peli.en.forced.vtt", "peli.es.srt", "Peli.srt"]);
+  assert.ok(r.every((x) => x.clase === "subtitulo" && path.dirname(x.ruta) === path.dirname(v)));
+
+  const limitado = await rutas.subtitulosAcompanantes(v, { maxArchivos: 1, maxTamano: 100 });
+  assert.equal(limitado.length, 1);
+  assert.deepEqual(await rutas.subtitulosAcompanantes(path.join(dir, "no-existe.mp4")), []);
+});
+
 /* ----- entregas.js ----- */
 
 const v = (extra = {}) => ({ ruta: "/m/a.mp3", nombre: "a.mp3", tamano: 3, fecha: 1700000000500, tipo: "audio/mpeg", clase: "audio", ...extra });

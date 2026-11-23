@@ -26,12 +26,12 @@ const setMuted = (m) => decks.forEach((d) => (d.muted = m));
 
 const els = Object.fromEntries(
   ["dropzone", "backdrop", "cover", "stage", "fs-controls", "fs-current", "fs-seek", "fs-duration", "fs-play", "fs-play-icon",
-   "fs-mute", "fs-volume", "fs-exit",
+   "fs-mute", "fs-volume", "fs-subs", "fs-exit",
    "title", "artist", "viz", "seek", "current", "duration", "play", "play-icon",
    "prev", "next", "shuffle", "repeat", "mute", "volume", "filter", "file-input", "clear", "playlist",
    "view", "media-filter", "pl-new", "pl-more", "pl-import", "pl-rename", "pl-delete", "menu",
    "eq-toggle", "eq-panel", "eq-preset", "eq-on", "eq-reset", "eq-bands",
-   "lyrics", "lyrics-body", "lyrics-toggle", "lyrics-clear", "lrc-input", "toast", "folder-input",
+   "lyrics", "lyrics-body", "lyrics-toggle", "lyrics-clear", "lrc-input", "sub-input", "toast", "folder-input",
    "speed-btn", "sleep-btn", "theme-btn", "xfade-btn",
    "select-btn", "select-bar", "select-count", "select-all", "select-none", "select-edit", "select-done",
    "edit-heading", "edit-note", "edit-dialog", "edit-form", "edit-cover", "edit-cover-input", "edit-cover-clear", "edit-title", "edit-artist", "edit-album", "edit-reset", "edit-cancel", "edit-download",
@@ -75,15 +75,17 @@ function download(name, content, type) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// Menú flotante genérico: items = [{ label, fn, disabled }].
+// Menú flotante genérico: items = [{ label, fn, disabled, keepOpen }].
 function showMenu(anchor, items) {
   const m = els.menu;
+  const host = document.fullscreenElement || document.webkitFullscreenElement || document.body;
+  if (m.parentElement !== host) host.append(m);
   m.replaceChildren(
-    ...items.map(({ label, fn, disabled }) => {
+    ...items.map(({ label, fn, disabled, keepOpen }) => {
       const b = document.createElement("button");
       b.textContent = label;
       b.disabled = !!disabled;
-      b.addEventListener("click", () => { closeMenu(); fn?.(); });
+      b.addEventListener("click", () => { if (!keepOpen) closeMenu(); fn?.(); });
       return b;
     })
   );
@@ -93,7 +95,10 @@ function showMenu(anchor, items) {
   m.style.top = `${r.bottom + m.offsetHeight + 8 > innerHeight ? r.top - m.offsetHeight - 4 : r.bottom + 4}px`;
 }
 
-const closeMenu = () => (els.menu.hidden = true);
+function closeMenu() {
+  els.menu.hidden = true;
+  if (els.menu.parentElement !== document.body) document.body.append(els.menu);
+}
 
 // Cierra el menú flotante al hacer clic fuera o con Escape.
 function wireMenu() {

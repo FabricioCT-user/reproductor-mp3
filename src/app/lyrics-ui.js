@@ -16,20 +16,56 @@ async function setUserLyrics(t, text) {
   if (t === state.tracks[state.index]) renderLyrics();
 }
 
-// Empareja cada .lrc con una pista por nombre de archivo (o, si no, por título).
-async function attachLrcFiles(lrcFiles) {
-  let matched = 0;
-  for (const f of lrcFiles) {
-    const base = f.name.replace(/\.[^.]+$/, "").toLowerCase();
-    const dir = dirOf(pathOf(f));
-    // Mismo nombre y, si hay varios (p. ej. «01» en distintos álbumes), la misma carpeta.
-    const same = state.tracks.filter((x) => x.fileBase === base);
-    const t = same.find((x) => x.dir === dir) || same[0] || state.tracks.find((x) => x.title.toLowerCase() === base);
-    if (!t) continue;
-    await setUserLyrics(t, await f.text());
-    matched++;
+// Empareja archivos acompañantes (.lrc, .srt, .vtt) con pistas de la biblioteca por nombre (o título).
+function matchCompanionTrack(f, { allowPrefix = false } = {}) {
+  const stem = f.name.replace(/\.[^.]+$/, "").toLowerCase();
+  const dir = dirOf(pathOf(f));
+  const matches = (base) => base && (stem === base || (allowPrefix && stem.startsWith(base + ".")));
+  const rank = (list, keyFn) => list.slice().sort((a, b) => {
+    const lenDiff = keyFn(b).length - keyFn(a).length;
+    if (lenDiff) return lenDiff;
+    const dirDiff = (b.dir === dir ? 1 : 0) - (a.dir === dir ? 1 : 0);
+    if (dirDiff) return dirDiff;
+    if (allowPrefix) return (isVideoTrack(b) ? 1 : 0) - (isVideoTrack(a) ? 1 : 0);
+    return 0;
+  })[0];
+
+  const byFile = state.tracks.filter((x) => matches(x.fileBase));
+  if (byFile.length) return rank(byFile, (x) => x.fileBase);
+  const byTitle = state.tracks.filter((x) => matches(x.title.toLowerCase()));
+  return byTitle.length ? rank(byTitle, (x) => x.title.toLowerCase()) : null;
+}
+
+async function attachCompanionFiles(companionFiles) {
+  let lyricsMatched = 0;
+  let lyricsMissed = 0;
+  let subsMatched = 0;
+  let subsMissed = 0;
+  for (const f of companionFiles) {
+    if (isLrc(f)) {
+      const t = matchCompanionTrack(f, { allowPrefix: false });
+      if (!t) { lyricsMissed++; continue; }
+      await setUserLyrics(t, await f.text());
+      lyricsMatched++;
+    } else if (isSubtitle(f)) {
+      const t = matchCompanionTrack(f, { allowPrefix: true });
+      if (!t || f.size > MAX_SUB_BYTES) { subsMissed++; continue; }
+      try {
+        const text = Subtitles.decode(await f.arrayBuffer());
+        const added = await addSubTrack(t, text, subtitleLabel(f.name, t.fileBase));
+        if (added) subsMatched++;
+        else subsMissed++;
+      } catch {
+        subsMissed++;
+      }
+    }
   }
-  return { matched, missed: lrcFiles.length - matched };
+  return { lyricsMatched, lyricsMissed, subsMatched, subsMissed };
+}
+
+async function attachLrcFiles(lrcFiles) {
+  const r = await attachCompanionFiles(lrcFiles);
+  return { matched: r.lyricsMatched, missed: r.lyricsMissed };
 }
 
 let lyricCursor = -1;
@@ -41,9 +77,12 @@ function renderLyrics() {
   btn.textContent = video ? "Subtítulos" : "Letra";
   btn.title = video ? "Subtítulos (C)" : "Letra (L)";
   if (video) {
-    btn.classList.remove("active");
     els.lyrics.hidden = true;
-    btn.setAttribute("aria-pressed", false);
+    if (typeof syncSubButtons === "function") syncSubButtons();
+    else {
+      btn.classList.remove("active");
+      btn.setAttribute("aria-pressed", false);
+    }
     return;
   }
   const L = parsedLyrics(t);
@@ -101,7 +140,13 @@ function toggleLyrics(force) {
 
 // Botón de letra, cargar / quitar .lrc y seguimiento de la línea actual.
 function wireLyrics() {
-  els["lyrics-toggle"].addEventListener("click", () => toggleLyrics());
+  els["lyrics-toggle"].addEventListener("click", (e) => {
+    if (isVideoTrack(state.tracks[state.index])) {
+      if (typeof openSubtitlesMenu === "function") openSubtitlesMenu(e.currentTarget);
+    } else {
+      toggleLyrics();
+    }
+  });
 
   els["lyrics-clear"].addEventListener("click", () => { const t = state.tracks[state.index]; if (t) setUserLyrics(t, ""); });
 

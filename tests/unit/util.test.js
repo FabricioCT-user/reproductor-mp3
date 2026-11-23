@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { load, plain } = require("./helpers");
 
 const g = load("util.js");
-const U = Object.fromEntries(["clamp", "cleanPlaylists", "formatTime", "isLrc", "isListFile", "isAudio", "isVideo", "isMedia", "fileKey", "pathOf", "dirOf", "byPath", "safeName", "fmtFreq", "fmtGain", "fmtSpeed", "fmtClock", "extOf", "explainFailure", "checkCompatibility"].map((n) => [n, g(n)]));
+const U = Object.fromEntries(["clamp", "cleanPlaylists", "formatTime", "isLrc", "isSubtitle", "isCompanion", "isListFile", "isAudio", "isVideo", "isMedia", "subtitleLabel", "fileKey", "pathOf", "dirOf", "byPath", "safeName", "fmtFreq", "fmtGain", "fmtSpeed", "fmtClock", "extOf", "explainFailure", "checkCompatibility"].map((n) => [n, g(n)]));
 const file = (name, type = "", extra = {}) => ({ name, type, size: 10, lastModified: 5, ...extra });
 
 test("isAudio: por tipo MIME o por extensión", () => {
@@ -21,8 +21,27 @@ test("isAudio: letras y listas nunca son canciones, aunque el sistema las marque
   assert.equal(U.isAudio(file("copia.json", "audio/x-whatever")), false);
   assert.equal(U.isAudio(file("a.lrc", "audio/x-lrc")), false);
   assert.equal(U.isLrc(file("a.LRC")), true);
+  assert.equal(U.isSubtitle(file("peli.srt")), true);
+  assert.equal(U.isSubtitle(file("peli.es.VTT")), true);
+  assert.equal(U.isSubtitle(file("peli.txt")), false);
+  assert.equal(U.isCompanion(file("peli.srt")), true);
+  assert.equal(U.isCompanion(file("a.lrc")), true);
+  assert.equal(U.isAudio(file("peli.srt", "audio/x-subrip")), false);
+  assert.equal(U.isVideo(file("peli.vtt", "video/vtt")), false);
   assert.equal(U.isListFile(file("x.M3U8")), true);
   assert.equal(U.isListFile(file("x.mp3")), false);
+});
+
+test("subtitleLabel: extrae etiqueta legible e idioma opcional según nombre del video", () => {
+  assert.deepEqual(plain(U.subtitleLabel("peli.srt", "peli")), { label: "Subtítulos" });
+  assert.deepEqual(plain(U.subtitleLabel("peli.es.srt", "peli")), { label: "Español", lang: "es" });
+  assert.deepEqual(plain(U.subtitleLabel("peli.en.forced.vtt", "peli")), { label: "Inglés · forced", lang: "en" });
+  assert.deepEqual(plain(U.subtitleLabel("peli.es-419.srt", "peli")), { label: "Español (419)", lang: "es-419" });
+  assert.deepEqual(plain(U.subtitleLabel("peli.mp4.en.vtt", "peli")), { label: "Inglés", lang: "en" });
+  assert.deepEqual(plain(U.subtitleLabel("peli.sdh.srt", "peli")), { label: "sdh" });
+  assert.deepEqual(plain(U.subtitleLabel("peli.comentarios.srt", "peli")), { label: "comentarios" });
+  assert.deepEqual(plain(U.subtitleLabel("mis_subs.vtt")), { label: "mis_subs" });
+  assert.deepEqual(plain(U.subtitleLabel("peli.es.vtt")), { label: "peli es", lang: "es" });
 });
 
 test("isVideo: por tipo MIME o extensión, e isMedia admite audio y video", () => {

@@ -81,6 +81,7 @@ function crossfadeCheck() {
 function startCrossfade(secs) {
   const out = media;
   const inn = otherDeck();
+  if (typeof clearSubTracks === "function") clearSubTracks(out);
   xfade = { out, inn, secs, starting: true, timer: 0 };
   media = inn; // la canción nueva pasa a ser la activa
   inn._gain.gain.cancelScheduledValues(0);

@@ -104,6 +104,46 @@ async function recorrer(carpeta, limites = LIMITES) {
 
 // Tope de lo que se copia a la memoria para pasarlo a la interfaz (el audio se guarda entero en IndexedDB).
 const MAX_LECTURA = 1024 * 1024 * 1024;
+const MAX_SUBTITULO = 5 * 1024 * 1024;
+const MAX_SUBTITULOS_POR_VIDEO = 32;
+
+// Busca subtítulos acompañantes (.srt / .vtt) de un video ya validado en SU MISMA carpeta:
+// nombre.srt, nombre.*.srt, nombre.vtt, nombre.*.vtt. Valida cada archivo, exige que el destino real
+// viva en la misma carpeta y aplica tope de tamaño y cantidad.
+async function subtitulosAcompanantes(rutaVideo, { maxArchivos = MAX_SUBTITULOS_POR_VIDEO, maxTamano = MAX_SUBTITULO } = {}) {
+  if (typeof rutaVideo !== "string" || !path.isAbsolute(rutaVideo)) return [];
+  const realVideo = await fs.promises.realpath(rutaVideo).catch(() => null);
+  if (!realVideo) return [];
+  const dir = path.dirname(realVideo);
+  const nombreVideo = path.basename(realVideo);
+  const extVideo = path.extname(nombreVideo);
+  const base = nombreVideo.slice(0, nombreVideo.length - extVideo.length).toLowerCase();
+  if (!base) return [];
+
+  let entradas;
+  try { entradas = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return []; }
+  entradas.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+
+  const encontrados = [];
+  const vistos = new Set();
+  for (const e of entradas) {
+    if (encontrados.length >= maxArchivos) break;
+    if (e.name.startsWith(".")) continue;
+    if (!e.isFile() && !e.isSymbolicLink()) continue;
+    const c = clasificar(e.name);
+    if (!c || c.clase !== "subtitulo") continue;
+    const stem = e.name.slice(0, e.name.length - path.extname(e.name).length).toLowerCase();
+    if (stem !== base && !stem.startsWith(base + ".")) continue;
+    const v = await validar(path.join(dir, e.name));
+    if (!v || v.clase !== "subtitulo") continue;
+    if (path.dirname(v.ruta) !== dir) continue;
+    if (v.tamano > maxTamano) continue;
+    if (vistos.has(v.ruta)) continue;
+    vistos.add(v.ruta);
+    encontrados.push(v);
+  }
+  return encontrados;
+}
 
 // Lee entera una ruta ya validada (real). O_NOFOLLOW: si entre medias alguien la cambió por un enlace simbólico, falla;
 // y se vuelve a comprobar que sea un archivo regular y que quepa.
@@ -119,4 +159,7 @@ async function leer(ruta, { limite = MAX_LECTURA } = {}) {
   }
 }
 
-module.exports = { EXTENSIONES, LIMITES, MAX_LECTURA, clasificar, aRuta, validar, recorrer, leer };
+module.exports = {
+  EXTENSIONES, LIMITES, MAX_LECTURA, MAX_SUBTITULO, MAX_SUBTITULOS_POR_VIDEO,
+  clasificar, aRuta, validar, recorrer, subtitulosAcompanantes, leer,
+};

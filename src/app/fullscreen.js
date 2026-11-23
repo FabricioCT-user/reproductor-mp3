@@ -42,7 +42,7 @@ function clearFullscreenIdle() {
 
 function hideFullscreenControls() {
   fsIdleTimer = 0;
-  if (!isFullscreen() || fsPointerDown) return;
+  if (!isFullscreen() || fsPointerDown || !els.menu.hidden) return;
   els.stage.classList.add("fs-inactivo");
   if (els["fs-controls"].contains(document.activeElement)) document.activeElement.blur();
 }
@@ -83,6 +83,7 @@ function syncFullscreenControls() {
   syncFsPlay();
   syncFsVolume();
   syncFsProgress();
+  if (typeof syncSubButtons === "function") syncSubButtons();
 }
 
 // Mantiene la barra y el estado de pantalla completa alineados con el DOM y la pista activa.
@@ -93,6 +94,7 @@ function syncFullscreen() {
     fsPointerDown = false;
     els.stage.classList.remove("fs-inactivo");
     els["fs-controls"].classList.add("oculto");
+    if (els.stage.contains(els.menu)) closeMenu();
     exitFullscreen();
     return;
   }
@@ -104,6 +106,7 @@ function syncFullscreen() {
     clearFullscreenIdle();
     fsPointerDown = false;
     els.stage.classList.remove("fs-inactivo");
+    if (els.stage.contains(els.menu)) closeMenu();
     if (els["fs-controls"].contains(document.activeElement)) document.activeElement.blur();
   }
 }
@@ -122,6 +125,9 @@ function wireFullscreen() {
   els["fs-mute"].addEventListener("click", toggleMute);
   els["fs-volume"].addEventListener("input", () => applyVolume(els["fs-volume"].value));
   els["fs-seek"].addEventListener("input", () => seekToPercent(els["fs-seek"].value));
+  els["fs-subs"].addEventListener("click", (e) => {
+    if (typeof openSubtitlesMenu === "function") openSubtitlesMenu(e.currentTarget);
+  });
   els["fs-exit"].addEventListener("click", toggleFullscreen);
 
   // Refleja el estado real del reproductor.

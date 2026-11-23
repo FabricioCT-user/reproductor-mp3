@@ -58,6 +58,7 @@ async function linkVideo(file) {
   }
   const linked = new LinkedFile(info, { linkId: info.linkId });
   linked.relPath = pathOf(file);
+  if (Array.isArray(info.subtitulos) && info.subtitulos.length) linked.companionSubs = info.subtitulos;
   return linked;
 }
 
@@ -81,7 +82,7 @@ function assessTrackCompat(t) {
   t.ac3Unsupported = res.ac3Unsupported;
 }
 
-async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = null) {
+async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = null, savedSubs = []) {
   const meta = cachedMeta || await Tags.read(file);
   let probedCached = false;
   if (isMp4File(file) && (!cachedMeta || cachedMeta.codecs == null)) {
@@ -103,6 +104,7 @@ async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = n
   const savedMeta = trackMeta(meta, file);
   if (probedCached && id != null) Storage.setMeta(id, savedMeta, META_VERSION).catch(() => {});
   const fallback = file.name.replace(/\.[^.]+$/, "");
+  const subs = typeof normalizeSubs === "function" ? normalizeSubs(savedSubs) : [];
   const t = {
     id,
     file,                 // el archivo original, para poder generar copias con etiquetas
@@ -114,6 +116,9 @@ async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = n
     embeddedLyrics: savedMeta.lyrics,
     meta: savedMeta,
     userLyrics,
+    subs,
+    subIndex: subs.length ? 0 : -1,
+    _lastSubIndex: 0,
     url: file instanceof LinkedFile ? file.url : URL.createObjectURL(file),
     linkId: file instanceof LinkedFile ? file.linkId : null,
     // Datos del archivo; lo que se muestra (title, artist, album, coverUrl) sale de aplicar las ediciones encima.
@@ -130,11 +135,13 @@ async function makeUnavailableTrack(rec) {
   const meta = rec.meta || {};
   const fileName = rec.name || "Archivo sin nombre";
   const fallback = fileName.replace(/\.[^.]+$/, "");
+  const subs = typeof normalizeSubs === "function" ? normalizeSubs(rec.subs) : [];
   const t = {
     id: rec.id, file: null, fileBase: fallback.toLowerCase(), fileName,
     size: rec.size || 0, key: `${fileName}|${rec.size || 0}|${rec.lastModified || 0}`,
     meta,
-    dir: "", embeddedLyrics: null, userLyrics: rec.lyrics || "", url: null, unavailable: true,
+    dir: "", embeddedLyrics: null, userLyrics: rec.lyrics || "", subs, subIndex: subs.length ? 0 : -1, _lastSubIndex: 0,
+    url: null, unavailable: true,
     linkId: rec.source === "link" ? rec.linkId : null,
     orig: { title: meta.title || fallback, artist: meta.artist || "", album: meta.album || "", coverUrl: null },
     edits: rec.edits || null,
@@ -186,10 +193,10 @@ async function addFiles(fileList) {
   const all = [...fileList];
   // Con carpetas, ordena por ruta para que los álbumes queden en orden (01, 02, … 10).
   if (all.some((f) => pathOf(f).includes("/"))) all.sort(byPath);
-  const lrcFiles = all.filter(isLrc);
+  const companionFiles = all.filter(isCompanion);
   const listFiles = all.filter(isListFile);
   const files = all.filter(isMedia);
-  const unsupportedVideos = all.filter((f) => !isMedia(f) && !isLrc(f) && !isListFile(f) && UNSUPPORTED_VIDEO_EXT.has(extOf(f.name)));
+  const unsupportedVideos = all.filter((f) => !isMedia(f) && !isCompanion(f) && !isListFile(f) && UNSUPPORTED_VIDEO_EXT.has(extOf(f.name)));
 
   let added = 0;
   let dupes = 0;
@@ -198,6 +205,7 @@ async function addFiles(fileList) {
   let storeErr = 0;
   let compatWarned = 0;
   let lastCompatReason = "";
+  const linkedSubs = [];
   const keys = new Set(state.tracks.map((t) => t.key));
   for (const [i, file] of files.entries()) {
     const key = fileKey(file);
@@ -215,6 +223,7 @@ async function addFiles(fileList) {
       try { id = await Storage.add(src, { meta: track.meta, metaVersion: META_VERSION, ...extra }); track.id = id; }
       catch (e) { storeFail = e?.name === "QuotaExceededError" ? "quota" : "other"; }
       state.tracks.push(track);
+      if (link?.companionSubs?.length) linkedSubs.push({ track, items: link.companionSubs });
       added++;
       if (track.compatWarning) { compatWarned++; lastCompatReason = track.compatWarning; }
       if (storeFail === "quota") noSpace++;
@@ -229,7 +238,21 @@ async function addFiles(fileList) {
   }
 
   const resolved = added ? resolvePending() : 0;
-  const lyr = lrcFiles.length ? await attachLrcFiles(lrcFiles) : null;
+  const comp = companionFiles.length ? await attachCompanionFiles(companionFiles) : null;
+  let autoSubs = 0;
+  for (const { track, items } of linkedSubs) {
+    for (const it of items) {
+      if (!it?.id || it.kind !== "subtitulo") continue;
+      try {
+        const bytes = await window.reproductor.leer(it.id);
+        if (!bytes) continue;
+        const text = Subtitles.decode(bytes);
+        const before = track.subs.length;
+        const addedSub = await addSubTrack(track, text, subtitleLabel(it.name, track.fileBase));
+        if (addedSub && track.subs.length > before) autoSubs++;
+      } catch { /* subtítulo acompañante ilegible o caducado: se omite */ }
+    }
+  }
   const imp = listFiles.length ? await importPlaylistFiles(listFiles) : null;
   render();
   if (state.index === -1 && state.tracks.length) loadTrack(0, false, "all");
@@ -246,29 +269,32 @@ async function addFiles(fileList) {
   } else if (compatWarned) {
     msg.push(`${compatWarned} puede(n) no reproducirse`);
   }
-  if (lyr?.matched) msg.push(`letra para ${lyr.matched}`);
-  if (lyr?.missed) msg.push(`${lyr.missed} .lrc sin pareja`);
+  if (comp?.lyricsMatched) msg.push(`letra para ${comp.lyricsMatched}`);
+  if (comp?.lyricsMissed) msg.push(`${comp.lyricsMissed} .lrc sin pareja`);
+  const subsMatched = (comp?.subsMatched || 0) + autoSubs;
+  if (subsMatched) msg.push(`subtítulos para ${subsMatched}`);
+  if (comp?.subsMissed) msg.push(`${comp.subsMissed} subtítulo(s) sin pareja`);
   if (resolved) msg.push(`${resolved} canción(es) completan listas importadas`);
   if (imp) msg.push(...importSummary(imp));
-  if (unsupportedVideos.length && !added && !dupes && !failed && !lrcFiles.length && !listFiles.length) {
+  if (unsupportedVideos.length && !added && !dupes && !failed && !companionFiles.length && !listFiles.length) {
     msg.push(explainFailure("video", extOf(unsupportedVideos[0].name), ""));
   } else if (unsupportedVideos.length) {
     msg.push(`${unsupportedVideos.length} formato(s) no compatible(s) (${extOf(unsupportedVideos[0].name).toUpperCase()})`);
-  } else if (all.length && !files.length && !lrcFiles.length && !listFiles.length) {
+  } else if (all.length && !files.length && !companionFiles.length && !listFiles.length) {
     msg.push("No se encontró ningún archivo multimedia");
   }
   const warnImportant = noSpace > 0 || storeErr > 0 || compatWarned > 0 || unsupportedVideos.length > 0;
-  if (msg.length && (warnImportant || !(added === 1 && all.length === 1))) toast(msg.join(" · "), warnImportant ? 6000 : undefined);
+  if (msg.length && (warnImportant || !(added === 1 && all.length === 1 && !autoSubs))) toast(msg.join(" · "), warnImportant ? 6000 : undefined);
   else els.toast.hidden = true;
 }
 
 // Archivos que el sistema entrega a la app instalada («Abrir con…» o doble clic en un archivo de audio):
 // se añaden a la biblioteca, suena el primero y los demás quedan en la cola.
-// Los .lrc que llegan junto al audio se asocian por nombre.
+// Los .lrc/.srt/.vtt que llegan junto al medio se asocian por nombre.
 async function openFromSystem(files) {
   const mediaFiles = files.filter(isMedia);
   if (!mediaFiles.length) return;
-  await addFiles([...mediaFiles, ...files.filter(isLrc)]);
+  await addFiles([...mediaFiles, ...files.filter(isCompanion)]);
   const trackOf = (f) => state.tracks.find((t) => t.key === fileKey(f));
   const first = trackOf(mediaFiles[0]);
   if (!first) return;
@@ -301,7 +327,7 @@ async function filesFromApp(items) {
       files.push(f);
       continue;
     }
-    if (it?.kind !== "audio" && it?.kind !== "letra") continue;
+    if (it?.kind !== "audio" && it?.kind !== "letra" && it?.kind !== "subtitulo") continue;
     try {
       const bytes = await window.reproductor.leer(it.id);
       if (!bytes) continue; // el archivo ya no está o el id caducó

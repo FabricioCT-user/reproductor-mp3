@@ -20,6 +20,7 @@ function syncStage(t) {
     vizRunning = true;
     draw();
   }
+  if (typeof syncSubtitles === "function") syncSubtitles();
   if (typeof syncFullscreen === "function") syncFullscreen();
 }
 
