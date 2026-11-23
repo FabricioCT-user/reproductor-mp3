@@ -100,6 +100,7 @@ async function makeUnavailableTrack(rec) {
   const t = {
     id: rec.id, file: null, fileBase: fallback.toLowerCase(), fileName,
     size: rec.size || 0, key: `${fileName}|${rec.size || 0}|${rec.lastModified || 0}`,
+    meta,
     dir: "", embeddedLyrics: null, userLyrics: rec.lyrics || "", url: null, unavailable: true,
     linkId: rec.source === "link" ? rec.linkId : null,
     orig: { title: meta.title || fallback, artist: meta.artist || "", album: meta.album || "", coverUrl: null },
@@ -363,7 +364,8 @@ function render() {
   const q = state.filter.toLowerCase();
   const kind = state.mediaFilter;
   const pl = currentPlaylist();
-  const rows = listTracks(state.view)
+  const tracks = listTracks(state.view);
+  const rows = tracks
     .map((t, pos) => ({ t, pos }))
     .filter(({ t }) => (kind === "all" || (t.meta?.kind || "audio") === kind)
       && (!q || `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(q)));
@@ -371,7 +373,7 @@ function render() {
   if (!rows.length) {
     const li = document.createElement("li");
     li.className = "empty";
-    li.textContent = q || kind !== "all" ? "Sin resultados."
+    li.textContent = tracks.length && (q || kind !== "all") ? "Sin resultados."
       : pl ? "Esta lista está vacía. Usa el botón ♫ de una canción para añadirla."
       : "Tu biblioteca está vacía. Arrastra archivos o carpetas aquí, o usa «+ Añadir» / «+ Carpeta».";
     els.playlist.replaceChildren(li, ...pendingNote(pl));
@@ -401,14 +403,9 @@ function render() {
         thumb.classList.add("video-thumb");
         const playMark = document.createElement("span");
         playMark.className = "video-mark";
+        playMark.setAttribute("aria-hidden", "true");
         playMark.textContent = "▶";
         thumb.append(playMark);
-        if (t.meta.width > 0 && t.meta.height > 0) {
-          const size = document.createElement("span");
-          size.className = "video-size";
-          size.textContent = `${t.meta.width}×${t.meta.height}`;
-          thumb.append(size);
-        }
       }
       if (t.meta?.hasCover && t.edits?.cover !== false) loadCover(t);
       if (t.coverUrl) thumb.style.backgroundImage = `url(${t.coverUrl})`;

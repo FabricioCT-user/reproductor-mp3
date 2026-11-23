@@ -688,6 +688,7 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     check("video: tiene videoWidth > 0", await until(() => ev("media.videoWidth > 0 && media.currentTime > 0.2"), 4000), ev("media.videoWidth"));
     check("video: escenario visible con solo el deck activo",
       ev("getComputedStyle($('stage')).display !== 'none' && !media.classList.contains('oculto') && otherDeck().classList.contains('oculto')"));
+    check("video: carátula en formato 16:9", ev("getComputedStyle(els.cover).aspectRatio === '16 / 9' || getComputedStyle(els.cover).aspectRatio === '1.77778'"), ev("getComputedStyle(els.cover).aspectRatio"));
     check("video: visualizador oculto y draw() parado", ev("els.viz.hidden && !vizRunning"));
     check("video: botón pasa a Subtítulos y no abre el panel de letra",
       (() => { ev("els['lyrics-toggle'].click()"); return ev("els['lyrics-toggle'].textContent === 'Subtítulos' && els.lyrics.hidden"); })());
@@ -700,13 +701,16 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     check("escenario: clic simple alterna reproducir", await until(() => ev("!media.paused"), 1500));
     videoDeck.pause();
     let fullscreenCalls = 0;
+    const realToggleFullscreen = win.toggleFullscreen;
     win.toggleFullscreen = () => { fullscreenCalls++; };
-    const click = () => videoDeck.dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
-    click(); click();
-    videoDeck.dispatchEvent(new win.MouseEvent("dblclick", { bubbles: true }));
+    const click = (detail) => videoDeck.dispatchEvent(new win.MouseEvent("click", { bubbles: true, detail }));
+    click(1);
     await sleep(350);
+    click(2);
+    videoDeck.dispatchEvent(new win.MouseEvent("dblclick", { bubbles: true }));
+    await sleep(550);
     check("escenario: doble clic llama fullscreen sin alternar reproducción", fullscreenCalls === 1 && ev("media.paused"), `llamadas=${fullscreenCalls}, pausado=${ev("media.paused")}`);
-    delete win.toggleFullscreen;
+    win.toggleFullscreen = realToggleFullscreen;
     win.eval("play()");
 
     // 4. Transición video → audio sin fundido
@@ -716,11 +720,31 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     check("video: al volver a audio se oculta el escenario y vuelve el visualizador",
       await until(() => ev("getComputedStyle($('stage')).display === 'none' && !els.viz.hidden && vizRunning && els['lyrics-toggle'].textContent === 'Letra'"), 2500));
 
-    // 5. .webm solo audio (videoWidth === 0) se reclasifica a audio y se guarda en meta.kind
+    const mediaFilter = ev("els['media-filter']");
+    const beforeShortcut = ev("({ time: media.currentTime, volume: els.volume.value, muted: media.muted })");
+    const selectKeys = ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Space", "KeyM"];
+    const leakedShortcut = selectKeys.some((code) => {
+      const e = new win.KeyboardEvent("keydown", { bubbles: true, cancelable: true, code });
+      mediaFilter.dispatchEvent(e);
+      return e.defaultPrevented;
+    });
+    check("biblioteca: atajos globales dejan usar el selector de medios", !leakedShortcut
+      && ev("els.volume.value") === beforeShortcut.volume
+      && ev("media.currentTime") === beforeShortcut.time
+      && ev("media.muted") === beforeShortcut.muted, `preventDefault=${leakedShortcut}`);
+    check("biblioteca: el selector tiene foco visible", ev("[...document.styleSheets].flatMap(s => { try { return [...s.cssRules]; } catch { return []; } }).some(r => r.selectorText?.includes('select:focus-visible'))"));
+    const unavailable = await ev("makeUnavailableTrack({ id: 909, name: 'offline.webm', size: 10, meta: { kind: 'video', width: 1920, height: 1080 } })");
+    check("biblioteca: video no disponible conserva clasificación y resolución", unavailable.meta.kind === "video"
+      && unavailable.meta.width === 1920 && unavailable.meta.height === 1080);
+    // 5. .webm solo audio (videoWidth === 0) se reclasifica a audio, repinta la fila y se guarda en meta.kind
+    mediaFilter.value = "video";
+    mediaFilter.dispatchEvent(new win.Event("change", { bubbles: true }));
     win.loadTrack(3, true, "all");
     check("video: .webm sin imagen se reclasifica a audio",
-      await until(() => ev("state.tracks[3].meta.kind === 'audio' && getComputedStyle($('stage')).display === 'none' && !els.viz.hidden"), 4000),
+      await until(() => ev("state.tracks[3].meta.kind === 'audio' && getComputedStyle($('stage')).display === 'none' && !els.viz.hidden && [...els.playlist.querySelectorAll('li:not(.empty)')].every(li => !li.textContent.includes('solo-audio'))"), 4000),
       ev("state.tracks[3].meta.kind"));
+    mediaFilter.value = "all";
+    mediaFilter.dispatchEvent(new win.Event("change", { bubbles: true }));
     const saved = await until(async () => {
       const db = await openDbAsIs();
       const rec = (await getAll(db, "tracks")).find((r) => r.name === "solo-audio.webm");
@@ -729,17 +753,23 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     }, 3000);
     check("video: la reclasificación a audio se guarda en meta.kind", saved);
 
-    const mediaFilter = ev("els['media-filter']");
     mediaFilter.value = "video";
     mediaFilter.dispatchEvent(new win.Event("change", { bubbles: true }));
     const videoRows = ev("[...els.playlist.querySelectorAll('li:not(.empty)')]");
-    check("biblioteca: filtro Videos muestra solo videos y su icono ▶", videoRows.length === 1
+    check("biblioteca: filtro Videos muestra solo videos con icono accesible y resolución única", videoRows.length === 1
       && videoRows[0].querySelector(".video-mark")?.textContent === "▶"
-      && videoRows[0].querySelector(".video-size")?.textContent === `${ev("state.tracks[1].meta.width")}×${ev("state.tracks[1].meta.height")}`,
+      && videoRows[0].querySelector(".video-mark")?.getAttribute("aria-hidden") === "true"
+      && !videoRows[0].querySelector(".video-size")
+      && videoRows[0].querySelector(".t-sub")?.textContent.includes(`${ev("state.tracks[1].meta.width")}×${ev("state.tracks[1].meta.height")}`),
       `${videoRows.length} filas`);
     mediaFilter.value = "audio";
     mediaFilter.dispatchEvent(new win.Event("change", { bubbles: true }));
     check("biblioteca: filtro Música excluye videos", ev("els.playlist.querySelectorAll('li:not(.empty)').length") === 3);
+    const oldTracks = ev("state.tracks.slice()");
+    ev("state.tracks.length = 0; render()");
+    check("biblioteca: filtro persistido conserva el mensaje de biblioteca vacía", ev("els.playlist.querySelector('.empty')?.textContent.includes('Tu biblioteca está vacía')"));
+    win.__oldTracks = oldTracks;
+    ev("state.tracks.push(...window.__oldTracks); render(); delete window.__oldTracks");
     mediaFilter.value = "all";
     mediaFilter.dispatchEvent(new win.Event("change", { bubbles: true }));
 

@@ -22,19 +22,21 @@ function syncStage(t) {
   }
 }
 
+let stageClickTimer = 0;
+
 // Retrasar el clic simple para que el segundo clic de un doble clic no alterne reproducción.
 function wireStage() {
-  let clickTimer = 0;
   const stage = $("stage");
   stage.addEventListener("click", (e) => {
     if (!e.target.closest("video")) return;
-    clearTimeout(clickTimer);
-    clickTimer = setTimeout(() => { clickTimer = 0; togglePlay(); }, 280);
+    if (e.detail > 1) return;
+    clearTimeout(stageClickTimer);
+    stageClickTimer = setTimeout(() => { stageClickTimer = 0; togglePlay(); }, 500);
   });
   stage.addEventListener("dblclick", (e) => {
     if (!e.target.closest("video")) return;
-    clearTimeout(clickTimer);
-    clickTimer = 0;
+    clearTimeout(stageClickTimer);
+    stageClickTimer = 0;
     if (typeof toggleFullscreen === "function") toggleFullscreen();
   });
 }
@@ -83,6 +85,7 @@ function updatePositionState() {
 }
 
 function loadTrack(i, autoplay, view = "all") {
+  clearTimeout(stageClickTimer);
   pendingNext = null;
   const t = state.tracks[i];
   if (xfade && (!xfade.starting || isVideoTrack(t))) endCrossfade(); // un cambio manual o un video corta el fundido
@@ -344,6 +347,7 @@ function wirePlayer() {
       if (t.id != null) Storage.setMeta(t.id, t.meta, META_VERSION).catch(() => {});
       syncStage(t);
       renderLyrics();
+      render();
     }
   });
 
