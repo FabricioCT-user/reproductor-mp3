@@ -1,17 +1,18 @@
 # Reproductor MP3 — guía para Claude
 
-Reproductor de música local que corre en el navegador. **JavaScript clásico, sin dependencias ni build.** Repo público: https://github.com/FabricioCT-user/reproductor-mp3. La persona que lo mantiene habla español: interfaz, comentarios, mensajes de commit y README van **en español**.
+Reproductor de música local que corre en el navegador. **JavaScript clásico, sin dependencias de ejecución ni paso de build.** Electron y electron-builder son dependencias de desarrollo para la app de escritorio. Repo público: https://github.com/FabricioCT-user/reproductor-mp3. La persona que lo mantiene habla español: interfaz, comentarios, mensajes de commit y README van **en español**.
 
 ## Comandos
 
 ```bash
-npm start      # launcher/servidor.py: sirve la app en http://localhost:8000 (y la cola del lanzador)
+npm start      # app de escritorio (Electron)
+npm run web    # servidor web estático en http://127.0.0.1:8000
 npm test       # pruebas unitarias (node:test, tests/unit/*.test.js, ~155); NO debe requerir Electron
 npm run app    # app de escritorio (Electron 45.4.1 exacto, devDependency)
 npm run smoke:app  # prueba de humo dentro de Electron, sin ventana, datos temporales; sale 0/1 (necesita ffmpeg)
 ```
 
-- Pruebas de humo (manejan la app real): con `npm start` abre `http://localhost:8000/tests/smoke.html`; `window.__results` / `window.__done` tienen el resultado.
+- Pruebas de humo en navegador: `npm run web` y abre `http://127.0.0.1:8000/tests/smoke.html`; `window.__results` / `window.__done` tienen el resultado.
 - **Usa `/usr/bin/node` y `/usr/bin/npm`**: en el shell de la persona `node` es una función rota de nvm.
 - CI: GitHub Actions ejecuta `npm test` en cada push (`.github/workflows/test.yml`).
 
@@ -20,14 +21,13 @@ npm run smoke:app  # prueba de humo dentro de Electron, sin ventana, datos tempo
 ```
 index.html  style.css  sw.js  manifest.webmanifest  icon*.{svg,png}
 src/              módulos sin DOM: util, lyrics, playlist-io, id3, mp4, tags, tag-writer, storage
-src/app/          la aplicación: core, library, playlists, lyrics-ui, player, eq, fades, launcher, editor, theme, main
-launcher/         servidor.py (estático + cola «Abrir con…»), reproductor (lanzador), instalar.sh (.desktop en Linux), comun.py
+src/app/          la aplicación: core, library, playlists, lyrics-ui, player, eq, fades, editor, theme, main
 tests/unit/       node:test; helpers.js construye MP3/FLAC/Ogg/MP4 sintéticos
 tests/smoke.*     pruebas de humo en el navegador (smoke-app.js: las mismas en Electron)
 electron/         app de escritorio: main.js, preload.js, lib/ (servir.js, argumentos.js: sin Electron, probados con node:test)
 ```
 
-**App Electron:** protocolo `app://reproductor/` con lista blanca = `FILES` de `sw.js` + `index.html` y la CSP del meta repetida como cabecera; ventana endurecida (contextIsolation, sandbox, sin nodeIntegration, sin ventanas nuevas ni navegación fuera de la app, permisos negados salvo `fullscreen`). Todo manejador IPC comprueba `deLaApp(event)` (una prueba lo vigila). El preload solo expone `window.reproductor` con `contextBridge` (`esApp`, `version`, `onAbrir`, `elegirArchivos`, `leer`, `enlazar`, `olvidar`, `estadoEnlaces`). `electron/lib` no puede hacer `require("electron")`. Archivos del sistema (argv, `second-instance`, diálogo): `lib/rutas.js` valida (archivo regular, `realpath`, extensión del destino) y `lib/entregas.js` da ids de un solo uso; **la interfaz nunca recibe rutas**, pide los bytes por id. **Videos (T2.1):** no se leen ni se copian; `reproductor.enlazar(idEntrega | File)` (el preload saca la ruta de un File con `webUtils.getPathForFile`) los registra en `lib/enlaces.js` (`userData/enlaces.json`, 0600, escritura atómica, ids de 32 hex) y la interfaz usa `LinkedFile` (library.js), cuyo `url` es `__media/<linkId>` y cuyo `slice().arrayBuffer()` pide `Range`. `__media` lo sirve `lib/medios.js` (`ReadableStream` con `pull()` + `FileHandle.read`, cierra en `cancel()`; `lib/rango.js` analiza la cabecera). `olvidar(id)` al quitar la pista. `wireSystemOpen()` (library.js) junta las tres fuentes: launchQueue, lanzador y app.
+**App Electron:** protocolo `app://reproductor/` con lista blanca = `FILES` de `sw.js` + `index.html` y la CSP del meta repetida como cabecera; ventana endurecida (contextIsolation, sandbox, sin nodeIntegration, sin ventanas nuevas ni navegación fuera de la app, permisos negados salvo `fullscreen`). Todo manejador IPC comprueba `deLaApp(event)` (una prueba lo vigila). El preload solo expone `window.reproductor` con `contextBridge` (`esApp`, `version`, `onAbrir`, `elegirArchivos`, `leer`, `enlazar`, `olvidar`, `estadoEnlaces`). `electron/lib` no puede hacer `require("electron")`. Archivos del sistema (argv, `second-instance`, diálogo): `lib/rutas.js` valida (archivo regular, `realpath`, extensión del destino) y `lib/entregas.js` da ids de un solo uso; **la interfaz nunca recibe rutas**, pide los bytes por id. **Videos (T2.1):** no se leen ni se copian; `reproductor.enlazar(idEntrega | File)` (el preload saca la ruta de un File con `webUtils.getPathForFile`) los registra en `lib/enlaces.js` (`userData/enlaces.json`, 0600, escritura atómica, ids de 32 hex) y la interfaz usa `LinkedFile` (library.js), cuyo `url` es `__media/<linkId>` y cuyo `slice().arrayBuffer()` pide `Range`. `__media` lo sirve `lib/medios.js` (`ReadableStream` con `pull()` + `FileHandle.read`, cierra en `cancel()`; `lib/rango.js` analiza la cabecera). `olvidar(id)` al quitar la pista. `wireSystemOpen()` (library.js) junta launchQueue y la app.
 
 **Regla de `src/app/`:** los archivos solo *declaran* (funciones y constantes). Todo el cableado de eventos, intervalos y estado inicial va dentro de funciones `wire…()` (una por archivo) que `main.js` llama al final. No pongas `addEventListener` ni `setInterval` sueltos a nivel superior. Todo es global (scripts clásicos, no módulos ES), así que los nombres no pueden repetirse entre archivos.
 
@@ -45,8 +45,6 @@ Al **añadir o mover un archivo**: ponlo en `index.html` (el orden importa: `uti
   - `localStorage`: `shuffle repeat speed crossfade playlists eq order lastId volume lyrics theme`.
   - Un cambio de esquema exige subir la versión y migrar en `onupgradeneeded`, con pruebas de migración; no rompas los datos existentes.
 - Las ediciones de etiquetas **no modifican el original**: viven en `edits`. Solo «descargar copia» (MP3 y FLAC) escribe etiquetas, siempre en un archivo nuevo, y se verifica releyéndolo.
-- **Lanzador (`launcher/`)**: sirve archivos del disco de la persona, así que la seguridad es parte del diseño y está probada (`tests/unit/launcher.test.js`): solo 127.0.0.1, comprobación del `Host` (DNS rebinding) y de `Sec-Fetch-Site`, ningún endpoint que registre rutas (el lanzador escribe en una carpeta privada 0700), solo audio, id hex de 32 caracteres. No debilites ninguna de esas defensas; si añades un endpoint, añade su prueba. `sw.js` ignora `/__abrir/*`.
-- **Nunca ejecutes el lanzador sin `REPRODUCTOR_NO_ABRIR=1`** (o `--no-abrir`) al probar: abriría el navegador real de la persona. Usa también `XDG_CACHE_HOME` temporal y un puerto distinto del 8000.
 - Para reproducir sin clic previo (Abrir con…), `play()` comprueba que el contexto de audio esté activo; no dejes que «suene» en silencio.
 
 ## Flujo de trabajo

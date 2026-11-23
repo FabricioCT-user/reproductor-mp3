@@ -1,6 +1,6 @@
 // Cachea la aplicación para que funcione sin conexión.
 // Sube VERSION al cambiar la lista de archivos (los archivos en sí se revalidan siempre con la red).
-const VERSION = "v4";
+const VERSION = "v5";
 const FILES = [
   "./",
   "index.html",
@@ -22,7 +22,6 @@ const FILES = [
   "src/app/eq.js",
   "src/app/fades.js",
   "src/app/editor.js",
-  "src/app/launcher.js",
   "src/app/theme.js",
   "src/app/main.js",
   "icon.svg",
@@ -49,8 +48,7 @@ self.addEventListener("activate", (e) => {
 // si no hay conexión, se sirve la copia guardada.
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-  // /__abrir/* es la cola del lanzador local: nunca se cachea ni se interviene.
-  if (e.request.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/__abrir")) return;
+  if (e.request.method !== "GET" || url.origin !== location.origin) return;
   e.respondWith(
     fetch(e.request, { cache: "no-cache" })
       .then((res) => {
