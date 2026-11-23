@@ -113,6 +113,7 @@ const Tags = (() => {
   /* ----- MP4 / M4A ----- */
 
   async function readMp4(file, meta) {
+    Object.assign(meta, await MP4.movieMeta(file));
     const ilst = await MP4.findPath(file, await MP4.moov(file), ["udta", "meta", "ilst"]);
     if (!ilst) return;
     let albumArtist = "";
@@ -133,9 +134,24 @@ const Tags = (() => {
       else if (item.type === "©ART") meta.artist ||= utf8(payload);
       else if (item.type === "aART") albumArtist ||= utf8(payload);
       else if (item.type === "©alb") meta.album ||= utf8(payload);
+      else if (item.type === "©day") meta.year ||= utf8(payload).slice(0, 4);
+      else if (item.type === "©gen") meta.genre ||= utf8(payload);
+      else if (item.type === "desc" || item.type === "ldes") meta.description ||= utf8(payload);
+      else if (item.type === "tvsh") meta.show ||= utf8(payload);
+      else if (item.type === "tvsn") meta.season ||= numericValue(payload);
+      else if (item.type === "tves") meta.episode ||= numericValue(payload);
       else if (item.type === "©lyr") setLyrics(meta, utf8(payload));
     }
     meta.artist ||= albumArtist;
+  }
+
+  function numericValue(b) {
+    if (b.length === 0) return null;
+    if (b.length === 1) return b[0];
+    if (b.length === 2) return (b[0] << 8) | b[1];
+    if (b.length === 4) return be32(b, 0);
+    const n = Number(utf8(b));
+    return Number.isFinite(n) ? n : null;
   }
 
   /* ----- Entrada ----- */

@@ -81,6 +81,21 @@ test("M4A: usa aART si no hay ©ART y JPEG por defecto", async () => {
   assert.equal(m.cover.type, "image/jpeg");
 });
 
+test("MP4: tags de serie, año, género y descripción junto a metadatos de pista", async () => {
+  const m = await Tags.read(mp4File([
+    ["©nam", h.enc.encode("Capítulo")], ["©day", h.enc.encode("2024-02-01")], ["©gen", h.enc.encode("Drama")],
+    ["desc", h.enc.encode("Resumen")], ["tvsh", h.enc.encode("Serie")], ["tvsn", h.be32(2)], ["tves", h.be32(5)],
+  ], { duration: 3600, tracks: [{ kind: "video", width: 1920, height: 1080 }] }));
+  assert.deepEqual([m.title, m.year, m.genre, m.description, m.show, m.season, m.episode], ["Capítulo", "2024", "Drama", "Resumen", "Serie", 2, 5]);
+  assert.deepEqual([m.duration, m.width, m.height, m.rotation], [3.6, 1920, 1080, 0]);
+});
+
+test("MP4: etiquetas numéricas vacías se conservan como ausentes", async () => {
+  const m = await Tags.read(mp4File([["tvsn", new Uint8Array()], ["tves", new Uint8Array()]]));
+  assert.equal(m.season, null);
+  assert.equal(m.episode, null);
+});
+
 test("MP3 se delega en el lector ID3", async () => {
   const m = await Tags.read(mp3File(id3Tag({ ver: 3, frames: [textFrame(3, "TIT2", "Desde ID3")] })));
   assert.equal(m.title, "Desde ID3");

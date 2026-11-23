@@ -146,10 +146,27 @@ const box = (type, ...content) => {
 };
 const mp4Item = (type, payload, flags = 1) => box(type, box("data", be32(flags), [0, 0, 0, 0], payload));
 
+const mp4MovieHeader = (timescale, duration) => box("mvhd", [0, 0, 0, 0], be32(0), be32(0), be32(timescale), be32(duration), new Uint8Array(80));
+function mp4Track(kind, { width = 1920, height = 1080, rotation = 0 } = {}) {
+  const matrices = {
+    0: [0x10000, 0, 0, 0, 0x10000, 0, 0, 0, 0x40000000],
+    90: [0, 0x10000, 0, -0x10000, 0, 0, 0, 0, 0x40000000],
+    180: [-0x10000, 0, 0, 0, -0x10000, 0, 0, 0, 0x40000000],
+    270: [0, -0x10000, 0, 0x10000, 0, 0, 0, 0, 0x40000000],
+  }[rotation] || [0x10000, 0, 0, 0, 0x10000, 0, 0, 0, 0x40000000];
+  const tkhd = box("tkhd", [0, 0, 0, 7], be32(0), be32(0), be32(1), be32(0), be32(0), new Uint8Array(8), new Uint8Array(8), ...matrices.map(be32), be32(width * 65536), be32(height * 65536));
+  const hdlr = box("hdlr", be32(0), be32(0), kind === "video" ? "vide" : "soun", new Uint8Array(12));
+  return box("trak", tkhd, box("mdia", hdlr));
+}
+
 // items: [[tipo, payload, flags?]]; moovAtEnd: mdat antes que moov (lo habitual sin «faststart»)
-function mp4File(items, { moovAtEnd = true, name = "pista.m4a" } = {}) {
+function mp4File(items, { moovAtEnd = true, name = "pista.m4a", tracks = [], duration = 0, timescale = 1000, chapters = [] } = {}) {
   const ilst = box("ilst", ...items.map(([t, p, f]) => mp4Item(t, p, f)));
-  const moov = box("moov", box("udta", box("meta", [0, 0, 0, 0], ilst)));
+  const chapterBox = chapters.length ? box("chpl", [1, 0, 0, 0], [0, 0, 0, 0], [chapters.length], ...chapters.map(({ time, title }) => cat(
+    be32(Math.floor((time * 10000000) / 2 ** 32)), be32(Math.floor(time * 10000000) >>> 0), [enc.encode(title).length], enc.encode(title),
+  ))) : null;
+  const udta = box("udta", ...(chapterBox ? [chapterBox] : []), box("meta", [0, 0, 0, 0], ilst));
+  const moov = box("moov", mp4MovieHeader(timescale, duration), ...tracks.map((t) => mp4Track(t.kind, t)), udta);
   const ftyp = box("ftyp", "M4A ", be32(0), "M4A ");
   const mdat = box("mdat", fakeAudio(400));
   return new File(moovAtEnd ? [ftyp, mdat, moov] : [ftyp, moov, mdat], name, { type: "audio/mp4" });

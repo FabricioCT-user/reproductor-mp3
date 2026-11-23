@@ -21,13 +21,15 @@ const MP4 = (() => {
   // Devuelve null si no cabe, está truncado o es inválido.
   async function header(file, off, end) {
     if (off + 8 > end) return null;
-    const h = await bytes(file, off, 16);
+    const h = await bytes(file, off, 8);
     if (h.length < 8) return null;
     let size = be32(h, 0);
     let hdr = 8;
     if (size === 1) {
-      if (h.length < 16) return null;
-      size = be32(h, 8) * 2 ** 32 + be32(h, 12);
+      if (off + 16 > end) return null;
+      const ext = await bytes(file, off + 8, 8);
+      if (ext.length < 8) return null;
+      size = be32(ext, 0) * 2 ** 32 + be32(ext, 4);
       hdr = 16;
     } else if (size === 0) size = end - off;
     if (size < hdr || !Number.isSafeInteger(size) || off + size > end) return null;
@@ -305,6 +307,87 @@ const MP4 = (() => {
     return { kind: hasVideo ? "video" : hasAudio ? "audio" : undefined, codecs: list.join(", ") };
   }
 
+  // Metadatos de película/pistas y capítulos Nero. Cada lectura queda limitada a su caja.
+  const u64 = (b, o) => be32(b, o) * 2 ** 32 + be32(b, o + 4);
+  const matrixRotation = (b, o) => {
+    if (o + 20 > b.length) return 0;
+    const a = be32(b, o), bb = be32(b, o + 4), c = be32(b, o + 12), d = be32(b, o + 16);
+    const one = (n) => n === 0x10000 || n === 0xffff0000;
+    if (a === 0 && d === 0 && one(c) && one(bb)) {
+      if (bb === 0x10000 && c === 0xffff0000) return 90;
+      if (bb === 0xffff0000 && c === 0x10000) return 270;
+    }
+    if (a === 0xffff0000 && bb === 0 && c === 0 && d === 0xffff0000) return 180;
+    return 0;
+  };
+
+  async function movieMeta(file) {
+    const out = { duration: null, width: null, height: null, rotation: 0, chapters: [] };
+    try {
+      const root = await moov(file);
+      if (!root) return out;
+      const mvhd = await find(file, root, "mvhd");
+      if (mvhd) {
+        const b = await payload(file, mvhd, 128);
+        if (b && b.length >= 20) {
+          const version = b[0];
+          const scaleAt = version === 1 ? 20 : 12;
+          const durAt = version === 1 ? 24 : 16;
+          const need = version === 1 ? 32 : 20;
+          if ((version === 0 || version === 1) && b.length >= need) {
+            const scale = be32(b, scaleAt);
+            const dur = version ? u64(b, durAt) : be32(b, durAt);
+            if (scale && Number.isFinite(dur / scale)) out.duration = dur / scale;
+          }
+        }
+      }
+      for (const trak of await children(file, root)) {
+        if (trak.type !== "trak") continue;
+        const mdia = await find(file, trak, "mdia");
+        const hdlr = mdia && await find(file, mdia, "hdlr");
+        if (!hdlr || hdlr.end - hdlr.start < 12) continue;
+        const handler = String.fromCharCode(...await bytes(file, hdlr.start + 8, 4));
+        if (handler !== "vide") continue;
+        const tkhd = await find(file, trak, "tkhd");
+        if (!tkhd) continue;
+        const b = await payload(file, tkhd, 128);
+        if (!b || !b.length) continue;
+        const version = b[0];
+        if (version !== 0 && version !== 1) continue;
+        const matrixAt = version ? 52 : 40;
+        const dimAt = version ? 88 : 76;
+        if (b.length < dimAt + 8) continue;
+        const rotation = matrixRotation(b, matrixAt);
+        const width = be32(b, dimAt) / 65536;
+        const height = be32(b, dimAt + 4) / 65536;
+        if (width > 0 && height > 0) {
+          out.rotation = rotation;
+          out.width = Math.round(rotation === 90 || rotation === 270 ? height : width);
+          out.height = Math.round(rotation === 90 || rotation === 270 ? width : height);
+        }
+      }
+      const udta = await find(file, root, "udta");
+      const chpl = udta && await find(file, udta, "chpl");
+      if (chpl) {
+        const b = await payload(file, chpl, MAX_BLOCK);
+        if (b && b.length >= 5) {
+          let p = b[0] === 1 ? 8 : 4;
+          if (p < b.length) {
+            const count = b[p++];
+            for (let i = 0; i < count && p + 9 <= b.length; i++) {
+              const time = u64(b, p) / 10000000; p += 8;
+              const n = b[p++];
+              if (p + n > b.length) break;
+              const title = new TextDecoder("utf-8").decode(b.subarray(p, p + n)); p += n;
+              out.chapters.push({ time, title });
+            }
+          }
+        }
+      }
+    } catch { /* archivos arbitrarios: devolver los metadatos disponibles */ }
+    return out;
+  }
+
   async function codecs(file) {
     return (await probe(file)).codecs;
   }
@@ -327,5 +410,5 @@ const MP4 = (() => {
     return fill(root, 0);
   }
 
-  return { MAX_BLOCK, DESCEND, header, children, find, findPath, payload, moov, kind, parseStsd, codecs, probe, readTree };
+  return { MAX_BLOCK, DESCEND, header, children, find, findPath, payload, moov, kind, parseStsd, codecs, probe, movieMeta, readTree };
 })();

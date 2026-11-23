@@ -1,10 +1,12 @@
 // Biblioteca: canciones (con sus ediciones), importación, lista en pantalla, reordenar y selección múltiple.
 
-const META_VERSION = 1;
+const META_VERSION = 2;
 const trackMeta = (m, file) => ({
   title: m.title || "", artist: m.artist || "", album: m.album || "", lyrics: m.lyrics || "",
   hasCover: !!(m.hasCover ?? m.cover), duration: m.duration ?? null, kind: m.kind || (file.type.startsWith("video/") ? "video" : "audio"),
   width: m.width ?? null, height: m.height ?? null, codecs: m.codecs ?? null,
+  year: m.year || "", genre: m.genre || "", description: m.description || "", show: m.show || "",
+  season: m.season ?? null, episode: m.episode ?? null, rotation: m.rotation ?? 0, chapters: m.chapters || [],
 });
 
 // Video enlazado por la app de escritorio (T2.1): se comporta como un File de solo lectura (name, size, type,
@@ -468,9 +470,16 @@ function render() {
       const sub = document.createElement("div");
       sub.className = "t-sub";
       const qpos = state.queue.indexOf(t) + 1;
+      const video = t.meta?.kind === "video";
+      const shortEdge = video && t.meta.width > 0 && t.meta.height > 0 ? Math.min(t.meta.width, t.meta.height) : 0;
+      const resolution = shortEdge ? `${[2160, 1440, 1080, 720, 480, 360].find((n) => shortEdge >= n) || Math.round(shortEdge)}p` : "";
+      const program = video
+        ? (t.meta.show
+          ? `${t.meta.show}${t.meta.season != null ? ` · T${t.meta.season}` : ""}${t.meta.episode != null ? ` · E${t.meta.episode}` : ""}`
+          : [t.artist, t.meta?.year].filter(Boolean).join(" · "))
+        : [t.artist, t.album].filter(Boolean).join(" · ");
       sub.textContent = (t.unavailable ? "No disponible · " : "") + (qpos ? `En cola #${qpos} · ` : "")
-        + (t.meta?.kind === "video" && t.meta.width > 0 && t.meta.height > 0 ? `${t.meta.width}×${t.meta.height} · ` : "")
-        + ([t.artist, t.album].filter(Boolean).join(" · ") || "Artista desconocido");
+        + [resolution, program || (!video && t.album ? t.album : "Artista desconocido")].filter(Boolean).join(" · ");
       text.append(name, sub);
       if (t.compatWarning) {
         const warn = document.createElement("div");

@@ -148,6 +148,44 @@ test("findPath sin padre (archivo sin moov) no busca en la raíz", async () => {
   assert.equal(await MP4.findPath(f, await MP4.moov(f), ["udta"]), undefined);
 });
 
+test("movieMeta: duración, dimensiones efectivas con rotación y capítulos Nero", async () => {
+  const f = h.mp4File([], { duration: 12500, timescale: 1000, tracks: [
+    { kind: "audio" }, { kind: "video", width: 1920, height: 1080, rotation: 90 },
+  ], chapters: [{ time: 0, title: "Inicio" }, { time: 12.5, title: "Escena ñ" }] });
+  const m = await MP4.movieMeta(f);
+  assert.equal(m.duration, 12.5);
+  assert.deepEqual([m.width, m.height, m.rotation], [1080, 1920, 90]);
+  assert.deepEqual(h.plain(m.chapters), [{ time: 0, title: "Inicio" }, { time: 12.5, title: "Escena ñ" }]);
+});
+
+test("movieMeta: chpl versión 0 lee el contador tras version/flags", async () => {
+  const chapters = box("chpl", [0, 0, 0, 0], [1], be32(0), be32(150000000), [6], "Inicio");
+  const f = file(box("ftyp", "isom"), box("moov", box("udta", chapters)));
+  assert.deepEqual(h.plain((await MP4.movieMeta(f)).chapters), [{ time: 15, title: "Inicio" }]);
+});
+
+test("movieMeta: interpreta orientaciones 0, 180 y 270 y tolera cajas arbitrarias truncadas", async () => {
+  for (const rotation of [0, 180, 270]) {
+    const m = await MP4.movieMeta(h.mp4File([], { tracks: [{ kind: "video", width: 1280, height: 720, rotation }] }));
+    assert.deepEqual([m.width, m.height, m.rotation], [rotation === 180 ? 1280 : rotation ? 720 : 1280, rotation === 180 ? 720 : rotation ? 1280 : 720, rotation]);
+  }
+  const broken = new File([cat(be32(20), [..."moov"].map((c) => c.charCodeAt(0)), be32(0), be32(0))], "bad.mp4");
+  await assert.doesNotReject(() => MP4.movieMeta(broken));
+  assert.deepEqual(h.plain(await MP4.movieMeta(broken)), { duration: null, width: null, height: null, rotation: 0, chapters: [] });
+});
+
+test("movieMeta: lee duración mvhd y dimensiones tkhd en versión 1", async () => {
+  const be64 = (n) => cat(be32(Math.floor(n / 2 ** 32)), be32(n >>> 0));
+  const mvhd = box("mvhd", [1, 0, 0, 0], new Uint8Array(16), be32(30000), be64(90000), new Uint8Array(80));
+  const matrix = [0x10000, 0, 0, 0, 0x10000, 0, 0, 0, 0x40000000].map(be32);
+  const tkhd = box("tkhd", [1, 0, 0, 7], new Uint8Array(16), be32(1), be32(0), be64(90000), new Uint8Array(16), ...matrix, be32(3840 * 65536), be32(2160 * 65536));
+  const track = box("trak", tkhd, box("mdia", box("hdlr", be32(0), be32(0), "vide", new Uint8Array(12))));
+  const f = file(box("ftyp", "isom"), box("moov", mvhd, track));
+  const m = await MP4.movieMeta(f);
+  assert.equal(m.duration, 3);
+  assert.deepEqual([m.width, m.height], [3840, 2160]);
+});
+
 /* ---------- stsd y cadenas de códecs (T3.1) ---------- */
 
 const visualEntry = (type, ...children) => box(type, new Uint8Array(78), ...children);
