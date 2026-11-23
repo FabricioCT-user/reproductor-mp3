@@ -26,13 +26,13 @@ const setMuted = (m) => decks.forEach((d) => (d.muted = m));
 
 const els = Object.fromEntries(
   ["dropzone", "backdrop", "cover", "stage", "fs-controls", "fs-current", "fs-seek", "fs-duration", "fs-play", "fs-play-icon",
-   "fs-mute", "fs-volume", "fs-subs", "fs-exit",
+   "fs-mute", "fs-volume", "fs-subs", "fs-pip", "fs-exit",
    "title", "artist", "viz", "seek", "current", "duration", "play", "play-icon",
    "prev", "next", "shuffle", "repeat", "mute", "volume", "filter", "file-input", "clear", "playlist",
    "view", "media-filter", "pl-new", "pl-more", "pl-import", "pl-rename", "pl-delete", "menu",
    "eq-toggle", "eq-panel", "eq-preset", "eq-on", "eq-reset", "eq-bands",
    "lyrics", "lyrics-body", "lyrics-toggle", "lyrics-clear", "lrc-input", "sub-input", "toast", "folder-input",
-   "speed-btn", "sleep-btn", "theme-btn", "xfade-btn",
+   "speed-btn", "sleep-btn", "pip-btn", "theme-btn", "xfade-btn",
    "select-btn", "select-bar", "select-count", "select-all", "select-none", "select-edit", "select-done",
    "edit-heading", "edit-note", "edit-dialog", "edit-form", "edit-cover", "edit-cover-input", "edit-cover-clear", "edit-title", "edit-artist", "edit-album", "edit-reset", "edit-cancel", "edit-download",
    "prompt-dialog", "prompt-form", "prompt-title", "prompt-input", "prompt-cancel"]

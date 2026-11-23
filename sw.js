@@ -1,6 +1,6 @@
 // Cachea la aplicación para que funcione sin conexión.
 // Sube VERSION al cambiar la lista de archivos (los archivos en sí se revalidan siempre con la red).
-const VERSION = "v7";
+const VERSION = "v8";
 const FILES = [
   "./",
   "index.html",
@@ -22,6 +22,7 @@ const FILES = [
   "src/app/subtitles-ui.js",
   "src/app/player.js",
   "src/app/fullscreen.js",
+  "src/app/pip.js",
   "src/app/eq.js",
   "src/app/fades.js",
   "src/app/editor.js",

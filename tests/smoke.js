@@ -841,8 +841,8 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     check("pantalla completa: F llama requestFullscreen sobre #stage (no sobre <video>) y muestra la barra",
       reqTargets.length === 1 && reqTargets[0] === stage && ev("isFullscreen()") && !bar.classList.contains("oculto"),
       `targets=${reqTargets.map((t) => t.id).join(",")}`);
-    check("pantalla completa: botón de subtítulos visible y hueco de PiP oculto con clase oculto",
-      ev("!!$('fs-subs') && !$('fs-subs').classList.contains('oculto') && getComputedStyle($('fs-subs')).display !== 'none' && !!$('fs-pip') && $('fs-pip').classList.contains('oculto') && getComputedStyle($('fs-pip')).display === 'none'"));
+    check("pantalla completa: botón de subtítulos visible y botón de PiP visible solo si pictureInPictureEnabled",
+      ev("!!$('fs-subs') && !$('fs-subs').classList.contains('oculto') && getComputedStyle($('fs-subs')).display !== 'none' && !!$('fs-pip') && $('fs-pip').classList.contains('oculto') === !isPipSupported()"));
 
     // 3. Los controles reflejan el estado real y reusan la lógica del reproductor; no propagan clic/doble clic a #stage.
     let stageClicks = 0;
@@ -1138,6 +1138,171 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     check("subtítulos: tras recargar el <track> aplica el desfase guardado en activeCues", activeAfterReload,
       e2("JSON.stringify([...(media.textTracks[0]?.activeCues || [])].map(c => c.text))"));
     e2("media.pause()");
+  });
+
+  await scenario("Picture-in-picture y atajos", async ({ win, ev }) => {
+    const audioLong = wav(win, "largo.wav", { seconds: 45, mtime: 500 });
+    const video1 = await makeWebm(win, "pip-uno.webm", { withVideo: true, seconds: 2.0, mtime: 501 });
+    const video2 = await makeWebm(win, "pip-dos.webm", { withVideo: true, seconds: 1.6, mtime: 502 });
+    await win.addFiles([audioLong, video1, video2]);
+
+    let pipEnabled = true;
+    let pipEl = null;
+    const pipReqTargets = [];
+    let pipExitCalls = 0;
+
+    Object.defineProperty(win.document, "pictureInPictureEnabled", { configurable: true, get: () => pipEnabled });
+    Object.defineProperty(win.document, "pictureInPictureElement", { configurable: true, get: () => pipEl });
+    win.document.exitPictureInPicture = () => {
+      pipExitCalls++;
+      const prev = pipEl;
+      pipEl = null;
+      if (prev) prev.dispatchEvent(new win.Event("leavepictureinpicture"));
+      return Promise.resolve();
+    };
+    for (const d of ev("decks")) {
+      d.requestPictureInPicture = () => {
+        pipReqTargets.push(d);
+        pipEl = d;
+        d.dispatchEvent(new win.Event("enterpictureinpicture"));
+        return Promise.resolve({});
+      };
+    }
+
+    const sendKey = (target, init) => {
+      const e = new win.KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
+      target.dispatchEvent(e);
+      return e;
+    };
+
+    // 1. Con pista de audio: botones PiP ocultos, I no actúa, ,/. no actúan en pausa, Mayús+←/→ salta ±30 s.
+    win.loadTrack(0, false, "all");
+    await until(() => ev("media.readyState >= 1 && Number.isFinite(media.duration) && media.duration > 40"), 4000);
+    check("PiP: botones ocultos con pista de audio",
+      ev("els['pip-btn'].classList.contains('oculto') && els['fs-pip'].classList.contains('oculto')"));
+    sendKey(win.document.body, { code: "KeyI" });
+    check("PiP: atajo I no actúa con pista de audio", pipReqTargets.length === 0 && !pipEl);
+
+    ev("media.pause(); media.currentTime = 5;");
+    const audioBeforeFrame = ev("media.currentTime");
+    sendKey(win.document.body, { code: "Period" });
+    sendKey(win.document.body, { code: "Comma" });
+    check("atajos: , y . no actúan en pista de audio", Math.abs(ev("media.currentTime") - audioBeforeFrame) < 0.001,
+      `t=${ev("media.currentTime")}`);
+
+    sendKey(win.document.body, { code: "ArrowRight", shiftKey: true });
+    const afterPlus30 = ev("media.currentTime");
+    sendKey(win.document.body, { code: "ArrowLeft", shiftKey: true });
+    const afterMinus30 = ev("media.currentTime");
+    check("atajos: Mayús+→ y Mayús+← saltan ±30 s",
+      Math.abs(afterPlus30 - 35) < 0.2 && Math.abs(afterMinus30 - 5) < 0.2,
+      `+30=${afterPlus30} -30=${afterMinus30}`);
+
+    // 2. Sin pictureInPictureEnabled: botones ocultos e I no actúa ni en video.
+    win.loadTrack(1, true, "all");
+    await until(() => ev("media.videoWidth > 0 && media.currentTime > 0.3"), 4000);
+    pipEnabled = false;
+    ev("syncPipButtons()");
+    check("PiP: sin document.pictureInPictureEnabled ambos botones permanecen ocultos",
+      ev("els['pip-btn'].classList.contains('oculto') && els['fs-pip'].classList.contains('oculto')"));
+    sendKey(win.document.body, { code: "KeyI" });
+    check("PiP: sin pictureInPictureEnabled el atajo I no llama requestPictureInPicture", pipReqTargets.length === 0);
+
+    // 3. Con pictureInPictureEnabled en video: botones visibles, I entra sobre el deck activo, audio sigue por EQ.
+    pipEnabled = true;
+    ev("syncPipButtons()");
+    check("PiP: con pictureInPictureEnabled en video ambos botones están visibles",
+      ev("!els['pip-btn'].classList.contains('oculto') && !els['fs-pip'].classList.contains('oculto')"));
+
+    // Exclusiones de foco: inputs (texto y range), select, textarea, dialog y modificadores (Ctrl+Mayús+I, Ctrl+R, F11).
+    sendKey(ev("els.filter"), { code: "KeyI" });
+    sendKey(ev("els.seek"), { code: "KeyI" });
+    sendKey(ev("els.view"), { code: "KeyI" });
+    sendKey(ev("els['edit-title']"), { code: "KeyI" });
+    sendKey(win.document.body, { code: "KeyI", ctrlKey: true, shiftKey: true });
+    check("PiP: I no actúa con foco en inputs/select/dialog ni con Ctrl+Mayús+I", pipReqTargets.length === 0);
+
+    const repeatBefore = ev("state.repeat");
+    sendKey(win.document.body, { code: "KeyR", ctrlKey: true });
+    const f11Ev = sendKey(win.document.body, { code: "F11" });
+    check("atajos: Ctrl+R y F11 no chocan con los atajos del reproductor",
+      ev("state.repeat") === repeatBefore && !f11Ev.defaultPrevented);
+
+    const deckBefore = ev("media");
+    sendKey(win.document.body, { code: "KeyI" });
+    check("PiP: I llama requestPictureInPicture sobre el deck activo y marca botones activos",
+      pipReqTargets.length === 1 && pipReqTargets[0] === deckBefore && ev("isPipActive()")
+      && ev("els['pip-btn'].getAttribute('aria-pressed') === 'true' && els['fs-pip'].getAttribute('aria-pressed') === 'true'"),
+      `reqs=${pipReqTargets.length}`);
+    check("PiP: el audio sigue pasando por el grafo del ecualizador",
+      ev("!!analyser && eqFilters.length === 10 && analyser.context.state === 'running'"));
+
+    // 4. Cambiar de video sin fundido mantiene el mismo deck y conserva el PiP.
+    win.loadTrack(2, true, "all");
+    await until(() => ev("media.videoWidth > 0 && media.currentTime > 0.2"), 4000);
+    check("PiP: al cambiar de pista de video sin fundido se reutiliza el deck y el PiP sigue activo",
+      ev("media") === deckBefore && pipExitCalls === 0 && pipEl === deckBefore && ev("isPipActive()"),
+      `exits=${pipExitCalls}`);
+
+    // 5. Botón #fs-pip en la barra de pantalla completa sale y vuelve a entrar.
+    ev("els['fs-pip'].click()");
+    check("PiP: pulsar #fs-pip sale del PiP y actualiza aria-pressed",
+      pipExitCalls === 1 && !pipEl && ev("els['pip-btn'].getAttribute('aria-pressed') === 'false' && els['fs-pip'].getAttribute('aria-pressed') === 'false'"));
+    ev("els['fs-pip'].click()");
+    check("PiP: volver a pulsar #fs-pip reactiva PiP sobre el deck activo",
+      pipReqTargets.length === 2 && pipEl === ev("media") && ev("isPipActive()"));
+
+    // 6. Si el deck activo cambia, sale del PiP.
+    ev("media = otherDeck(); syncPip();");
+    check("PiP: al cambiar el deck activo sale del PiP",
+      pipExitCalls === 2 && !pipEl && !ev("isPipActive()"),
+      `exits=${pipExitCalls}`);
+    ev("media = decks[0]; syncStage(state.tracks[state.index]);");
+
+    // 7. Pasar a pista de audio mientras está en PiP sale del PiP.
+    ev("els['pip-btn'].click()");
+    check("PiP: botón #pip-btn vuelve a entrar en PiP", pipReqTargets.length === 3 && ev("isPipActive()"));
+    win.loadTrack(0, false, "all");
+    check("PiP: al cambiar a pista de audio sale del PiP y oculta botones",
+      pipExitCalls === 3 && !pipEl && ev("els['pip-btn'].classList.contains('oculto') && els['fs-pip'].classList.contains('oculto')"));
+
+    // 8. Fotograma anterior/siguiente (, / .) y Mayús+←/→ en pista de video.
+    win.loadTrack(1, true, "all");
+    await until(() => ev("media.videoWidth > 0 && media.currentTime > 0.3"), 4000);
+    const playPeriod = sendKey(win.document.body, { code: "Period" });
+    check("atajos: , y . no actúan mientras el video está reproduciendo", !playPeriod.defaultPrevented);
+
+    ev("media.pause(); media.currentTime = 0.8;");
+    await until(() => ev("Math.abs(media.currentTime - 0.8) < 0.05"), 1500);
+    const t0 = ev("media.currentTime");
+    sendKey(ev("els.filter"), { code: "Period" });
+    sendKey(ev("els.seek"), { code: "Period" });
+    sendKey(ev("els.view"), { code: "Comma" });
+    sendKey(ev("els['edit-title']"), { code: "Period" });
+    sendKey(ev("els.filter"), { code: "ArrowRight", shiftKey: true });
+    sendKey(ev("els.seek"), { code: "ArrowRight", shiftKey: true });
+    check("atajos: , / . y Mayús+←/→ no actúan con foco en inputs, select o dialog",
+      Math.abs(ev("media.currentTime") - t0) < 0.005,
+      `t0=${t0} t=${ev("media.currentTime")}`);
+
+    const dotEv = sendKey(win.document.body, { code: "Period" });
+    const tNext = ev("media.currentTime");
+    const commaEv = sendKey(win.document.body, { code: "Comma" });
+    const tPrev = ev("media.currentTime");
+    check("atajos: . avanza y , retrocede un fotograma (1/30 s) en video en pausa",
+      dotEv.defaultPrevented && commaEv.defaultPrevented
+      && Math.abs(tNext - (t0 + 1 / 30)) < 0.015 && Math.abs(tPrev - t0) < 0.015,
+      `t0=${t0} next=${tNext} prev=${tPrev}`);
+
+    const shiftRightEv = sendKey(win.document.body, { code: "ArrowRight", shiftKey: true });
+    const tAfterJump = ev("media.currentTime");
+    const shiftLeftEv = sendKey(win.document.body, { code: "ArrowLeft", shiftKey: true });
+    const tAfterBack = ev("media.currentTime");
+    check("atajos: Mayús+→ y Mayús+← actúan en pista de video",
+      shiftRightEv.defaultPrevented && shiftLeftEv.defaultPrevented && tAfterJump > t0 && tAfterBack === 0,
+      `t0=${t0} jump=${tAfterJump} back=${tAfterBack}`);
+
+    ev("media.pause()");
   });
 
   /* ---------- Resultado ---------- */
