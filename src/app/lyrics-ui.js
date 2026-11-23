@@ -36,8 +36,18 @@ let lyricCursor = -1;
 
 function renderLyrics() {
   const t = state.tracks[state.index];
+  const video = isVideoTrack(t);
+  const btn = els["lyrics-toggle"];
+  btn.textContent = video ? "Subtítulos" : "Letra";
+  btn.title = video ? "Subtítulos (C)" : "Letra (L)";
+  if (video) {
+    btn.classList.remove("active");
+    els.lyrics.hidden = true;
+    btn.setAttribute("aria-pressed", false);
+    return;
+  }
   const L = parsedLyrics(t);
-  els["lyrics-toggle"].classList.toggle("active", !!L);
+  btn.classList.toggle("active", !!L);
   els["lyrics-clear"].hidden = !t?.userLyrics;
   lyricCursor = -1;
 
@@ -82,6 +92,7 @@ function syncLyrics() {
 }
 
 function toggleLyrics(force) {
+  if (isVideoTrack(state.tracks[state.index])) return;
   els.lyrics.hidden = force ?? !els.lyrics.hidden;
   els["lyrics-toggle"].setAttribute("aria-pressed", !els.lyrics.hidden);
   store.set("lyrics", els.lyrics.hidden ? "0" : "1");
