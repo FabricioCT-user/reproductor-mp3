@@ -2,10 +2,53 @@
   "name": "reproductor-mp3",
   "version": "1.0.0",
   "private": true,
-  "description": "Reproductor de música local que corre en el navegador, sin dependencias ni build",
+  "description": "Reproductor de música local: en el navegador o como app de escritorio (Electron)",
   "license": "MIT",
+  "main": "electron/main.js",
   "scripts": {
     "start": "python3 launcher/servidor.py",
-    "test": "node --test tests/unit/*.test.js"
+    "test": "node --test tests/unit/*.test.js",
+    "app": "electron .",
+    "smoke:app": "node tests/smoke-app.js",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "45.4.1",
+    "electron-builder": "26.18.1"
+  },
+  "build": {
+    "appId": "io.github.fabricioct_user.reproductor",
+    "productName": "Reproductor",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "package.json",
+      "index.html",
+      "style.css",
+      "sw.js",
+      "manifest.webmanifest",
+      "icon.svg",
+      "icon-*.png",
+      "src/**/*.js",
+      "electron/**/*.js"
+    ],
+    "asar": true,
+    "linux": {
+      "target": [
+        "dir"
+      ],
+      "category": "AudioVideo",
+      "icon": "icon-512.png"
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "grantFileProtocolExtraPrivileges": false
+    }
   }
 }
