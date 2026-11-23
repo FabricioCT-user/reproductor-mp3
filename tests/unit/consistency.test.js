@@ -135,7 +135,7 @@ test("Electron: el paquete incluye lo que sirve el protocolo y no las pruebas", 
   const glob = (g) => new RegExp(`^${g.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*\*\//g, "(?:.*/)?").replace(/\*/g, "[^/]*")}$`);
   const patrones = pkg.build.files.map(glob);
   const incluido = (f) => patrones.some((p) => p.test(f));
-  for (const f of [...servir.listaBlanca(read("sw.js")), "sw.js", "package.json", pkg.main, "electron/preload.js", "electron/lib/servir.js", "electron/lib/argumentos.js"]) {
+  for (const f of [...servir.listaBlanca(read("sw.js")), "sw.js", "package.json", pkg.main, "electron/preload.js", "electron/lib/servir.js", "electron/lib/argumentos.js", "electron/lib/rutas.js", "electron/lib/entregas.js"]) {
     assert.ok(incluido(f), `build.files no incluye ${f}`);
   }
   for (const f of [...servir.PRUEBAS, "tests/smoke-app.js", "launcher/servidor.py", "node_modules/x/index.js"]) assert.ok(!incluido(f), `build.files incluye ${f}`);
@@ -169,7 +169,11 @@ test("Electron: la ventana está endurecida", () => {
   // Cada manejador IPC comprueba el origen del emisor.
   const manejadores = [...main.matchAll(/ipcMain\.(?:on|handle|once)\(\s*"([^"]+)",\s*(?:async\s*)?\((\w+)[^)]*\)\s*=>\s*\{?([\s\S]*?)\n  \}\);/g)];
   assert.ok(manejadores.length > 0);
+  assert.equal(manejadores.length, (main.match(/ipcMain\.\w+\(/g) || []).length, "hay manejadores IPC que la prueba no reconoce (formato)");
   for (const [, canal, evento, cuerpo] of manejadores) assert.ok(cuerpo.includes(`deLaApp(${evento})`), `el canal ${canal} no comprueba el origen`);
+  // Lo que usa el preload existe en el principal.
+  const canales = new Set(manejadores.map((m) => m[1]));
+  for (const [, canal] of read("electron/preload.js").matchAll(/ipcRenderer\.(?:sendSync|invoke|send)\("([^"]+)"/g)) assert.ok(canales.has(canal), `el preload usa ${canal}`);
 });
 
 test("Electron: la interfaz no registra el service worker dentro de la app", () => {
