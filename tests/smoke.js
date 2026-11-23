@@ -385,6 +385,16 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     check("fundido con aleatorio (solo audio): empieza al acercarse al final", await until(() => ev("xfade !== null"), 3500));
     check("fundido con aleatorio (solo audio): pasa a otra pista en el otro deck", ev("media") !== beforeShuffle && ev("state.index !== 0"), ev("state.index"));
     await until(() => ev("xfade === null"), 4000);
+
+    // La pista que anuncia peekNext() es la que carga step(1), y alternar el aleatorio descarta la elección.
+    const peeked = ev("state.tracks.indexOf(peekNext())");
+    check("aleatorio: peekNext es estable mientras no se avanza", ev("state.tracks.indexOf(peekNext())") === peeked);
+    ev("step(1)");
+    check("aleatorio: step(1) carga la pista que anunció peekNext", ev("state.index") === peeked, `${ev("state.index")} vs ${peeked}`);
+    ev("peekNext()");
+    ev("els.shuffle.click()");
+    check("aleatorio: desactivarlo descarta la elección pendiente", ev("pendingNext") === null);
+    ev("els.shuffle.click()");
     ev("els.shuffle.click()");
 
     win.setCrossfade(0);
