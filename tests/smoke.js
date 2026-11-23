@@ -394,6 +394,22 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     db.close();
   });
 
+  await scenario("Robustez: sin espacio al guardar (solo esta sesión)", async ({ win, ev }) => {
+    ev("Storage.add = () => Promise.reject(new DOMException('sin espacio', 'QuotaExceededError'))");
+    await win.addFiles([wav(win, "a.wav", { mtime: 1 }), wav(win, "b.wav", { freq: 550, mtime: 2 })]);
+    const toastText = ev("els.toast.textContent");
+    check("avisa cuando falla por cuota (QuotaExceededError)", !ev("els.toast.hidden") && /2 pistas solo para esta sesión: no hay espacio/.test(toastText), toastText);
+    check("las pistas quedan en la sesión", ev("state.tracks.length") === 2 && ev("state.tracks[0].id") === null);
+    win.loadTrack(0, true, "all");
+    check("la pista se reproduce igualmente", await until(() => ev("media.currentTime") > 0.2), ev("media.currentTime"));
+
+    // Otro error distinto de QuotaExceededError (con 1 solo archivo también debe avisar)
+    ev("Storage.add = () => Promise.reject(new Error('fallo de disco'))");
+    await win.addFiles([wav(win, "c.wav", { freq: 660, mtime: 3 })]);
+    const toastOther = ev("els.toast.textContent");
+    check("distingue otros errores de guardado", !ev("els.toast.hidden") && /1 pista solo para esta sesión: no se pudo guardar/.test(toastOther), toastOther);
+  });
+
   /* ---------- Resultado ---------- */
   const fails = results.filter((r) => !r.ok);
   document.getElementById("summary").textContent = fails.length ? `${fails.length} FALLO(S) de ${results.length}` : `Todo correcto: ${results.length} comprobaciones`;
