@@ -61,6 +61,7 @@ const MP4 = (() => {
   // Sigue una ruta de tipos desde `parent`: findPath(file, moov, ["udta", "meta", "ilst"]).
   // «meta» (con versión y banderas) se atraviesa saltando sus 4 bytes de cabecera extra.
   async function findPath(file, parent, path) {
+    if (!parent) return undefined; // sin padre (p. ej. no hay moov) no se busca en la raíz
     let cur = parent;
     let skip = 0;
     for (const type of path) {

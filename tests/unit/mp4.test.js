@@ -133,3 +133,9 @@ test("carátula: payload idéntico al original", async () => {
   assert.ok(sameBytes(await MP4.payload(f, free), img));
   assert.ok(sameBytes(await bytesOf(f.slice(free.start, free.end)), img));
 });
+
+test("findPath sin padre (archivo sin moov) no busca en la raíz", async () => {
+  const f = file(box("ftyp", "isom"), box("udta", box("free", [1])));
+  assert.equal(await MP4.moov(f), undefined);
+  assert.equal(await MP4.findPath(f, await MP4.moov(f), ["udta"]), undefined);
+});
