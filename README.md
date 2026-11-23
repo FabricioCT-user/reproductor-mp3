@@ -130,8 +130,9 @@ src/
   storage.js       biblioteca en IndexedDB (v2: metadatos en «tracks», archivos aparte en «files»; migra la v1 sola)
   app/             la aplicación, un archivo por función:
                    core, library, playlists, lyrics-ui, player, eq, fades, launcher, editor, theme, main
-electron/          app de escritorio (en construcción): main.js (protocolo app://reproductor/ y ventana endurecida),
-                   preload.js (puente mínimo), lib/servir.js (lista blanca del protocolo), lib/argumentos.js
+electron/          app de escritorio (en construcción): main.js (protocolo app://reproductor/, ventana endurecida, instancia
+                   única y archivos abiertos desde el sistema), preload.js (puente mínimo), lib/servir.js (lista blanca
+                   del protocolo), lib/argumentos.js, lib/rutas.js (validar rutas), lib/entregas.js (ids de archivos abiertos)
 launcher/          servidor local en Python y lanzador para «Abrir con…» (instalar.sh lo registra en Linux)
 tests/
   unit/            pruebas con node:test (módulos puros, escritor de etiquetas, almacenamiento y migración, coherencia del proyecto, servidor y lanzador)
@@ -144,7 +145,7 @@ tests/
 **Pruebas**
 
 ```bash
-npm test                         # unitarias (~140 pruebas, un par de segundos)
+npm test                         # unitarias (~155 pruebas, un par de segundos)
 npm start                        # y abre http://localhost:8000/tests/smoke.html para las de humo
 npm install && npm run smoke:app # las mismas de humo dentro de Electron, sin ventana; sale con 0 o 1
 ```
@@ -159,7 +160,9 @@ npm run app          # abre la app (con menú y herramientas de desarrollo)
 npm run dist         # empaqueta con electron-builder en dist/ (por ahora solo la carpeta, sin instalador)
 ```
 
-La app sirve la misma interfaz desde `app://reproductor/`, que solo entrega los archivos de `FILES` de `sw.js` (más `index.html`) y repite la CSP del meta como cabecera. La ventana va endurecida: aislamiento de contexto, sandbox, sin Node en la página, sin ventanas nuevas ni navegación fuera de la app y sin permisos salvo pantalla completa; el paquete lleva los *fuses* de Electron que impiden usarlo como Node (`ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS`, `--inspect`) y solo carga la app del `.asar`. Dentro de la app no se registra el service worker. Abrir archivos desde el sistema y los videos llegan en las próximas tareas.
+La app sirve la misma interfaz desde `app://reproductor/`, que solo entrega los archivos de `FILES` de `sw.js` (más `index.html`) y repite la CSP del meta como cabecera. La ventana va endurecida: aislamiento de contexto, sandbox, sin Node en la página, sin ventanas nuevas ni navegación fuera de la app y sin permisos salvo pantalla completa; el paquete lleva los *fuses* de Electron que impiden usarlo como Node (`ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS`, `--inspect`) y solo carga la app del `.asar`. Dentro de la app no se registra el service worker.
+
+**Abrir archivos en la app:** `npm run app -- ~/Música/cancion.mp3 "$HOME/Música/otra canción.flac"` (rutas absolutas: npm ejecuta desde la carpeta del proyecto; también valen URLs `file://`) los añade a la biblioteca, suena el primero y los demás quedan en la cola. Con la app ya abierta, abrir más archivos (otra vez el mismo comando o, cuando exista el paquete, «Abrir con…») no abre otra ventana: los entrega a la abierta y la pone al frente. En la app, «+ Añadir» y «+ Carpeta» usan el diálogo del sistema. El proceso principal solo acepta archivos regulares (resuelve enlaces simbólicos y mira la extensión del destino) de audio, video, `.lrc`, `.srt` o `.vtt`, y la interfaz nunca ve rutas: recibe un id de un solo uso y pide con él los bytes, que se copian a la biblioteca como cualquier otro archivo. Los videos aún no se abren (se enlazarán sin copiarlos), ni los subtítulos. La asociación con el gestor de archivos («Abrir con…») llega con el empaquetado; hasta entonces sigue el lanzador de `launcher/`.
 
 **Al publicar una versión nueva**, si cambia la lista de archivos de la aplicación actualiza `FILES` y `VERSION` en `sw.js` (una prueba comprueba que `FILES` coincide con lo que carga la página).
 

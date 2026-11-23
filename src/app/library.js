@@ -146,10 +146,11 @@ async function addFiles(fileList) {
 
 // Archivos que el sistema entrega a la app instalada («Abrir con…» o doble clic en un archivo de audio):
 // se añaden a la biblioteca, suena el primero y los demás quedan en la cola.
+// Los .lrc que llegan junto al audio se asocian por nombre.
 async function openFromSystem(files) {
   const audioFiles = files.filter(isAudio);
   if (!audioFiles.length) return;
-  await addFiles(audioFiles);
+  await addFiles([...audioFiles, ...files.filter(isLrc)]);
   const trackOf = (f) => state.tracks.find((t) => t.key === fileKey(f));
   const first = trackOf(audioFiles[0]);
   if (!first) return;
@@ -168,6 +169,53 @@ async function consumeLaunch({ files: handles = [] } = {}) {
     try { files.push(await h.getFile()); } catch { /* el archivo ya no está o no hay permiso */ }
   }
   await openFromSystem(files);
+}
+
+// App de escritorio (window.reproductor): el proceso principal entrega { id, name, size, lastModified, type, kind, rel? }
+// (nunca rutas) y los bytes del audio y las letras se piden por id para copiarlos a IndexedDB como cualquier otro archivo.
+// Los videos llegan pero aún no se abren (T2.1 los enlazará sin copiarlos); los subtítulos, con T4.2.
+async function filesFromApp(items) {
+  const files = [];
+  let videos = 0;
+  for (const it of items || []) {
+    if (it?.kind === "video") { videos++; continue; }
+    if (it?.kind !== "audio" && it?.kind !== "letra") continue;
+    try {
+      const bytes = await window.reproductor.leer(it.id);
+      if (!bytes) continue; // el archivo ya no está o el id caducó
+      const f = new File([bytes], it.name, { type: it.type || "", lastModified: it.lastModified });
+      if (typeof it.rel === "string") f.relPath = it.rel;
+      files.push(f);
+    } catch { /* el archivo ya no está o el id caducó: se omite */ }
+  }
+  if (videos && !files.some(isAudio)) toast(`${videos === 1 ? "Este video" : "Estos videos"}: todavía no se pueden abrir en la app`, 5000);
+  return files;
+}
+
+// Fuentes de «Abrir con…»/doble clic: launchQueue (app web instalada en Chrome o Edge), la cola del lanzador local
+// (launcher/) y la app de escritorio. Todas esperan a que la biblioteca guardada esté cargada.
+function wireSystemOpen(ready) {
+  if ("launchQueue" in window) window.launchQueue.setConsumer((params) => ready.then(() => consumeLaunch(params)));
+
+  ready.then(runLauncher);
+
+  const app = window.reproductor;
+  if (!app?.onAbrir) return;
+  let chain = ready; // de uno en uno, en el orden en que llegan
+  app.onAbrir((items) => { chain = chain.then(() => filesFromApp(items)).then(openFromSystem).catch(() => {}); });
+
+  // En la app, «+ Añadir» y «+ Carpeta» abren el diálogo nativo (así los videos podrán enlazarse en T2.1).
+  for (const [input, carpeta] of [[els["file-input"], false], [els["folder-input"], true]]) {
+    input.closest("label").addEventListener("click", (e) => {
+      if (e.target === input) return;
+      e.preventDefault();
+      app.elegirArchivos({ carpeta })
+        .catch(() => { input.click(); return []; }) // si el diálogo nativo falla, el selector de siempre
+        .then(filesFromApp)
+        .then((files) => (files.length ? addFiles(files) : undefined))
+        .catch(() => {});
+    });
+  }
 }
 
 // Recorre arrastres que incluyen carpetas (webkitGetAsEntry) y devuelve todos los archivos con su ruta.

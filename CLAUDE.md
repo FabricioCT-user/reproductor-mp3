@@ -6,7 +6,7 @@ Reproductor de música local que corre en el navegador. **JavaScript clásico, s
 
 ```bash
 npm start      # launcher/servidor.py: sirve la app en http://localhost:8000 (y la cola del lanzador)
-npm test       # pruebas unitarias (node:test, tests/unit/*.test.js, ~140); NO debe requerir Electron
+npm test       # pruebas unitarias (node:test, tests/unit/*.test.js, ~155); NO debe requerir Electron
 npm run app    # app de escritorio (Electron 45.4.1 exacto, devDependency)
 npm run smoke:app  # prueba de humo dentro de Electron, sin ventana, datos temporales; sale 0/1
 ```
@@ -27,7 +27,7 @@ tests/smoke.*     pruebas de humo en el navegador (smoke-app.js: las mismas en E
 electron/         app de escritorio: main.js, preload.js, lib/ (servir.js, argumentos.js: sin Electron, probados con node:test)
 ```
 
-**App Electron:** protocolo `app://reproductor/` con lista blanca = `FILES` de `sw.js` + `index.html` y la CSP del meta repetida como cabecera; ventana endurecida (contextIsolation, sandbox, sin nodeIntegration, sin ventanas nuevas ni navegación fuera de la app, permisos negados salvo `fullscreen`). Todo manejador IPC comprueba `deLaApp(event)` (una prueba lo vigila). El preload solo expone `window.reproductor` con `contextBridge`. `electron/lib` no puede hacer `require("electron")`.
+**App Electron:** protocolo `app://reproductor/` con lista blanca = `FILES` de `sw.js` + `index.html` y la CSP del meta repetida como cabecera; ventana endurecida (contextIsolation, sandbox, sin nodeIntegration, sin ventanas nuevas ni navegación fuera de la app, permisos negados salvo `fullscreen`). Todo manejador IPC comprueba `deLaApp(event)` (una prueba lo vigila). El preload solo expone `window.reproductor` con `contextBridge` (`esApp`, `version`, `onAbrir`, `elegirArchivos`, `leer`). `electron/lib` no puede hacer `require("electron")`. Archivos del sistema (argv, `second-instance`, diálogo): `lib/rutas.js` valida (archivo regular, `realpath`, extensión del destino) y `lib/entregas.js` da ids de un solo uso; **la interfaz nunca recibe rutas**, pide los bytes por id. `wireSystemOpen()` (library.js) junta las tres fuentes: launchQueue, lanzador y app.
 
 **Regla de `src/app/`:** los archivos solo *declaran* (funciones y constantes). Todo el cableado de eventos, intervalos y estado inicial va dentro de funciones `wire…()` (una por archivo) que `main.js` llama al final. No pongas `addEventListener` ni `setInterval` sueltos a nivel superior. Todo es global (scripts clásicos, no módulos ES), así que los nombres no pueden repetirse entre archivos.
 

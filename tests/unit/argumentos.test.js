@@ -39,3 +39,14 @@ test("las opciones desconocidas (también las de Chromium) se ignoran; tras «--
 test("valores que no son texto o vacíos se ignoran", () => {
   assert.deepEqual(analizar(["e", ".", "", undefined, 3, "a.mp3"]).archivos, ["a.mp3"]);
 });
+
+test("archivos con espacios, acentos y URLs file:// se pasan tal cual (rutas.js los valida)", () => {
+  assert.deepEqual(dev("/m/dos  espacios ñ.mp3", "file:///m/a%20b.mp3", "relativa con espacio.flac").archivos,
+    ["/m/dos  espacios ñ.mp3", "file:///m/a%20b.mp3", "relativa con espacio.flac"]);
+});
+
+test("argv de una segunda instancia (con opciones que añade Chromium) da solo los archivos", () => {
+  const r = pkg("--enable-features=X", "/m/a.mp3", "--user-data-dir=/tmp/d", "/m/b c.ogg");
+  assert.deepEqual(r.archivos, ["/m/a.mp3", "/m/b c.ogg"]);
+  assert.equal(r.smoke, false);
+});

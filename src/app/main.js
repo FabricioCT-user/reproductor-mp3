@@ -81,11 +81,8 @@ const appReady = (async function init() {
   render();
 })();
 
-// Archivos abiertos desde el sistema (solo con la app instalada en Chrome o Edge de escritorio).
-if ("launchQueue" in window) window.launchQueue.setConsumer((params) => appReady.then(() => consumeLaunch(params)));
-
-// Archivos que entrega el lanzador local de launcher/ (Abrir con… en Firefox u otros navegadores).
-appReady.then(runLauncher);
+// Archivos abiertos desde el sistema: app web instalada, lanzador local o app de escritorio.
+wireSystemOpen(appReady);
 
 // En la app de escritorio (window.reproductor) no hace falta y complicaría el protocolo propio.
 if ("serviceWorker" in navigator && !window.reproductor && location.protocol.startsWith("http")) {
