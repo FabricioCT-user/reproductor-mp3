@@ -330,7 +330,9 @@ Con Electron la tabla deja de depender del navegador de la persona: se prueba **
 ## 7. Miniaturas y metadatos MP4 (Fase 5)
 
 ### T5.1 — Metadatos de video en `mp4.js` · **Sonnet** (tras T0.5)
-- Sin cambios (`mvhd`, `tkhd` con rotación, `hdlr`, `ilst`, capítulos `chpl`).
+- Implementado: `mvhd`, `tkhd` versión 0/1 con rotación y dimensiones efectivas, `hdlr`, etiquetas `ilst` (incluidos serie/temporada/episodio) y capítulos Nero `chpl`. La biblioteca muestra resolución y artista/año o serie/temporada/episodio.
+- Robustez: tamaños de 64 bits, cajas truncadas o de tamaño 0 y límites de profundidad/recorrido.
+- Pruebas: `tests/unit/mp4.test.js` y `tests/unit/tags.test.js`.
 - Revisión: Codex.
 
 ### T5.2 — Miniaturas · **Sonnet** (tras T1.3, T0.3)

@@ -740,7 +740,7 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
       && videoRows[0].querySelector(".video-mark")?.textContent === "▶"
       && videoRows[0].querySelector(".video-mark")?.getAttribute("aria-hidden") === "true"
       && !videoRows[0].querySelector(".video-size")
-      && videoRows[0].querySelector(".t-sub")?.textContent.includes(`${ev("state.tracks[1].meta.width")}×${ev("state.tracks[1].meta.height")}`),
+      && videoRows[0].querySelector(".t-sub")?.textContent.includes(`${Math.min(ev("state.tracks[1].meta.width"), ev("state.tracks[1].meta.height"))}p`),
       `${videoRows.length} filas`);
     mediaFilter.value = "audio";
     mediaFilter.dispatchEvent(new win.Event("change", { bubbles: true }));
