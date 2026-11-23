@@ -427,8 +427,10 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
       db.close();
       return found;
     });
+    // «load» en el elemento iframe: el de contentWindow puede quedarse en la ventana vieja y no llegar nunca.
+    const loaded = new Promise((r) => frame.addEventListener("load", r, { once: true }));
     frame.contentWindow.location.reload();
-    await new Promise((r) => frame.contentWindow.addEventListener("load", r, { once: true }));
+    await loaded;
     await waitReady(frame.contentWindow);
     const reloaded = frame.contentWindow;
     check("arranque con metaVersion coincidente no llama Tags.read", reloaded.__tagsReadCount === 0, reloaded.__tagsReadCount);

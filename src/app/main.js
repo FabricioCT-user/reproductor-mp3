@@ -87,6 +87,7 @@ if ("launchQueue" in window) window.launchQueue.setConsumer((params) => appReady
 // Archivos que entrega el lanzador local de launcher/ (Abrir con… en Firefox u otros navegadores).
 appReady.then(runLauncher);
 
-if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+// En la app de escritorio (window.reproductor) no hace falta y complicaría el protocolo propio.
+if ("serviceWorker" in navigator && !window.reproductor && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }

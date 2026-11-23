@@ -111,3 +111,67 @@ test("manifest: la app se ofrece como manejadora de archivos de audio (Abrir con
   for (const must of [".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wav"]) assert.ok(all.includes(must), `falta ${must}`);
   assert.ok(manifest.launch_handler, "falta launch_handler (reutilizar la ventana abierta)");
 });
+
+/* ---------- App de escritorio (Electron) ---------- */
+
+const servir = require("../../electron/lib/servir");
+const pkg = JSON.parse(read("package.json"));
+
+test("Electron: el protocolo sirve exactamente FILES de sw.js (+ index.html) y todos existen", () => {
+  const lista = servir.listaBlanca(read("sw.js"));
+  const esperado = new Set(swFiles.filter((f) => f !== "./").map(normalize).concat("index.html"));
+  assert.deepEqual([...lista].sort(), [...esperado].sort());
+  for (const f of lista) assert.ok(fs.existsSync(path.join(ROOT, f)), `el protocolo serviría un archivo inexistente: ${f}`);
+  for (const f of servir.PRUEBAS) assert.ok(fs.existsSync(path.join(ROOT, f)), `falta ${f}`);
+});
+
+test("Electron: la CSP de la cabecera es idéntica a la del meta", () => {
+  const meta = html.match(/http-equiv="Content-Security-Policy"\s+content="([^"]+)"/)[1];
+  assert.equal(servir.cspDeHtml(html), meta);
+  assert.equal(servir.cabeceras("index.html", servir.cspDeHtml(html))["Content-Security-Policy"], meta);
+});
+
+test("Electron: el paquete incluye lo que sirve el protocolo y no las pruebas", () => {
+  const glob = (g) => new RegExp(`^${g.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*\*\//g, "(?:.*/)?").replace(/\*/g, "[^/]*")}$`);
+  const patrones = pkg.build.files.map(glob);
+  const incluido = (f) => patrones.some((p) => p.test(f));
+  for (const f of [...servir.listaBlanca(read("sw.js")), "sw.js", "package.json", pkg.main, "electron/preload.js", "electron/lib/servir.js", "electron/lib/argumentos.js"]) {
+    assert.ok(incluido(f), `build.files no incluye ${f}`);
+  }
+  for (const f of [...servir.PRUEBAS, "tests/smoke-app.js", "launcher/servidor.py", "node_modules/x/index.js"]) assert.ok(!incluido(f), `build.files incluye ${f}`);
+  assert.equal(pkg.main, "electron/main.js");
+});
+
+test("Electron: versiones exactas, fuses de seguridad y npm test sin Electron", () => {
+  for (const [nombre, v] of Object.entries(pkg.devDependencies)) assert.match(v, /^\d+\.\d+\.\d+$/, `${nombre} debe tener versión exacta`);
+  assert.equal(pkg.devDependencies.electron, "45.4.1");
+  assert.equal(pkg.dependencies, undefined, "la app no tiene dependencias de ejecución");
+  const f = pkg.build.electronFuses;
+  assert.equal(f.runAsNode, false);
+  assert.equal(f.enableNodeOptionsEnvironmentVariable, false);
+  assert.equal(f.enableNodeCliInspectArguments, false);
+  assert.equal(f.onlyLoadAppFromAsar, true);
+  assert.equal(f.enableEmbeddedAsarIntegrityValidation, true);
+  // npm test corre sin node_modules (CI): ni las pruebas ni electron/lib pueden cargar electron.
+  const sinElectron = fs.readdirSync(path.join(ROOT, "tests/unit")).map((f) => `tests/unit/${f}`)
+    .concat(fs.readdirSync(path.join(ROOT, "electron/lib")).map((f) => `electron/lib/${f}`));
+  for (const f of sinElectron) assert.doesNotMatch(read(f), /require\(\s*["']electron["']\s*\)/, `${f} carga electron`);
+});
+
+test("Electron: la ventana está endurecida", () => {
+  const main = read("electron/main.js");
+  for (const need of ["contextIsolation: true", "sandbox: true", "nodeIntegration: false", "webSecurity: true", "webviewTag: false",
+    'action: "deny"', '"will-navigate"', "setPermissionRequestHandler", "setPermissionCheckHandler", 'permiso === "fullscreen"',
+    'autoplayPolicy: "no-user-gesture-required"', "devTools: !app.isPackaged"]) {
+    assert.ok(main.includes(need), `electron/main.js no incluye ${need}`);
+  }
+  assert.doesNotMatch(main, /nodeIntegration: true|contextIsolation: false|sandbox: false|webSecurity: false/);
+  // Cada manejador IPC comprueba el origen del emisor.
+  const manejadores = [...main.matchAll(/ipcMain\.(?:on|handle|once)\(\s*"([^"]+)",\s*(?:async\s*)?\((\w+)[^)]*\)\s*=>\s*\{?([\s\S]*?)\n  \}\);/g)];
+  assert.ok(manejadores.length > 0);
+  for (const [, canal, evento, cuerpo] of manejadores) assert.ok(cuerpo.includes(`deLaApp(${evento})`), `el canal ${canal} no comprueba el origen`);
+});
+
+test("Electron: la interfaz no registra el service worker dentro de la app", () => {
+  assert.match(read("src/app/main.js"), /serviceWorker" in navigator && !window\.reproductor/);
+});

@@ -6,7 +6,9 @@ Reproductor de música local que corre en el navegador. **JavaScript clásico, s
 
 ```bash
 npm start      # launcher/servidor.py: sirve la app en http://localhost:8000 (y la cola del lanzador)
-npm test       # pruebas unitarias (node:test, tests/unit/*.test.js, ~80)
+npm test       # pruebas unitarias (node:test, tests/unit/*.test.js, ~140); NO debe requerir Electron
+npm run app    # app de escritorio (Electron 45.4.1 exacto, devDependency)
+npm run smoke:app  # prueba de humo dentro de Electron, sin ventana, datos temporales; sale 0/1
 ```
 
 - Pruebas de humo (manejan la app real): con `npm start` abre `http://localhost:8000/tests/smoke.html`; `window.__results` / `window.__done` tienen el resultado.
@@ -21,8 +23,11 @@ src/              módulos sin DOM: util, lyrics, playlist-io, id3, mp4, tags, t
 src/app/          la aplicación: core, library, playlists, lyrics-ui, player, eq, fades, launcher, editor, theme, main
 launcher/         servidor.py (estático + cola «Abrir con…»), reproductor (lanzador), instalar.sh (.desktop en Linux), comun.py
 tests/unit/       node:test; helpers.js construye MP3/FLAC/Ogg/MP4 sintéticos
-tests/smoke.*     pruebas de humo en el navegador
+tests/smoke.*     pruebas de humo en el navegador (smoke-app.js: las mismas en Electron)
+electron/         app de escritorio: main.js, preload.js, lib/ (servir.js, argumentos.js: sin Electron, probados con node:test)
 ```
+
+**App Electron:** protocolo `app://reproductor/` con lista blanca = `FILES` de `sw.js` + `index.html` y la CSP del meta repetida como cabecera; ventana endurecida (contextIsolation, sandbox, sin nodeIntegration, sin ventanas nuevas ni navegación fuera de la app, permisos negados salvo `fullscreen`). Todo manejador IPC comprueba `deLaApp(event)` (una prueba lo vigila). El preload solo expone `window.reproductor` con `contextBridge`. `electron/lib` no puede hacer `require("electron")`.
 
 **Regla de `src/app/`:** los archivos solo *declaran* (funciones y constantes). Todo el cableado de eventos, intervalos y estado inicial va dentro de funciones `wire…()` (una por archivo) que `main.js` llama al final. No pongas `addEventListener` ni `setInterval` sueltos a nivel superior. Todo es global (scripts clásicos, no módulos ES), así que los nombres no pueden repetirse entre archivos.
 
