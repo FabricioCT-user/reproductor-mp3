@@ -983,6 +983,31 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
       !ev("els.toast.hidden") && ev("els.toast.textContent").includes("ffmpeg -i entrada.mkv -c copy salida.mp4"),
       ev("els.toast.textContent"));
 
+    // MKV con pista de video detectada (V_MPEGH/ISO/HEVC) y videoWidth === 0 → avisa y NO reclasifica a audio.
+    const ebml = (id, body) => { const b = cat(...body); return cat(id, [0x80 | b.length], b); };
+    const hevcMkvBytes = cat(
+      ebml([0x1a, 0x45, 0xdf, 0xa3], [ebml([0x42, 0x82], [str("matroska")])]),
+      ebml([0x18, 0x53, 0x80, 0x67], [ebml([0x16, 0x54, 0xae, 0x6b], [
+        ebml([0xae], [ebml([0x86], [str("V_MPEGH/ISO/HEVC")])]),
+        ebml([0xae], [ebml([0x86], [str("A_AAC")])]),
+      ])]),
+    );
+    const hevcMkv = new win.File([hevcMkvBytes], "hevc.mkv", { type: "video/x-matroska", lastModified: 304 });
+    await win.addFiles([hevcMkv]);
+    ev("els.toast.hidden = true; loadTrack(2, false, 'all'); media.dispatchEvent(new Event('loadedmetadata'))");
+    check("compatibilidad: MKV con video detectado y videoWidth === 0 avisa y no reclasifica a audio",
+      ev("state.tracks[2].meta.kind === 'video' && state.tracks[2].meta.codecs === 'V_MPEGH/ISO/HEVC, A_AAC'")
+      && !ev("els.toast.hidden") && /se oye pero el códec de video no es compatible/i.test(ev("els.toast.textContent")),
+      `${ev("state.tracks[2]?.meta?.kind")} | ${ev("state.tracks[2]?.meta?.codecs")} | ${ev("els.toast.textContent")}`);
+
+    // WebM indeterminado (sin Tracks en cabecera) con videoWidth === 0 → sigue reclasificando a audio (T1.3).
+    const indetWebm = new win.File([new Uint8Array(64).fill(9)], "indet.webm", { type: "video/webm", lastModified: 305 });
+    await win.addFiles([indetWebm]);
+    ev("els.toast.hidden = true; loadTrack(3, false, 'all'); media.dispatchEvent(new Event('loadedmetadata'))");
+    check("compatibilidad: WebM indeterminado con videoWidth === 0 se reclasifica a audio sin aviso",
+      ev("state.tracks[3].meta.kind === 'audio' && state.tracks[3].meta.codecs === ''") && ev("els.toast.hidden"),
+      `${ev("state.tracks[3]?.meta?.kind")} | hidden=${ev("els.toast.hidden")}`);
+
     // Archivo AVI con tipo vacío → rechazado con consejo de remux.
     const avi = new win.File([new Uint8Array(64)], "viejo.avi", { type: "", lastModified: 303 });
     await win.addFiles([avi]);

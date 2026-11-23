@@ -192,3 +192,43 @@ test("checkCompatibility: evalúa canPlayType combinado e individual (incluyendo
   assert.equal(U.checkCompatibility({ kind: "video", ext: "avi", mime: "video/x-msvideo" }, electronCanPlay).ok, false);
   assert.equal(U.checkCompatibility({ kind: "video", ext: "mov", mime: "video/quicktime" }, electronCanPlay).ok, true);
 });
+
+test("checkCompatibility y explainFailure: CodecID de Matroska/WebM con MIME equivalente", () => {
+  const electronCanPlay = (t) => {
+    if (/ac-3|ec-3|dtsc/i.test(t)) return "";
+    if (/video\/x-matroska/i.test(t)) return "maybe";
+    return "probably";
+  };
+  const sinHevc = (t) => (/hvc1|hev1/i.test(t) ? "" : "probably");
+
+  // WebM VP9 + Opus y solo audio Opus → compatibles
+  assert.equal(U.checkCompatibility({ kind: "video", ext: "webm", mime: "video/webm", codecs: "V_VP9, A_OPUS" }, electronCanPlay).ok, true);
+  assert.equal(U.checkCompatibility({ kind: "audio", ext: "webm", mime: "audio/webm", codecs: "A_OPUS" }, electronCanPlay).ok, true);
+
+  // MKV H.264 + AAC: OK en Electron, avisa remux si el navegador no soporta contenedor MKV
+  assert.equal(U.checkCompatibility({ kind: "video", ext: "mkv", mime: "video/x-matroska", codecs: "V_MPEG4/ISO/AVC, A_AAC" }, electronCanPlay).ok, true);
+  const sinMkv = (t) => (/matroska/i.test(t) ? "" : "probably");
+  const mkvNoCont = U.checkCompatibility({ kind: "video", ext: "mkv", mime: "video/x-matroska", codecs: "V_MPEG4/ISO/AVC, A_AAC" }, sinMkv);
+  assert.equal(mkvNoCont.ok, false);
+  assert.ok(mkvNoCont.reason.includes("ffmpeg -i entrada.mkv -c copy salida.mp4"), mkvNoCont.reason);
+
+  // MKV HEVC sin soporte HEVC → señala HEVC
+  const mkvHevc = U.checkCompatibility({ kind: "video", ext: "mkv", mime: "video/x-matroska", codecs: "V_MPEGH/ISO/HEVC, A_AAC" }, sinHevc);
+  assert.equal(mkvHevc.ok, false);
+  assert.equal(mkvHevc.ac3Unsupported, false);
+  assert.match(mkvHevc.reason, /HEVC/i);
+
+  // MKV con AC-3 / DTS → señala el audio incompatible (y ac3Unsupported para AC-3)
+  const mkvAc3 = U.checkCompatibility({ kind: "video", ext: "mkv", mime: "video/x-matroska", codecs: "V_MPEG4/ISO/AVC, A_AC3" }, electronCanPlay);
+  assert.equal(mkvAc3.ok, false);
+  assert.equal(mkvAc3.ac3Unsupported, true);
+  assert.match(mkvAc3.reason, /AC-3/i);
+
+  const mkvDts = U.checkCompatibility({ kind: "video", ext: "mkv", mime: "video/x-matroska", codecs: "V_MPEG4/ISO/AVC, A_DTS" }, electronCanPlay);
+  assert.equal(mkvDts.ok, false);
+  assert.match(mkvDts.reason, /DTS/i);
+
+  // CodecID desconocido no falla falsamente en pre-check, pero explainFailure lo nombra si falla al reproducir
+  assert.equal(U.checkCompatibility({ kind: "video", ext: "mkv", mime: "video/x-matroska", codecs: "V_RARO, A_AAC" }, electronCanPlay).ok, true);
+  assert.match(U.explainFailure("video", "mkv", "V_RARO"), /V_RARO/);
+});

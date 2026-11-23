@@ -1,6 +1,6 @@
 // Cachea la aplicación para que funcione sin conexión.
 // Sube VERSION al cambiar la lista de archivos (los archivos en sí se revalidan siempre con la red).
-const VERSION = "v5";
+const VERSION = "v6";
 const FILES = [
   "./",
   "index.html",
@@ -10,6 +10,7 @@ const FILES = [
   "src/playlist-io.js",
   "src/id3.js",
   "src/mp4.js",
+  "src/mkv.js",
   "src/tags.js",
   "src/tag-writer.js",
   "src/storage.js",

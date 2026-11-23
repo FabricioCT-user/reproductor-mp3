@@ -67,6 +67,9 @@ const isMp4File = (f) => /\.(mp4|m4v|m4a|mov)$/i.test(f.name)
   || /^video\/(mp4|quicktime|x-m4v)$/i.test(f.type || "")
   || /^audio\/(mp4|x-m4a)$/i.test(f.type || "");
 
+const isMkvFile = (f) => /\.(webm|mkv)$/i.test(f.name)
+  || /^(video|audio)\/(webm|x-matroska)$/i.test(f.type || "");
+
 function assessTrackCompat(t) {
   const res = checkCompatibility({
     kind: t.meta?.kind,
@@ -84,6 +87,13 @@ async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = n
   if (isMp4File(file) && (!cachedMeta || cachedMeta.codecs == null)) {
     try {
       const info = await MP4.probe(file);
+      if (info.kind) meta.kind = info.kind;
+      meta.codecs = info.codecs;
+      probedCached = !!cachedMeta;
+    } catch { /* tipo MIME como alternativa */ }
+  } else if (isMkvFile(file) && (!cachedMeta || cachedMeta.codecs == null)) {
+    try {
+      const info = await MKV.probe(file);
       if (info.kind) meta.kind = info.kind;
       meta.codecs = info.codecs;
       probedCached = !!cachedMeta;

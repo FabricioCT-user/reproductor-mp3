@@ -57,7 +57,33 @@ const extOf = (name) => {
 
 const UNSUPPORTED_VIDEO_EXT = new Set(["avi", "wmv", "flv", "ts", "m2ts", "mts", "vob", "mpg", "mpeg", "ogv", "rmvb", "3gp"]);
 
-const isAc3Codec = (c) => /^(ac-3|ec-3|mp4a\.a5|mp4a\.a6)(\.|$)/i.test(String(c || "").trim());
+const isAc3Codec = (c) => /^(ac-3|ec-3|mp4a\.a5|mp4a\.a6|a_e?ac3)(\.|$)/i.test(String(c || "").trim());
+
+const isMkvCodec = (c) => /^[VA]_/i.test(String(c || "").trim());
+
+// Equivalencia de CodecID Matroska/WebM → tipos MIME que entiende HTMLMediaElement.canPlayType.
+function mkvCodecMimes(codecId) {
+  const c = String(codecId || "").trim().toUpperCase();
+  if (!c) return null;
+  if (c === "V_MPEG4/ISO/AVC") return ['video/mp4; codecs="avc1.42E01E"'];
+  if (c === "V_MPEGH/ISO/HEVC") return ['video/mp4; codecs="hvc1.1.6.L93.B0"', 'video/mp4; codecs="hev1.1.6.L93.B0"'];
+  if (c === "V_VP8") return ['video/webm; codecs="vp8"'];
+  if (c === "V_VP9") return ['video/webm; codecs="vp9"', 'video/mp4; codecs="vp09.00.10.08"'];
+  if (c === "V_AV1") return ['video/webm; codecs="av01.0.04M.08"', 'video/mp4; codecs="av01.0.04M.08"'];
+  if (c === "V_THEORA") return ['video/ogg; codecs="theora"'];
+  if (/^V_MPEG4\/ISO\/(SP|ASP|AP)$/.test(c)) return ['video/mp4; codecs="mp4v.20.8"'];
+  if (c === "A_OPUS") return ['audio/webm; codecs="opus"', 'audio/ogg; codecs="opus"'];
+  if (c === "A_VORBIS") return ['audio/webm; codecs="vorbis"', 'audio/ogg; codecs="vorbis"'];
+  if (c === "A_AAC" || c.startsWith("A_AAC/")) return ['audio/mp4; codecs="mp4a.40.2"'];
+  if (c === "A_MPEG/L3" || c === "A_MPEG/L2" || c === "A_MPEG/L1") return ["audio/mpeg"];
+  if (c === "A_FLAC") return ["audio/flac", 'audio/mp4; codecs="flac"'];
+  if (c === "A_AC3") return ['audio/mp4; codecs="ac-3"', 'video/mp4; codecs="ac-3"'];
+  if (c === "A_EAC3") return ['audio/mp4; codecs="ec-3"', 'video/mp4; codecs="ec-3"'];
+  if (c === "A_DTS" || c.startsWith("A_DTS/")) return ['audio/mp4; codecs="dtsc"'];
+  if (c === "A_ALAC") return ['audio/mp4; codecs="alac"'];
+  if (c.startsWith("A_PCM/")) return ["audio/wav"];
+  return null;
+}
 
 // Explica en español por qué un medio puede fallar o ha fallado según tipo, extensión y cadena de códecs.
 function explainFailure(kind, ext, codecs) {
@@ -67,21 +93,18 @@ function explainFailure(kind, ext, codecs) {
     .filter(Boolean);
   const isVid = kind === "video";
 
-  if (e === "mkv") {
-    return "El contenedor MKV puede no ser compatible. Prueba a remuxear sin recodificar: ffmpeg -i entrada.mkv -c copy salida.mp4";
-  }
   if (UNSUPPORTED_VIDEO_EXT.has(e)) {
     return `El formato ${e.toUpperCase()} no es compatible. Prueba a remuxear sin recodificar: ffmpeg -i entrada.${e} -c copy salida.mp4`;
   }
 
   if (list.length) {
     const reasons = [];
-    const hasHevc = list.some((c) => /^(hvc1|hev1)(\.|$)/i.test(c));
-    const hasAv1 = list.some((c) => /^av01(\.|$)/i.test(c));
-    const hasVp9 = list.some((c) => /^vp09(\.|$)/i.test(c));
-    const hasAc3 = list.some((c) => /^(ac-3|mp4a\.a5)(\.|$)/i.test(c));
-    const hasEac3 = list.some((c) => /^(ec-3|mp4a\.a6)(\.|$)/i.test(c));
-    const hasDts = list.some((c) => /^(dtsc|dtse|dtsh|dtsl|dts\+)(\.|$)/i.test(c));
+    const hasHevc = list.some((c) => /^(hvc1|hev1)(\.|$)|^V_MPEGH\/ISO\/HEVC$/i.test(c));
+    const hasAv1 = list.some((c) => /^av01(\.|$)|^V_AV1$/i.test(c));
+    const hasVp9 = list.some((c) => /^vp09(\.|$)|^V_VP9$/i.test(c));
+    const hasAc3 = list.some((c) => /^(ac-3|mp4a\.a5)(\.|$)|^A_AC3$/i.test(c));
+    const hasEac3 = list.some((c) => /^(ec-3|mp4a\.a6)(\.|$)|^A_EAC3$/i.test(c));
+    const hasDts = list.some((c) => /^(dtsc|dtse|dtsh|dtsl|dts\+)(\.|$)|^A_DTS(\/|$)/i.test(c));
 
     if (hasHevc) reasons.push("el códec de video HEVC (H.265) no es compatible");
     if (hasAv1) reasons.push("el códec de video AV1 no es compatible");
@@ -95,12 +118,15 @@ function explainFailure(kind, ext, codecs) {
     if (hasDts) reasons.push(isVid ? "el audio DTS no es compatible (el video se verá sin sonido)" : "el audio DTS no es compatible");
 
     if (!reasons.length) {
-      const exotic = list.filter((c) => !/^(avc[13]|mp4a|opus|flac)(\.|$)/i.test(c));
+      const exotic = list.filter((c) => !/^(avc[13]|mp4a|opus|flac)(\.|$)|^(V_MPEG4\/ISO\/AVC|V_VP8|A_OPUS|A_VORBIS|A_AAC(\/|$)|A_FLAC|A_MPEG\/L[123]|A_PCM\/)/i.test(c));
       if (exotic.length) reasons.push(`códec no compatible (${exotic.join(", ")})`);
     }
     if (reasons.length) {
       const msg = reasons.join("; ");
       return msg[0].toUpperCase() + msg.slice(1);
+    }
+    if (e === "mkv") {
+      return "El contenedor MKV puede no ser compatible. Prueba a remuxear sin recodificar: ffmpeg -i entrada.mkv -c copy salida.mp4";
     }
     if (e === "mov") {
       return "El archivo MOV puede no ser compatible. Prueba a remuxear sin recodificar: ffmpeg -i entrada.mov -c copy salida.mp4";
@@ -108,6 +134,9 @@ function explainFailure(kind, ext, codecs) {
     return `No se puede reproducir este ${e ? e.toUpperCase() : "archivo"} (códecs: ${list.join(", ")})`;
   }
 
+  if (e === "mkv") {
+    return "El contenedor MKV puede no ser compatible. Prueba a remuxear sin recodificar: ffmpeg -i entrada.mkv -c copy salida.mp4";
+  }
   if (e === "mov") {
     return "El archivo MOV puede no ser compatible. Prueba a remuxear sin recodificar: ffmpeg -i entrada.mov -c copy salida.mp4";
   }
@@ -124,6 +153,26 @@ function checkCompatibility({ kind = "", ext = "", mime = "", codecs = "" } = {}
   const test = typeof canPlayType === "function" ? (t) => String(canPlayType(t) || "") : () => "maybe";
 
   if (list.length) {
+    if (list.some(isMkvCodec)) {
+      if (e === "mkv" && test("video/x-matroska") === "" && (kind !== "audio" || test("audio/x-matroska") === "")) {
+        return { ok: false, reason: explainFailure(kind || "video", "mkv", ""), ac3Unsupported: false };
+      }
+      const failing = [];
+      const ac3Fail = [];
+      for (const c of list) {
+        const mimes = mkvCodecMimes(c);
+        if (!mimes) continue;
+        if (!mimes.some((m) => test(m) !== "")) {
+          failing.push(c);
+          if (isAc3Codec(c)) ac3Fail.push(c);
+        }
+      }
+      if (failing.length || ac3Fail.length) {
+        return { ok: false, reason: explainFailure(kind, e, failing.length ? failing : ac3Fail), ac3Unsupported: ac3Fail.length > 0 };
+      }
+      return { ok: true, reason: "", ac3Unsupported: false };
+    }
+
     const container = kind === "audio" ? "audio/mp4" : "video/mp4";
     const combined = test(`${container}; codecs="${list.join(", ")}"`);
     const ac3Fail = list.filter((c) => isAc3Codec(c) && !test(`audio/mp4; codecs="${c}"`) && !test(`video/mp4; codecs="${c}"`));

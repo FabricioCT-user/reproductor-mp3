@@ -374,7 +374,9 @@ function wirePlayer() {
       render();
     }
     if (t && isVideoTrack(t) && media.videoWidth === 0) {
-      if (/\.(webm|mkv)$/i.test(t.fileName)) {
+      const indeterminateMkv = (/\.(webm|mkv)$/i.test(t.fileName)
+        || /^(video|audio)\/(webm|x-matroska)$/i.test(t.file?.type || "")) && !t.meta.codecs;
+      if (indeterminateMkv) {
         t.meta.kind = "audio";
         if (t.id != null) Storage.setMeta(t.id, t.meta, META_VERSION).catch(() => {});
         syncStage(t);
