@@ -93,6 +93,7 @@
     },
     "pacman": {
       "executableArgs": [
+        "--",
         "%F"
       ],
       "depends": [
@@ -106,6 +107,7 @@
     },
     "deb": {
       "executableArgs": [
+        "--",
         "%F"
       ]
     },

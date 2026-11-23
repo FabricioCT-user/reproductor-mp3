@@ -64,7 +64,7 @@ delete env.ELECTRON_RUN_AS_NODE;
 
 // uno.wav debe ir primero (la prueba deduce de él la carpeta de los medios).
 const archivos = [uno, pathToFileURL(dos).href, lrc, path.join(medios, "no-existe.mp3"), nota, video, medios];
-const hijo = spawn(electron, [raiz, "--smoke", `--user-data-dir=${datos}`, ...archivos], { stdio: "inherit", env });
+const hijo = spawn(electron, [raiz, "--smoke", `--user-data-dir=${datos}`, "--", ...archivos], { stdio: "inherit", env });
 const limpiar = () => {
   fs.rmSync(datos, { recursive: true, force: true });
   fs.rmSync(path.dirname(medios), { recursive: true, force: true });

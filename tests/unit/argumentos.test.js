@@ -54,8 +54,13 @@ test("archivos con espacios, acentos y URLs file:// se pasan tal cual (rutas.js 
     ["/m/dos  espacios ñ.mp3", "file:///m/a%20b.mp3", "relativa con espacio.flac"]);
 });
 
-test("argv de una segunda instancia (con opciones que añade Chromium) da solo los archivos", () => {
+test("argv de una segunda instancia (con opciones que añade Chromium y «--») da solo los archivos", () => {
   const r = pkg("--enable-features=X", "/m/a.mp3", "--user-data-dir=/tmp/d", "/m/b c.ogg");
   assert.deepEqual(r.archivos, ["/m/a.mp3", "/m/b c.ogg"]);
   assert.equal(r.smoke, false);
+
+  const conSeparador = pkg("--enable-features=X", "--", "/m/a.mp3", "--raro.mp3", "/m/b c.ogg");
+  assert.deepEqual(conSeparador.archivos, ["/m/a.mp3", "--raro.mp3", "/m/b c.ogg"]);
+  assert.equal(conSeparador.smoke, false);
+  assert.equal(conSeparador.instalarEscritorio, false);
 });

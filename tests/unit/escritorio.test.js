@@ -35,7 +35,7 @@ test("carpetaDatos: prefiere XDG_DATA_HOME absoluto y cae a HOME/.local/share", 
   assert.throws(() => escritorio.carpetaDatos({ HOME: "/home/ana\nmal" }));
 });
 
-test("contenidoDesktop: genera una entrada válida con MimeType, %F y sin --no-sandbox", () => {
+test("contenidoDesktop: genera una entrada válida con MimeType, -- %F y sin --no-sandbox", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
   const txt = escritorio.contenidoDesktop({
     rutaEjecutable: '/home/ana/Apps $1 "test" `x` \\dir 100%/Reproductor.AppImage',
@@ -47,7 +47,7 @@ test("contenidoDesktop: genera una entrada válida con MimeType, %F y sin --no-s
   assert.match(txt, /^\[Desktop Entry\]\n/);
   assert.match(txt, /\nType=Application\n/);
   assert.match(txt, /\nName=Reproductor\n/);
-  assert.match(txt, /\nExec="\/home\/ana\/Apps \\\\\$1 \\\\"test\\\\" \\\\`x\\\\` \\\\\\\\dir 100%%\/Reproductor\.AppImage" %F\n/);
+  assert.match(txt, /\nExec="\/home\/ana\/Apps \\\\\$1 \\\\"test\\\\" \\\\`x\\\\` \\\\\\\\dir 100%%\/Reproductor\.AppImage" -- %F\n/);
   assert.match(txt, /\nIcon=reproductor\n/);
   assert.match(txt, /\nStartupWMClass=reproductor\n/);
   assert.match(txt, /\nMimeType=audio\/mpeg;.*video\/mp4;.*;\n/);
@@ -93,7 +93,7 @@ test("instalar: escribe .desktop e icono de forma atómica en XDG_DATA_HOME sin 
   assert.equal(r.icono, path.join(xdg, "icons", "hicolor", "512x512", "apps", "reproductor.png"));
 
   const desktop = fs.readFileSync(r.escritorio, "utf8");
-  assert.ok(desktop.includes(`Exec=${escritorio.escaparExec(fakeAppImage)} %F\n`));
+  assert.ok(desktop.includes(`Exec=${escritorio.escaparExec(fakeAppImage)} -- %F\n`));
   assert.equal(fs.statSync(r.escritorio).mode & 0o777, 0o644);
   assert.deepEqual(fs.readFileSync(r.icono), fs.readFileSync(path.join(ROOT, "icon-512.png")));
   assert.deepEqual(fs.readdirSync(path.join(xdg, "applications")), ["reproductor.desktop"]);

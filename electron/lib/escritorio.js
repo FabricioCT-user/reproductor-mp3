@@ -101,7 +101,7 @@ function contenidoDesktop({ rutaEjecutable, nombre, comentario, categorias, mime
     "Type=Application",
     `Name=${escaparCadena(nombre || "Reproductor")}`,
     `Comment=${escaparCadena(comentario || "Reproductor de música y video local")}`,
-    `Exec=${escaparExec(rutaEjecutable)} %F`,
+    `Exec=${escaparExec(rutaEjecutable)} -- %F`,
     `Icon=${escaparCadena(icono)}`,
     "Terminal=false",
     `Categories=${escaparCadena(cat)};`,

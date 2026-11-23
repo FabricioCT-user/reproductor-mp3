@@ -150,8 +150,8 @@ test("Electron: empaquetado, asociaciones de archivos (fileAssociations ↔ ruta
   assert.equal(b.publish, null, "no debe configurarse auto-actualización");
   assert.ok(fs.existsSync(path.join(ROOT, b.linux.icon)), `falta icono ${b.linux.icon}`);
   assert.ok(b.linux.target.includes("pacman") && b.linux.target.includes("AppImage"), "debe empaquetar pacman y AppImage");
-  assert.ok(b.pacman.executableArgs.includes("%F"), "pacman debe pasar %F");
-  assert.ok(b.deb.executableArgs.includes("%F"), "deb debe pasar %F");
+  assert.deepEqual(b.pacman.executableArgs, ["--", "%F"], "pacman debe pasar -- antes de %F");
+  assert.deepEqual(b.deb.executableArgs, ["--", "%F"], "deb debe pasar -- antes de %F");
   assert.ok(Array.isArray(b.appImage.executableArgs), "appImage debe fijar executableArgs para evitar --no-sandbox por defecto");
   assert.doesNotMatch(JSON.stringify(b), /--no-sandbox/, "nunca usar --no-sandbox");
 
@@ -211,7 +211,8 @@ test("Electron: la ventana está endurecida", () => {
   const main = read("electron/main.js");
   for (const need of ["contextIsolation: true", "sandbox: true", "nodeIntegration: false", "webSecurity: true", "webviewTag: false",
     'action: "deny"', '"will-navigate"', "setPermissionRequestHandler", "setPermissionCheckHandler", 'permiso === "fullscreen"',
-    'autoplayPolicy: "no-user-gesture-required"', "devTools: !app.isPackaged"]) {
+    'autoplayPolicy: "no-user-gesture-required"', "devTools: !app.isPackaged",
+    'app.commandLine.hasSwitch("no-sandbox")', "dialog.showErrorBox"]) {
     assert.ok(main.includes(need), `electron/main.js no incluye ${need}`);
   }
   assert.doesNotMatch(main, /nodeIntegration: true|contextIsolation: false|sandbox: false|webSecurity: false/);
