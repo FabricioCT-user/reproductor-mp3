@@ -47,13 +47,19 @@ const appReady = (async function init() {
     const order = [].concat(store.json("order", [])).filter(Number.isFinite);
     const rank = (r) => { const k = order.indexOf(r.id); return k < 0 ? order.length + r.id : k; };
     saved.sort((a, b) => rank(a) - rank(b));
+    const linked = []; // pistas enlazadas por la app de escritorio: se conservan aunque aquí aún no se abran
     for (const rec of saved) {
-      if (!(rec.blob instanceof Blob)) { Storage.remove(rec.id).catch(() => {}); continue; } // registro sin archivo: se descarta
-      try { state.tracks.push(await makeTrack(rec.id, rec.blob, rec.lyrics || "", rec.edits || null)); } catch { /* este archivo no se puede cargar: se omite */ }
+      if (rec.source === "link") { linked.push(rec.id); continue; }
+      let file = null;
+      if (rec.source !== "session") {
+        try { file = await Storage.getFile(rec.id); } catch { continue; } // error al leer: no se borra nada
+      }
+      if (!file) { Storage.remove(rec.id).catch(() => {}); continue; } // registro sin archivo: se descarta
+      try { state.tracks.push(await makeTrack(rec.id, file, rec.lyrics || "", rec.edits || null)); } catch { /* este archivo no se puede cargar: se omite */ }
     }
     const last = state.tracks.findIndex((t) => String(t.id) === store.get("lastId"));
     if (state.tracks.length) loadTrack(last >= 0 ? last : 0, false, "all");
-    const ids = new Set(state.tracks.map((t) => t.id));
+    const ids = new Set([...state.tracks.map((t) => t.id), ...linked]);
     state.playlists.forEach((p) => (p.ids = p.ids.filter((id) => ids.has(id))));
     savePlaylists();
   } catch { /* IndexedDB no disponible */ }

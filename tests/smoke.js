@@ -39,21 +39,50 @@ function fakeMp3(win, name, title) {
 
 /* ---------- Marco de pruebas ---------- */
 
-// Se vacía el almacén en vez de borrar la base: borrarla se queda bloqueada si otra pestaña la tiene abierta.
-const openDb = () => new Promise((resolve, reject) => {
-  const req = indexedDB.open("reproductor-mp3", 1);
-  req.onupgradeneeded = () => req.result.createObjectStore("tracks", { keyPath: "id", autoIncrement: true });
-  req.onsuccess = () => resolve(req.result);
-  req.onerror = () => reject(req.error);
-});
+// Se vacían los almacenes en vez de borrar la base: borrarla se queda bloqueada si otra pestaña la tiene abierta.
+const DB = "reproductor-mp3";
+const idbReq = (req) => new Promise((resolve, reject) => { req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); });
+const openDb = () => {
+  const req = indexedDB.open(DB, 2);
+  req.onupgradeneeded = (e) => {
+    // Solo pasa si la base no existía: los datos de una v1 se migran al abrir la app, no aquí.
+    if (e.oldVersion < 1) req.result.createObjectStore("tracks", { keyPath: "id", autoIncrement: true });
+    if (e.oldVersion < 2) req.result.createObjectStore("files", { keyPath: "id" });
+  };
+  return idbReq(req);
+};
+// La base tal como esté (sin pedir versión): para inspeccionar lo que dejó la app.
+const openDbAsIs = () => idbReq(indexedDB.open(DB));
+const storeNames = (db) => [...db.objectStoreNames].sort().join(",");
+const getAll = (db, store) => idbReq(db.transaction(store).objectStore(store).getAll());
 
 async function resetStorage() {
   localStorage.clear();
   const db = await openDb();
   await new Promise((resolve) => {
-    const tx = db.transaction("tracks", "readwrite");
+    const tx = db.transaction(["tracks", "files"], "readwrite");
     tx.objectStore("tracks").clear();
+    tx.objectStore("files").clear();
     tx.oncomplete = tx.onerror = resolve;
+  });
+  db.close();
+}
+
+// Deja una base v1 (como la guardaba la versión anterior: el archivo dentro del registro) con estos registros.
+// Para eso hay que borrar la base; la app cierra su conexión cuando se lo piden, así que no se bloquea.
+async function seedV1(records) {
+  await Promise.race([
+    idbReq(indexedDB.deleteDatabase(DB)),
+    sleep(5000).then(() => { throw new Error("no se pudo borrar la base (¿otra pestaña del reproductor abierta?)"); }),
+  ]);
+  const req = indexedDB.open(DB, 1);
+  req.onupgradeneeded = () => req.result.createObjectStore("tracks", { keyPath: "id", autoIncrement: true });
+  const db = await idbReq(req);
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction("tracks", "readwrite");
+    records.forEach((r) => tx.objectStore("tracks").add(r));
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
   });
   db.close();
 }
@@ -385,13 +414,72 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
   }, async () => {
     const db = await openDb();
     await new Promise((res) => {
-      const tx = db.transaction("tracks", "readwrite");
+      const tx = db.transaction(["tracks", "files"], "readwrite");
       const s = tx.objectStore("tracks");
-      s.add({ name: "roto.mp3", type: "audio/mpeg" }); // sin blob
-      s.add({ name: "bueno.wav", blob: new File([wavBytes({ seconds: 1 })], "bueno.wav", { type: "audio/wav" }), type: "audio/wav" });
+      s.add({ name: "roto.mp3", type: "audio/mpeg", source: "blob" }); // sin archivo en «files»
+      s.add({ name: "bueno.wav", type: "audio/wav", size: 8044, kind: "audio", source: "blob" }).onsuccess = (e) =>
+        tx.objectStore("files").put({ id: e.target.result, blob: new File([wavBytes({ seconds: 1 })], "bueno.wav", { type: "audio/wav" }) });
       tx.oncomplete = res;
     });
     db.close();
+  });
+
+  /* ----- Migración de la base v1 (archivo dentro del registro) a v2 (metadatos y archivos separados) ----- */
+
+  await scenario("Migración v1 → v2", async ({ frame, win, ev }) => {
+    check("migración: se cargan las 2 canciones en el orden guardado", ev("state.tracks.map(t => t.fileName).join(',')") === "b.wav,a.wav", ev("state.tracks.map(t => t.fileName).join(',')"));
+    const a = "state.tracks.find(t => t.fileName === 'a.wav')";
+    check("migración: se conservan las ediciones", ev(`${a}.title`) === "Editado" && ev(`${a}.artist`) === "Alguien", `${ev(`${a}.title`)} / ${ev(`${a}.artist`)}`);
+    check("migración: se conserva la letra", ev(`${a}.userLyrics`) === "[00:00.50]Hola", ev(`${a}.userLyrics`));
+    check("migración: se recuerda la última pista", ev("state.tracks[state.index]?.fileName") === "a.wav", ev("state.tracks[state.index]?.fileName"));
+    const db = await openDbAsIs();
+    const [tracks, files] = [await getAll(db, "tracks"), await getAll(db, "files")];
+    db.close();
+    check("migración: la base pasa a v2 con «tracks» y «files»", db.version === 2 && storeNames(db) === "files,tracks", `v${db.version} ${storeNames(db)}`);
+    check("migración: los archivos están en «files» y ya no en «tracks»",
+      files.length === 2 && files.every((f) => f.blob instanceof Blob && f.blob.size > 0) && tracks.every((t) => !("blob" in t) && t.source === "blob" && t.kind === "audio"),
+      JSON.stringify(tracks));
+    win.loadTrack(ev("state.tracks.findIndex(t => t.fileName === 'a.wav')"), true, "all");
+    check("migración: la canción migrada suena", await until(() => !ev("media.paused") && ev("media.currentTime") > 0.3), `paused=${ev("media.paused")} t=${ev("media.currentTime")}`);
+
+    // Tras migrar, editar y poner letra sigue guardándose.
+    ev("commitEdits([state.tracks.find(t => t.fileName === 'b.wav')], () => ({ title: 'B nuevo' }))");
+    ev("setUserLyrics(state.tracks.find(t => t.fileName === 'b.wav'), 'letra de b')");
+    await sleep(300);
+    frame.contentWindow.location.reload();
+    await sleep(300);
+    await waitReady(frame.contentWindow);
+    const e2 = (c) => frame.contentWindow.eval(c);
+    check("migración: lo editado después se conserva al recargar",
+      e2("state.tracks.length") === 2 && e2("state.tracks.find(t => t.fileName === 'b.wav').title") === "B nuevo"
+        && e2("state.tracks.find(t => t.fileName === 'b.wav').userLyrics") === "letra de b" && e2("state.tracks.find(t => t.fileName === 'a.wav').title") === "Editado",
+      e2("state.tracks.map(t => t.fileName + ':' + t.title).join(',')"));
+  }, async () => {
+    await seedV1([
+      { name: "a.wav", blob: new File([wavBytes({ seconds: 3 })], "a.wav", { type: "audio/wav", lastModified: 1 }), type: "audio/wav",
+        lyrics: "[00:00.50]Hola", edits: { title: "Editado", artist: "Alguien" } },
+      { name: "b.wav", blob: new File([wavBytes({ seconds: 3, freq: 550 })], "b.wav", { type: "audio/wav", lastModified: 2 }), type: "audio/wav" },
+    ]);
+    localStorage.setItem("order", "[2,1]");
+    localStorage.setItem("lastId", "1");
+  });
+
+  await scenario("Migración v1 → v2 con un registro corrupto", async ({ ev }) => {
+    check("migración con corruptos: se carga la canción buena", ev("state.tracks.length") === 1 && ev("state.tracks[0].fileName") === "bueno.wav", ev("state.tracks.map(t => t.fileName).join(',')"));
+    let left = null;
+    const ok = await until(async () => {
+      const db = await openDbAsIs();
+      left = [db.version, (await getAll(db, "tracks")).map((t) => t.name).join(","), (await getAll(db, "files")).length];
+      db.close();
+      return left[0] === 2 && left[1] === "bueno.wav" && left[2] === 1;
+    });
+    check("migración con corruptos: la base queda en v2 y los registros sin archivo se descartan al arrancar", ok, JSON.stringify(left));
+  }, async () => {
+    await seedV1([
+      { name: "roto.mp3", type: "audio/mpeg" },                           // sin blob
+      { name: "texto.mp3", blob: "no soy un archivo", type: "audio/mpeg" }, // blob que no es Blob
+      { name: "bueno.wav", blob: new File([wavBytes({ seconds: 1 })], "bueno.wav", { type: "audio/wav" }), type: "audio/wav" },
+    ]);
   });
 
   /* ---------- Resultado ---------- */

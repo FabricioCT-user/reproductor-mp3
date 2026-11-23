@@ -127,12 +127,12 @@ src/
   mp4.js           recorrido de átomos MP4 (64 bits, size=0, lectura incremental sin cargar mdat/stbl)
   tags.js          lector de etiquetas: FLAC, Ogg/Opus, M4A (MP3 se delega en id3.js)
   tag-writer.js    escritor de etiquetas para copias de MP3 y FLAC
-  storage.js       biblioteca en IndexedDB
+  storage.js       biblioteca en IndexedDB (v2: metadatos en «tracks», archivos aparte en «files»; migra la v1 sola)
   app/             la aplicación, un archivo por función:
                    core, library, playlists, lyrics-ui, player, eq, fades, launcher, editor, theme, main
 launcher/          servidor local en Python y lanzador para «Abrir con…» (instalar.sh lo registra en Linux)
 tests/
-  unit/            pruebas con node:test (módulos puros, escritor de etiquetas, coherencia del proyecto, servidor y lanzador)
+  unit/            pruebas con node:test (módulos puros, escritor de etiquetas, almacenamiento y migración, coherencia del proyecto, servidor y lanzador)
   smoke.html       pruebas de humo: manejan la aplicación real en el navegador
 ```
 
@@ -145,7 +145,7 @@ npm test                         # unitarias (~80 pruebas, un par de segundos)
 npm start                        # y abre http://localhost:8000/tests/smoke.html para las de humo
 ```
 
-Las unitarias cargan los mismos scripts que el navegador dentro de un contexto aislado de Node y construyen archivos MP3, FLAC, Ogg y MP4 sintéticos para comprobar lectores y escritor (unsincronización, cabecera extendida, ID3v2.2, carátulas, bloques FLAC…). Las de humo importan archivos, reproducen, reordenan, editan, exportan, recargan y fuerzan fallos (archivos que no se pueden reproducir, `localStorage` corrupto, registros dañados). La prueba de humo usa audio generado en el propio navegador y no necesita ffmpeg.
+Las unitarias cargan los mismos scripts que el navegador dentro de un contexto aislado de Node y construyen archivos MP3, FLAC, Ogg y MP4 sintéticos para comprobar lectores y escritor (unsincronización, cabecera extendida, ID3v2.2, carátulas, bloques FLAC…). Las de humo importan archivos, reproducen, reordenan, editan, exportan, recargan y fuerzan fallos (archivos que no se pueden reproducir, `localStorage` corrupto, registros dañados) y comprueban que una biblioteca guardada con la versión anterior de la base (v1) se migra sin perder canciones, letras, ediciones ni orden. La prueba de humo usa audio generado en el propio navegador y no necesita ffmpeg.
 
 **Al publicar una versión nueva**, si cambia la lista de archivos de la aplicación actualiza `FILES` y `VERSION` en `sw.js` (una prueba comprueba que `FILES` coincide con lo que carga la página).
 
