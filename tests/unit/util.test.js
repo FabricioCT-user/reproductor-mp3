@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { load, plain } = require("./helpers");
 
 const g = load("util.js");
-const U = Object.fromEntries(["clamp", "cleanPlaylists", "formatTime", "isLrc", "isListFile", "isAudio", "isVideo", "isMedia", "fileKey", "pathOf", "dirOf", "byPath", "safeName", "fmtFreq", "fmtGain", "fmtSpeed", "fmtClock"].map((n) => [n, g(n)]));
+const U = Object.fromEntries(["clamp", "cleanPlaylists", "formatTime", "isLrc", "isListFile", "isAudio", "isVideo", "isMedia", "fileKey", "pathOf", "dirOf", "byPath", "safeName", "fmtFreq", "fmtGain", "fmtSpeed", "fmtClock", "extOf", "explainFailure", "checkCompatibility"].map((n) => [n, g(n)]));
 const file = (name, type = "", extra = {}) => ({ name, type, size: 10, lastModified: 5, ...extra });
 
 test("isAudio: por tipo MIME o por extensión", () => {
@@ -99,4 +99,96 @@ test("clamp", () => {
   assert.equal(U.clamp(5, 0, 2), 2);
   assert.equal(U.clamp(-1, 0, 2), 0);
   assert.equal(U.clamp(1.5, 0, 2), 1.5);
+});
+
+test("extOf extrae la extensión en minúsculas sin punto", () => {
+  assert.equal(U.extOf("pelicula.MKV"), "mkv");
+  assert.equal(U.extOf("video.final.mp4"), "mp4");
+  assert.equal(U.extOf("sin-extension"), "");
+  assert.equal(U.extOf(""), "");
+});
+
+test("explainFailure: MKV, AVI y MOV sugieren remux sin recodificar", () => {
+  const mkv = U.explainFailure("video", "mkv", "");
+  assert.match(mkv, /MKV/);
+  assert.match(mkv, /remux/i);
+  assert.ok(mkv.includes("ffmpeg -i entrada.mkv -c copy salida.mp4"), mkv);
+
+  const avi = U.explainFailure("video", ".AVI", null);
+  assert.match(avi, /AVI/);
+  assert.ok(avi.includes("ffmpeg -i entrada.avi -c copy salida.mp4"), avi);
+
+  const mov = U.explainFailure("video", "mov", "");
+  assert.match(mov, /MOV/);
+  assert.ok(mov.includes("ffmpeg -i entrada.mov -c copy salida.mp4"), mov);
+});
+
+test("explainFailure: códecs HEVC, AC-3, E-AC-3, AV1, VP9 y combinaciones", () => {
+  assert.match(U.explainFailure("video", "mp4", "hvc1.1.6.L93.B0, mp4a.40.2"), /HEVC/i);
+  assert.match(U.explainFailure("video", "mp4", "hev1.1.6.L93.B0"), /HEVC/i);
+
+  const ac3Video = U.explainFailure("video", "mp4", "avc1.640028, ac-3");
+  assert.match(ac3Video, /el audio AC-3 no es compatible/i);
+  assert.match(ac3Video, /sin sonido/i);
+
+  const eac3Video = U.explainFailure("video", "mp4", ["avc1.640028", "ec-3"]);
+  assert.match(eac3Video, /el audio AC-3 no es compatible/i);
+  assert.match(eac3Video, /E-AC-3/);
+
+  const ac3Audio = U.explainFailure("audio", "m4a", "ac-3");
+  assert.match(ac3Audio, /el audio AC-3 no es compatible/i);
+  assert.doesNotMatch(ac3Audio, /video/i);
+
+  const both = U.explainFailure("video", "mp4", "hvc1.1.6.L93.B0, ac-3");
+  assert.match(both, /HEVC/i);
+  assert.match(both, /AC-3/i);
+
+  assert.match(U.explainFailure("video", "mp4", "av01.0.04M.08"), /AV1/);
+  assert.match(U.explainFailure("video", "mp4", "vp09.00.10.08"), /VP9/);
+  assert.match(U.explainFailure("video", "mp4", "mp4v"), /mp4v/);
+  assert.match(U.explainFailure("video", "mp4", "avc1.640028, mp4a.40.2"), /avc1\.640028/);
+  assert.match(U.explainFailure("audio", "mp3", ""), /MP3/);
+  assert.match(U.explainFailure("", "", ""), /reproducir/i);
+});
+
+test("checkCompatibility: evalúa canPlayType combinado e individual (incluyendo AC-3 mudo)", () => {
+  // Simula Electron 45.4.1 (TE.0): H.264, HEVC y AAC sí; AC-3 y E-AC-3 no; MKV «maybe»; QuickTime «»
+  const electronCanPlay = (t) => {
+    if (/ac-3|ec-3/i.test(t)) return "";
+    if (/video\/x-matroska/i.test(t)) return "maybe";
+    if (/video\/quicktime/i.test(t)) return "";
+    if (/video\/x-msvideo/i.test(t)) return "";
+    return "probably";
+  };
+
+  assert.equal(U.checkCompatibility({ kind: "video", ext: "mp4", codecs: "avc1.640028, mp4a.40.2" }, electronCanPlay).ok, true);
+
+  const ac3 = U.checkCompatibility({ kind: "video", ext: "mp4", codecs: "avc1.640028, ac-3" }, electronCanPlay);
+  assert.equal(ac3.ok, false);
+  assert.equal(ac3.ac3Unsupported, true);
+  assert.match(ac3.reason, /el audio AC-3 no es compatible/i);
+
+  // Con HEVC soportado + AC-3 no soportado: solo culpa a AC-3, no a HEVC
+  const hevcAc3 = U.checkCompatibility({ kind: "video", ext: "mp4", codecs: "hvc1.1.6.L93.B0, ac-3" }, electronCanPlay);
+  assert.equal(hevcAc3.ok, false);
+  assert.equal(hevcAc3.ac3Unsupported, true);
+  assert.match(hevcAc3.reason, /AC-3/i);
+  assert.doesNotMatch(hevcAc3.reason, /HEVC/i);
+
+  // Sin soporte HEVC: señala HEVC
+  const sinHevc = (t) => (/hvc1|hev1/i.test(t) ? "" : "probably");
+  const hevcFail = U.checkCompatibility({ kind: "video", ext: "mp4", codecs: "hvc1.1.6.L93.B0, mp4a.40.2" }, sinHevc);
+  assert.equal(hevcFail.ok, false);
+  assert.equal(hevcFail.ac3Unsupported, false);
+  assert.match(hevcFail.reason, /HEVC/i);
+
+  // MKV en Electron se intenta; en navegador sin MKV avisa antes
+  assert.equal(U.checkCompatibility({ kind: "video", ext: "mkv", mime: "video/x-matroska" }, electronCanPlay).ok, true);
+  const mkvNo = U.checkCompatibility({ kind: "video", ext: "mkv", mime: "video/x-matroska" }, () => "");
+  assert.equal(mkvNo.ok, false);
+  assert.ok(mkvNo.reason.includes("ffmpeg -i entrada.mkv -c copy salida.mp4"));
+
+  // AVI siempre avisa; MOV sin códecs no se rechaza falsamente por video/quicktime === ""
+  assert.equal(U.checkCompatibility({ kind: "video", ext: "avi", mime: "video/x-msvideo" }, electronCanPlay).ok, false);
+  assert.equal(U.checkCompatibility({ kind: "video", ext: "mov", mime: "video/quicktime" }, electronCanPlay).ok, true);
 });

@@ -966,6 +966,52 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     ev("media.pause()");
   });
 
+  await scenario("Compatibilidad de códecs", async ({ win, ev }) => {
+    // MP4 sintético con pista de video H.264 + pista de audio AC-3 (stsd real).
+    const u32 = (n) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
+    const str = (s) => [...s].map((c) => c.charCodeAt(0));
+    const cat = (...parts) => Uint8Array.from(parts.flatMap((p) => [...p]));
+    const box = (type, ...content) => {
+      const body = cat(...content);
+      return cat(u32(8 + body.length), str(type), body);
+    };
+    const avcC = box("avcC", [1, 0x64, 0x00, 0x28]);
+    const stsdV = box("stsd", u32(0), u32(1), box("avc1", new Uint8Array(78), avcC));
+    const stsdA = box("stsd", u32(0), u32(1), box("ac-3", new Uint8Array(28)));
+    const trak = (h, stsd) => box("trak", box("mdia", box("hdlr", u32(0), u32(0), str(h), [0, 0, 0, 0]), box("minf", box("stbl", stsd))));
+    const ac3Mp4 = new win.File([box("ftyp", str("isom"), u32(0)), box("moov", trak("vide", stsdV), trak("soun", stsdA))], "peli-ac3.mp4", { type: "video/mp4", lastModified: 301 });
+
+    await win.addFiles([ac3Mp4]);
+    const rowWarn = ev("els.playlist.querySelector('li .t-warn')?.textContent || ''");
+    check("compatibilidad: MP4 con AC-3 se importa y muestra «puede no reproducirse» con motivo en la fila",
+      ev("state.tracks.length === 1 && state.tracks[0].meta.codecs === 'avc1.640028, ac-3'")
+      && /puede no reproducirse/i.test(rowWarn) && /AC-3/i.test(rowWarn),
+      `${ev("state.tracks[0]?.meta?.codecs")} | ${rowWarn}`);
+
+    // loadedmetadata en pista de video conocida (MP4) con videoWidth === 0 → «se oye pero el códec de video no es compatible».
+    ev("els.toast.hidden = true; loadTrack(0, false, 'all')");
+    ev("media.dispatchEvent(new Event('loadedmetadata'))");
+    check("compatibilidad: video conocido con videoWidth === 0 avisa códec de video incompatible sin reclasificar a audio",
+      !ev("els.toast.hidden") && /se oye pero el códec de video no es compatible/i.test(ev("els.toast.textContent"))
+      && ev("state.tracks[0].meta.kind === 'video'"),
+      ev("els.toast.textContent"));
+
+    // Error al reproducir MKV → sugerencia de remux sin recodificar.
+    const badMkv = new win.File([new Uint8Array(256).fill(1)], "peli.mkv", { type: "video/x-matroska", lastModified: 302 });
+    await win.addFiles([badMkv]);
+    ev("els.toast.hidden = true; loadTrack(1, false, 'all'); media.dispatchEvent(new Event('error'))");
+    check("compatibilidad: error en MKV sugiere remux sin recodificar",
+      !ev("els.toast.hidden") && ev("els.toast.textContent").includes("ffmpeg -i entrada.mkv -c copy salida.mp4"),
+      ev("els.toast.textContent"));
+
+    // Archivo AVI con tipo vacío → rechazado con consejo de remux.
+    const avi = new win.File([new Uint8Array(64)], "viejo.avi", { type: "", lastModified: 303 });
+    await win.addFiles([avi]);
+    check("compatibilidad: AVI no soportado muestra sugerencia de remux",
+      !ev("els.toast.hidden") && ev("els.toast.textContent").includes("ffmpeg -i entrada.avi -c copy salida.mp4"),
+      ev("els.toast.textContent"));
+  });
+
   /* ---------- Resultado ---------- */
   const fails = results.filter((r) => !r.ok);
   document.getElementById("summary").textContent = fails.length ? `${fails.length} FALLO(S) de ${results.length}` : `Todo correcto: ${results.length} comprobaciones`;

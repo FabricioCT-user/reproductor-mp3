@@ -43,10 +43,10 @@ const nota = escribir("nota.mp3.txt", "no es audio");
 // MP4 H.264 + AAC (320×180 con ruido, seno de 440 Hz), con el índice al principio. El largo (5 min, ~8 MB) supera lo
 // que Chromium lee por adelantado, así que los saltos abren peticiones nuevas y cancelan las de antes (si nadie las
 // cancelara, sus descriptores quedarían abiertos). Se genera en un par de segundos.
-function mp4(destino, segundos) {
+function mp4(destino, segundos, audioCodec = "aac") {
   const r = spawnSync("timeout", ["60", "ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", `testsrc=size=320x180:rate=25:duration=${segundos},noise=alls=30:allf=t`,
     "-f", "lavfi", "-i", `sine=frequency=440:duration=${segundos}`, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30",
-    "-pix_fmt", "yuv420p", "-g", "25", "-c:a", "aac", "-shortest", "-movflags", "+faststart", destino], { stdio: ["ignore", "inherit", "inherit"] });
+    "-pix_fmt", "yuv420p", "-g", "25", "-c:a", audioCodec, "-shortest", "-movflags", "+faststart", destino], { stdio: ["ignore", "inherit", "inherit"] });
   if (r.status !== 0) {
     console.error("No se pudo generar el video de prueba con ffmpeg (¿está instalado?)");
     fs.rmSync(datos, { recursive: true, force: true });
@@ -57,6 +57,7 @@ function mp4(destino, segundos) {
 }
 const video = mp4(path.join(medios, "video.mp4"), 300);
 mp4(path.join(path.dirname(medios), "otro video.mp4"), 3); // fuera de la carpeta: se arrastra/elige con <input>
+mp4(path.join(path.dirname(medios), "ac3.mp4"), 3, "ac3"); // MP4 H.264 + AC-3 para probar el aviso de compatibilidad (T3.1)
 fs.symlinkSync(uno, path.join(medios, "enlace.wav"));
 
 const env = { ...process.env };

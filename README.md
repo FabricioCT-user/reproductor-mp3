@@ -110,6 +110,22 @@ Consejo: fija la pestaña (clic derecho → *Fijar pestaña*) para tener el repr
 
 > Tu biblioteca, tus listas y tus ajustes se guardan en el navegador y **ligados a la dirección exacta** (`localhost:8000` no comparte datos con `localhost:3000`). Si borras los datos del sitio se pierden; exporta tus listas antes si te importa conservarlas. Los archivos de música se copian dentro del almacenamiento del navegador.
 
+## Formatos y compatibilidad
+
+- **Recomendados:** audio en MP3, FLAC, Ogg Vorbis, Opus, M4A (AAC) y WAV; video en **MP4 (H.264 + AAC)** y **WebM (VP8/VP9/AV1 + Opus/Vorbis)**.
+- **Comprobación al importar:** en archivos MP4/M4V/M4A/MOV el reproductor lee los códecs de las pistas (`stsd`) y comprueba compatibilidad con `canPlayType`. Si algún códec no es compatible (por ejemplo **HEVC/H.265** sin decodificador o audio **AC-3/E-AC-3**, que se reproduce mudo sin error), la pista se importa igualmente pero queda marcada en la biblioteca («puede no reproducirse») con el motivo y avisa al reproducir.
+- **MKV, AVI, MOV u otros contenedores:** si un archivo no se reproduce o falla por el contenedor, puedes cambiar el contenedor a MP4 **sin recodificar** (remux instantáneo y sin pérdida de calidad) con `ffmpeg`:
+
+```bash
+ffmpeg -i entrada.mkv -c copy salida.mp4
+```
+
+Si el archivo tenía audio AC-3/E-AC-3 (sin sonido), convierte solo el audio a AAC conservando el video intacto:
+
+```bash
+ffmpeg -i entrada.mkv -c:v copy -c:a aac salida.mp4
+```
+
 ## Privacidad
 
 No hay servidor remoto ni análisis: la aplicación solo se descarga a sí misma (el servidor local de `npm start` escucha únicamente en tu equipo). Una política de seguridad de contenido (CSP) impide cargar nada de otros sitios.
