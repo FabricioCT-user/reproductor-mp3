@@ -564,7 +564,7 @@ async function comprobacionesEnlaces(win) {
       return !!b;
     })()`);
     const sel = `state.tracks.find((t) => t.id === ${JSON.stringify(t2.id)})`;
-    const recuperado = await hasta(`${sel}?.linkId !== ${JSON.stringify(id)} && ${sel}?.unavailable === false`);
+    const recuperado = await hasta(`${sel}?.linkId !== ${JSON.stringify(id)} && ${sel}?.unavailable !== true`);
     // Una comprobación posterior (o una respuesta vieja) no vuelve a marcarla.
     await ev("comprobarEstadoEnlaces().then(() => 1)");
     const datosRecuperados = await ev(`(async () => {

@@ -64,7 +64,7 @@ async function linkVideo(file) {
   return linked;
 }
 
-const forgetLink = (t) => { if (t.linkId) window.reproductor?.olvidar?.(t.linkId).catch(() => {}); };
+const forgetLink = (t) => (t.linkId ? window.reproductor?.olvidar?.(t.linkId).catch(() => {}) : undefined);
 
 // T2.2: videos enlazados cuyo archivo falta o cambió. El principal compara ruta, tamaño, fecha e identidad
 // (estadoEnlaces); la fila queda «No encontrado» con «Buscar…» y «Quitar». Una respuesta solo se aplica si la pista
@@ -138,12 +138,13 @@ async function buscarEnlace(t) {
     if (t.id != null) {
       await Storage.updateLink(t.id, link, link.linkId, { kind: nueva.meta.kind, meta: nueva.meta, metaVersion: META_VERSION });
     }
+    await forgetLink(t); // el enlace viejo ya no está en enlaces.json al terminar
+    if (!state.tracks.includes(t)) throw new Error("la pista se quitó mientras se enlazaba");
     const i = state.tracks.indexOf(t);
     state.tracks[i] = nueva;
     state.queue = state.queue.map((q) => (q === t ? nueva : q));
     if (state.selected.delete(t)) state.selected.add(nueva);
     revokeCovers(t);
-    forgetLink(t);
     if (i === state.index) loadTrack(i, false, state.playView); // estaba cargada con el enlace viejo
     render();
     toast("Archivo enlazado");
