@@ -2,6 +2,15 @@
 // Los demás archivos solo declaran; el cableado de eventos se hace aquí, al final, cuando todo existe.
 
 // Atajos de teclado.
+const FRAME_STEP = 1 / 30;
+
+function seekBy(delta) {
+  if (!state.tracks[state.index]) return;
+  const dur = media.duration;
+  const base = Number.isFinite(media.currentTime) ? media.currentTime : 0;
+  media.currentTime = Number.isFinite(dur) ? clamp(base + delta, 0, dur) : Math.max(0, base + delta);
+}
+
 function wireShortcuts() {
   document.addEventListener("keydown", (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest?.("dialog")) return;
@@ -11,10 +20,26 @@ function wireShortcuts() {
     if (e.code === "Space" && e.target.closest?.("button, select, a, summary")) return; // activa el control enfocado
     switch (e.code) {
       case "Space": e.preventDefault(); togglePlay(); break;
-      case "ArrowRight": media.currentTime += 5; break;
-      case "ArrowLeft": media.currentTime -= 5; break;
+      case "ArrowRight":
+        if (e.target.closest?.("input")) break;
+        e.preventDefault();
+        seekBy(e.shiftKey ? 30 : 5);
+        break;
+      case "ArrowLeft":
+        if (e.target.closest?.("input")) break;
+        e.preventDefault();
+        seekBy(e.shiftKey ? -30 : -5);
+        break;
       case "ArrowUp": e.preventDefault(); els.volume.value = Math.min(1, +els.volume.value + 0.05); els.volume.dispatchEvent(new Event("input")); break;
       case "ArrowDown": e.preventDefault(); els.volume.value = Math.max(0, +els.volume.value - 0.05); els.volume.dispatchEvent(new Event("input")); break;
+      case "Comma":
+      case "Period":
+        if (e.shiftKey || e.target.closest?.("input, select, textarea") || e.target.isContentEditable) break;
+        if (isVideoTrack(state.tracks[state.index]) && media.paused) {
+          e.preventDefault();
+          seekBy(e.code === "Period" ? FRAME_STEP : -FRAME_STEP);
+        }
+        break;
       case "KeyN": step(1); break;
       case "KeyP": els.prev.click(); break;
       case "KeyS": els.shuffle.click(); break;
@@ -31,6 +56,13 @@ function wireShortcuts() {
           toggleFullscreen();
         }
         break;
+      case "KeyI":
+        if (e.repeat || e.target.closest?.("input, select, textarea") || e.target.isContentEditable) break;
+        if ((isVideoTrack(state.tracks[state.index]) && isPipSupported()) || isPipActive()) {
+          e.preventDefault();
+          togglePictureInPicture();
+        }
+        break;
       case "BracketLeft": stepSpeed(-1); break;
       case "BracketRight": stepSpeed(1); break;
     }
@@ -44,6 +76,7 @@ wirePlaylists();
 wirePlayer();
 wireStage();
 wireFullscreen();
+wirePip();
 wireEq();
 wireFades();
 wireLyrics();

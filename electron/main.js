@@ -614,6 +614,8 @@ async function comprobacionesApp(win) {
         fueraDeLista: [await estado("/package.json"), await estado("/sw.js"), await estado("/electron/main.js"), await estado("/tests/smoke.js")],
         medio: await estado("/__media/" + "0".repeat(32)),
         botones: document.querySelectorAll("button").length,
+        pipEnabled: Boolean(document.pictureInPictureEnabled),
+        pipFn: typeof document.createElement("video").requestPictureInPicture === "function",
       };
     })()`, true);
     check("el puente expone esApp y la versión, congelado", d.puente?.esApp === true && d.puente.version === app.getVersion() && d.puente.congelado, d.puente);
@@ -625,6 +627,7 @@ async function comprobacionesApp(win) {
     check("fuera de la lista blanca, 404 (tests/ se sirve solo por --smoke)", d.fueraDeLista.slice(0, 3).every((s) => s === 404) && d.fueraDeLista[3] === 200, d.fueraDeLista);
     check("__media con un id que no está registrado: 404", d.medio === 404, d.medio);
     check("la interfaz arranca", d.botones > 10, d.botones);
+    check("Electron expone Picture-in-Picture (document.pictureInPictureEnabled)", d.pipEnabled && d.pipFn, { pipEnabled: d.pipEnabled, pipFn: d.pipFn });
     await win.webContents.executeJavaScript('location.href = "https://example.com/"; 1');
     await new Promise((res) => setTimeout(res, 500));
     check("la navegación fuera de la app se bloquea", servir.esUrlDeApp(win.webContents.getURL()), win.webContents.getURL());

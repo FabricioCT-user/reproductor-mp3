@@ -22,6 +22,7 @@ function syncStage(t) {
   }
   if (typeof syncSubtitles === "function") syncSubtitles();
   if (typeof syncFullscreen === "function") syncFullscreen();
+  if (typeof syncPip === "function") syncPip();
 }
 
 let stageClickTimer = 0;
