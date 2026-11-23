@@ -9,9 +9,10 @@
   "main": "electron/main.js",
   "desktopName": "reproductor.desktop",
   "scripts": {
-    "start": "python3 launcher/servidor.py",
+    "start": "electron .",
     "test": "node --test tests/unit/*.test.js",
     "app": "electron .",
+    "web": "python3 -m http.server --bind 127.0.0.1 8000",
     "smoke:app": "node tests/smoke-app.js",
     "dist": "electron-builder"
   },

@@ -138,7 +138,7 @@ test("Electron: el paquete incluye lo que sirve el protocolo y no las pruebas", 
   for (const f of [...servir.listaBlanca(read("sw.js")), "sw.js", "package.json", pkg.main, "electron/preload.js", "electron/lib/servir.js", "electron/lib/argumentos.js", "electron/lib/rutas.js", "electron/lib/entregas.js", "electron/lib/escritorio.js"]) {
     assert.ok(incluido(f), `build.files no incluye ${f}`);
   }
-  for (const f of [...servir.PRUEBAS, "tests/smoke-app.js", "launcher/servidor.py", "docs/PLAN-MP4.md", ".github/workflows/test.yml", "node_modules/x/index.js"]) assert.ok(!incluido(f), `build.files incluye ${f}`);
+  for (const f of [...servir.PRUEBAS, "tests/smoke-app.js", "docs/PLAN-MP4.md", ".github/workflows/test.yml", "node_modules/x/index.js"]) assert.ok(!incluido(f), `build.files incluye ${f}`);
   assert.equal(pkg.main, "electron/main.js");
 });
 
