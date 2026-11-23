@@ -27,7 +27,7 @@ const setMuted = (m) => decks.forEach((d) => (d.muted = m));
 const els = Object.fromEntries(
   ["dropzone", "backdrop", "cover", "title", "artist", "viz", "seek", "current", "duration", "play", "play-icon",
    "prev", "next", "shuffle", "repeat", "mute", "volume", "filter", "file-input", "clear", "playlist",
-   "view", "pl-new", "pl-more", "pl-import", "pl-rename", "pl-delete", "menu",
+   "view", "media-filter", "pl-new", "pl-more", "pl-import", "pl-rename", "pl-delete", "menu",
    "eq-toggle", "eq-panel", "eq-preset", "eq-on", "eq-reset", "eq-bands",
    "lyrics", "lyrics-body", "lyrics-toggle", "lyrics-clear", "lrc-input", "toast", "folder-input",
    "speed-btn", "sleep-btn", "theme-btn", "xfade-btn",
@@ -43,6 +43,7 @@ const state = {
   shuffle: store.get("shuffle") === "1",
   repeat: store.get("repeat") === "1",
   filter: "",
+  mediaFilter: store.get("mediaFilter", "all"),
   queue: [],
   speed: clamp(Number(store.get("speed")) || 1, 0.25, 2),
   crossfade: clamp(Math.round(Number(store.get("crossfade")) || 0), 0, 12),

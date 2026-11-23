@@ -10,6 +10,7 @@ const isVideoTrack = (t) => t?.meta?.kind === "video";
 function syncStage(t) {
   const video = isVideoTrack(t);
   $("stage")?.classList.toggle("oculto", !video);
+  els.cover.classList.toggle("video-mode", video);
   decks.forEach((d) => d.classList.toggle("oculto", d !== media));
   els.viz.hidden = video;
   if (video) {
@@ -19,6 +20,23 @@ function syncStage(t) {
     vizRunning = true;
     draw();
   }
+}
+
+// Retrasar el clic simple para que el segundo clic de un doble clic no alterne reproducción.
+function wireStage() {
+  let clickTimer = 0;
+  const stage = $("stage");
+  stage.addEventListener("click", (e) => {
+    if (!e.target.closest("video")) return;
+    clearTimeout(clickTimer);
+    clickTimer = setTimeout(() => { clickTimer = 0; togglePlay(); }, 280);
+  });
+  stage.addEventListener("dblclick", (e) => {
+    if (!e.target.closest("video")) return;
+    clearTimeout(clickTimer);
+    clickTimer = 0;
+    if (typeof toggleFullscreen === "function") toggleFullscreen();
+  });
 }
 
 // Título, artista y carátula (lo que cambia al editar etiquetas sin reiniciar la reproducción).
@@ -314,6 +332,13 @@ function wirePlayer() {
     els.duration.textContent = formatTime(media.duration);
     updatePositionState();
     const t = state.tracks[state.index];
+    if (t && isVideoTrack(t) && media.videoWidth > 0 && media.videoHeight > 0
+      && (t.meta.width !== media.videoWidth || t.meta.height !== media.videoHeight)) {
+      t.meta.width = media.videoWidth;
+      t.meta.height = media.videoHeight;
+      if (t.id != null) Storage.setMeta(t.id, t.meta, META_VERSION).catch(() => {});
+      render();
+    }
     if (t && isVideoTrack(t) && media.videoWidth === 0 && /\.(webm|mkv)$/i.test(t.fileName)) {
       t.meta.kind = "audio";
       if (t.id != null) Storage.setMeta(t.id, t.meta, META_VERSION).catch(() => {});

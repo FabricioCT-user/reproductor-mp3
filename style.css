@@ -101,6 +101,7 @@ body {
   position: relative;
   overflow: hidden;
 }
+.cover.video-mode { aspect-ratio: 16 / 9; }
 .cover.has-art .cover-placeholder { display: none; }
 .cover-placeholder { font-size: 4rem; color: var(--muted); }
 /* Escenario de video: los dos decks apilados sobre la carátula; oculto (no fuera del DOM) mientras suena audio. */
@@ -158,6 +159,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
   color: var(--text); padding: 8px 10px; font: inherit; font-size: .9rem; cursor: pointer;
 }
 .view-bar select option { background: var(--option-bg); }
+.view-bar #media-filter { flex: 0 1 125px; }
 .view-bar .btn[hidden], .library-head .btn[hidden] { display: none; }
 
 .menu {
@@ -196,6 +198,9 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .playlist li.active { background: var(--accent-soft); }
 .playlist li.active .t-name { color: var(--accent); }
 .thumb { width: 40px; height: 40px; border-radius: 6px; background: var(--tile) center / cover; flex: none; display: grid; place-items: center; color: var(--muted); }
+.thumb.video-thumb { position: relative; color: #fff; background-color: #090a0d; }
+.video-mark { font-size: .8rem; text-shadow: 0 1px 3px #000; }
+.video-size { position: absolute; inset: auto 2px 2px auto; font-size: .48rem; line-height: 1.1; padding: 2px; border-radius: 3px; background: #000b; color: #fff; }
 .t-text { flex: 1; min-width: 0; }
 .t-name, .t-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .t-name { font-size: .92rem; }
@@ -217,6 +222,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 @media (max-width: 760px) {
   .player { grid-template-columns: minmax(0, 1fr); }
   .cover { max-width: 260px; width: 100%; margin: 0 auto; }
+  .cover.video-mode { max-width: none; }
   .library { max-height: 420px; }
 }
 

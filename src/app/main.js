@@ -31,6 +31,7 @@ wireLibrary();
 wireSelection();
 wirePlaylists();
 wirePlayer();
+wireStage();
 wireEq();
 wireFades();
 wireLyrics();

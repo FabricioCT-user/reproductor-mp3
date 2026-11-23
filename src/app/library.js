@@ -361,15 +361,17 @@ function render() {
     updateSelectBar();
   }
   const q = state.filter.toLowerCase();
+  const kind = state.mediaFilter;
   const pl = currentPlaylist();
   const rows = listTracks(state.view)
     .map((t, pos) => ({ t, pos }))
-    .filter(({ t }) => !q || `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(q));
+    .filter(({ t }) => (kind === "all" || (t.meta?.kind || "audio") === kind)
+      && (!q || `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(q)));
 
   if (!rows.length) {
     const li = document.createElement("li");
     li.className = "empty";
-    li.textContent = q ? "Sin resultados."
+    li.textContent = q || kind !== "all" ? "Sin resultados."
       : pl ? "Esta lista está vacía. Usa el botón ♫ de una canción para añadirla."
       : "Tu biblioteca está vacía. Arrastra archivos o carpetas aquí, o usa «+ Añadir» / «+ Carpeta».";
     els.playlist.replaceChildren(li, ...pendingNote(pl));
@@ -395,9 +397,22 @@ function render() {
 
       const thumb = document.createElement("div");
       thumb.className = "thumb";
+      if (t.meta?.kind === "video") {
+        thumb.classList.add("video-thumb");
+        const playMark = document.createElement("span");
+        playMark.className = "video-mark";
+        playMark.textContent = "▶";
+        thumb.append(playMark);
+        if (t.meta.width > 0 && t.meta.height > 0) {
+          const size = document.createElement("span");
+          size.className = "video-size";
+          size.textContent = `${t.meta.width}×${t.meta.height}`;
+          thumb.append(size);
+        }
+      }
       if (t.meta?.hasCover && t.edits?.cover !== false) loadCover(t);
       if (t.coverUrl) thumb.style.backgroundImage = `url(${t.coverUrl})`;
-      else {
+      else if (t.meta?.kind !== "video") {
         thumb.textContent = "♪";
       }
 
@@ -409,7 +424,9 @@ function render() {
       const sub = document.createElement("div");
       sub.className = "t-sub";
       const qpos = state.queue.indexOf(t) + 1;
-      sub.textContent = (t.unavailable ? "No disponible · " : "") + (qpos ? `En cola #${qpos} · ` : "") + ([t.artist, t.album].filter(Boolean).join(" · ") || "Artista desconocido");
+      sub.textContent = (t.unavailable ? "No disponible · " : "") + (qpos ? `En cola #${qpos} · ` : "")
+        + (t.meta?.kind === "video" && t.meta.width > 0 && t.meta.height > 0 ? `${t.meta.width}×${t.meta.height} · ` : "")
+        + ([t.artist, t.album].filter(Boolean).join(" · ") || "Artista desconocido");
       text.append(name, sub);
 
       const btn = (cls, title, label, fn) => {
@@ -437,7 +454,7 @@ function render() {
         loadTrack(i, true, state.view);
       });
 
-      if (!q && !state.selecting) {
+      if (!q && kind === "all" && !state.selecting) {
         li.draggable = true;
         li.addEventListener("dragstart", (e) => { dragFrom = pos; e.dataTransfer.effectAllowed = "move"; li.classList.add("dragging"); });
         li.addEventListener("dragend", () => { dragFrom = -1; li.classList.remove("dragging"); clearDropMarks(); });
@@ -499,7 +516,7 @@ const matchesFilter = (t) => {
   return !q || `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(q);
 };
 
-const shownTracks = () => listTracks(state.view).filter(matchesFilter);
+const shownTracks = () => listTracks(state.view).filter((t) => (state.mediaFilter === "all" || (t.meta?.kind || "audio") === state.mediaFilter) && matchesFilter(t));
 
 function updateSelectBar() {
   const n = state.selected.size;
@@ -540,6 +557,14 @@ function wireLibrary() {
   els.clear.addEventListener("click", clearLibrary);
 
   els.filter.addEventListener("input", () => { state.filter = els.filter.value; render(); });
+
+  els["media-filter"].value = ["all", "audio", "video"].includes(state.mediaFilter) ? state.mediaFilter : "all";
+  state.mediaFilter = els["media-filter"].value;
+  els["media-filter"].addEventListener("change", () => {
+    state.mediaFilter = els["media-filter"].value;
+    store.set("mediaFilter", state.mediaFilter);
+    render();
+  });
 
   window.addEventListener("dragenter", (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; els.dropzone.classList.add("dragover"); });
 

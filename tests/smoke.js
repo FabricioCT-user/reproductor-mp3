@@ -694,6 +694,21 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     const eqSignal = await until(() => ev("(() => { if (!analyser || !eqFilters.length) return false; const b = new Uint8Array(analyser.frequencyBinCount); analyser.getByteFrequencyData(b); return b.some(v => v > 0); })()"), 3000);
     check("video: el EQ sigue conectado al grafo de Web Audio", eqSignal && ev("eqFilters.length === 10 && decks.every(d => d._gain)"));
 
+    const videoDeck = ev("media");
+    videoDeck.pause();
+    videoDeck.dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
+    check("escenario: clic simple alterna reproducir", await until(() => ev("!media.paused"), 1500));
+    videoDeck.pause();
+    let fullscreenCalls = 0;
+    win.toggleFullscreen = () => { fullscreenCalls++; };
+    const click = () => videoDeck.dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
+    click(); click();
+    videoDeck.dispatchEvent(new win.MouseEvent("dblclick", { bubbles: true }));
+    await sleep(350);
+    check("escenario: doble clic llama fullscreen sin alternar reproducción", fullscreenCalls === 1 && ev("media.paused"), `llamadas=${fullscreenCalls}, pausado=${ev("media.paused")}`);
+    delete win.toggleFullscreen;
+    win.eval("play()");
+
     // 4. Transición video → audio sin fundido
     await seekNearEnd(ev, 0.8);
     check("video: pasa de video a audio al terminar", await until(() => ev("state.index === 2"), 4000), ev("state.index"));
@@ -713,6 +728,20 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
       return rec?.meta?.kind === "audio";
     }, 3000);
     check("video: la reclasificación a audio se guarda en meta.kind", saved);
+
+    const mediaFilter = ev("els['media-filter']");
+    mediaFilter.value = "video";
+    mediaFilter.dispatchEvent(new win.Event("change", { bubbles: true }));
+    const videoRows = ev("[...els.playlist.querySelectorAll('li:not(.empty)')]");
+    check("biblioteca: filtro Videos muestra solo videos y su icono ▶", videoRows.length === 1
+      && videoRows[0].querySelector(".video-mark")?.textContent === "▶"
+      && videoRows[0].querySelector(".video-size")?.textContent === `${ev("state.tracks[1].meta.width")}×${ev("state.tracks[1].meta.height")}`,
+      `${videoRows.length} filas`);
+    mediaFilter.value = "audio";
+    mediaFilter.dispatchEvent(new win.Event("change", { bubbles: true }));
+    check("biblioteca: filtro Música excluye videos", ev("els.playlist.querySelectorAll('li:not(.empty)').length") === 3);
+    mediaFilter.value = "all";
+    mediaFilter.dispatchEvent(new win.Event("change", { bubbles: true }));
 
     // 6. Aleatorio con biblioteca audio + video: nunca inicia fundido hacia un video
     ev("state.playlists.push({ id: 'mix-av', name: 'Mix AV', ids: [state.tracks[0].id, state.tracks[1].id] })");
