@@ -162,7 +162,7 @@ function mp4Track(kind, { width = 1920, height = 1080, rotation = 0 } = {}) {
 // items: [[tipo, payload, flags?]]; moovAtEnd: mdat antes que moov (lo habitual sin «faststart»)
 function mp4File(items, { moovAtEnd = true, name = "pista.m4a", tracks = [], duration = 0, timescale = 1000, chapters = [] } = {}) {
   const ilst = box("ilst", ...items.map(([t, p, f]) => mp4Item(t, p, f)));
-  const chapterBox = chapters.length ? box("chpl", new Uint8Array(4), [1, 0, 0, 0], [chapters.length], ...chapters.map(({ time, title }) => cat(
+  const chapterBox = chapters.length ? box("chpl", [1, 0, 0, 0], [0, 0, 0, 0], [chapters.length], ...chapters.map(({ time, title }) => cat(
     be32(Math.floor((time * 10000000) / 2 ** 32)), be32(Math.floor(time * 10000000) >>> 0), [enc.encode(title).length], enc.encode(title),
   ))) : null;
   const udta = box("udta", ...(chapterBox ? [chapterBox] : []), box("meta", [0, 0, 0, 0], ilst));

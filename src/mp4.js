@@ -370,15 +370,17 @@ const MP4 = (() => {
       const chpl = udta && await find(file, udta, "chpl");
       if (chpl) {
         const b = await payload(file, chpl, MAX_BLOCK);
-        if (b && b.length >= 9) {
-          let p = 8;
-          const count = b[p++];
-          for (let i = 0; i < count && p + 9 <= b.length; i++) {
-            const time = u64(b, p) / 10000000; p += 8;
-            const n = b[p++];
-            if (p + n > b.length) break;
-            const title = new TextDecoder("utf-8").decode(b.subarray(p, p + n)); p += n;
-            out.chapters.push({ time, title });
+        if (b && b.length >= 5) {
+          let p = b[0] === 1 ? 8 : 4;
+          if (p < b.length) {
+            const count = b[p++];
+            for (let i = 0; i < count && p + 9 <= b.length; i++) {
+              const time = u64(b, p) / 10000000; p += 8;
+              const n = b[p++];
+              if (p + n > b.length) break;
+              const title = new TextDecoder("utf-8").decode(b.subarray(p, p + n)); p += n;
+              out.chapters.push({ time, title });
+            }
           }
         }
       }

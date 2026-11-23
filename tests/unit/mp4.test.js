@@ -158,6 +158,12 @@ test("movieMeta: duración, dimensiones efectivas con rotación y capítulos Ner
   assert.deepEqual(h.plain(m.chapters), [{ time: 0, title: "Inicio" }, { time: 12.5, title: "Escena ñ" }]);
 });
 
+test("movieMeta: chpl versión 0 lee el contador tras version/flags", async () => {
+  const chapters = box("chpl", [0, 0, 0, 0], [1], be32(0), be32(150000000), [6], "Inicio");
+  const f = file(box("ftyp", "isom"), box("moov", box("udta", chapters)));
+  assert.deepEqual(h.plain((await MP4.movieMeta(f)).chapters), [{ time: 15, title: "Inicio" }]);
+});
+
 test("movieMeta: interpreta orientaciones 0, 180 y 270 y tolera cajas arbitrarias truncadas", async () => {
   for (const rotation of [0, 180, 270]) {
     const m = await MP4.movieMeta(h.mp4File([], { tracks: [{ kind: "video", width: 1280, height: 720, rotation }] }));

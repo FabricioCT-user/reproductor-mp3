@@ -1,6 +1,6 @@
 // Biblioteca: canciones (con sus ediciones), importación, lista en pantalla, reordenar y selección múltiple.
 
-const META_VERSION = 1;
+const META_VERSION = 2;
 const trackMeta = (m, file) => ({
   title: m.title || "", artist: m.artist || "", album: m.album || "", lyrics: m.lyrics || "",
   hasCover: !!(m.hasCover ?? m.cover), duration: m.duration ?? null, kind: m.kind || (file.type.startsWith("video/") ? "video" : "audio"),
@@ -86,14 +86,6 @@ function assessTrackCompat(t) {
 async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = null) {
   const meta = cachedMeta || await Tags.read(file);
   let probedCached = false;
-  if (isMp4File(file) && cachedMeta && (meta.width == null || meta.duration == null || !Array.isArray(meta.chapters) || meta.show == null || meta.year == null)) {
-    try {
-      const fresh = await Tags.read(file);
-      for (const key of ["duration", "width", "height", "rotation", "chapters", "year", "genre", "description", "show", "season", "episode"]) {
-        if (meta[key] == null || meta[key] === "" || (key === "chapters" && !Array.isArray(meta[key]))) meta[key] = fresh[key] ?? meta[key];
-      }
-    } catch { /* un archivo dañado conserva los metadatos guardados */ }
-  }
   if (isMp4File(file) && (!cachedMeta || cachedMeta.codecs == null)) {
     try {
       const info = await MP4.probe(file);
@@ -481,9 +473,11 @@ function render() {
       const video = t.meta?.kind === "video";
       const shortEdge = video && t.meta.width > 0 && t.meta.height > 0 ? Math.min(t.meta.width, t.meta.height) : 0;
       const resolution = shortEdge ? `${[2160, 1440, 1080, 720, 480, 360].find((n) => shortEdge >= n) || Math.round(shortEdge)}p` : "";
-      const program = video && t.meta.show
-        ? `${t.meta.show}${t.meta.season != null ? ` · T${t.meta.season}` : ""}${t.meta.episode != null ? ` · E${t.meta.episode}` : ""}`
-        : [t.artist, t.meta?.year].filter(Boolean).join(" · ");
+      const program = video
+        ? (t.meta.show
+          ? `${t.meta.show}${t.meta.season != null ? ` · T${t.meta.season}` : ""}${t.meta.episode != null ? ` · E${t.meta.episode}` : ""}`
+          : [t.artist, t.meta?.year].filter(Boolean).join(" · "))
+        : [t.artist, t.album].filter(Boolean).join(" · ");
       sub.textContent = (t.unavailable ? "No disponible · " : "") + (qpos ? `En cola #${qpos} · ` : "")
         + [resolution, program || (!video && t.album ? t.album : "Artista desconocido")].filter(Boolean).join(" · ");
       text.append(name, sub);

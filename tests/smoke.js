@@ -149,8 +149,8 @@ async function waitReady(win) {
   return true;
 }
 
-async function openApp(prepare) {
-  await resetStorage();
+async function openApp(prepare, reset = true) {
+  if (reset) await resetStorage();
   if (prepare) await prepare();
   // La página real lleva una CSP sin «unsafe-eval», y estas pruebas necesitan eval para leer sus variables internas:
   // se carga la misma página sin esa etiqueta (la CSP se comprueba aparte, en las pruebas unitarias y en el navegador).
@@ -224,6 +224,27 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     await win.addFiles(files);
     check("reimportar: no duplica", ev("state.tracks.length") === 3);
     check("importar: la primera canción queda cargada", ev("state.index") === 0);
+  });
+
+  await scenario("Caché MP4 y álbum de audio", async ({ win, ev }) => {
+    const m4a = new win.File([new Uint8Array([
+      0, 0, 0, 16, 102, 116, 121, 112, 77, 52, 65, 32, 0, 0, 0, 0,
+    ])], "cache.m4a", { type: "audio/mp4", lastModified: 9 });
+    await win.addFiles([m4a]);
+    const firstReads = ev("window.__tagsReadCount");
+    ev("state.tracks[0].orig.artist = 'Artista'; state.tracks[0].orig.album = 'Álbum'; applyEdits(state.tracks[0]); render()");
+    check("biblioteca: segunda línea de audio conserva artista · álbum",
+      ev("els.playlist.querySelector('li:not(.empty) .t-sub')?.textContent") === "Artista · Álbum",
+      ev("els.playlist.querySelector('li:not(.empty) .t-sub')?.textContent"));
+
+    const previousFrame = win.frameElement;
+    previousFrame.remove();
+    await sleep(100);
+    const restarted = await openApp(null, false);
+    check("caché: el segundo arranque no vuelve a leer las etiquetas MP4",
+      firstReads > 0 && restarted.ready && restarted.ev("window.__tagsReadCount") === 0,
+      `ready=${restarted.ready}, lecturas=${restarted.ev("window.__tagsReadCount")}, primera carga=${firstReads}`);
+    restarted.frame.remove();
   });
 
   await scenario("Reproducción", async ({ win, ev }) => {
@@ -518,7 +539,7 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     await win.addFiles([wav(win, "cache.wav")]);
     await until(async () => {
       const db = await openDbAsIs();
-      const found = (await getAll(db, "tracks")).some((r) => r.name === "cache.wav" && r.metaVersion === 1);
+      const found = (await getAll(db, "tracks")).some((r) => r.name === "cache.wav" && r.metaVersion === 2);
       db.close();
       return found;
     });
@@ -532,7 +553,7 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     const db = await openDbAsIs();
     const rec = (await getAll(db, "tracks")).find((r) => r.name === "cache.wav");
     db.close();
-    check("importación guarda los campos de meta y metaVersion", rec?.metaVersion === 1 && ["title", "artist", "album", "lyrics", "hasCover", "duration", "kind", "width", "height", "codecs"].every((k) => k in rec.meta), JSON.stringify(rec?.meta));
+    check("importación guarda los campos de meta y metaVersion", rec?.metaVersion === 2 && ["title", "artist", "album", "lyrics", "hasCover", "duration", "kind", "width", "height", "codecs"].every((k) => k in rec.meta), JSON.stringify(rec?.meta));
   });
 
   await scenario("Carátula perezosa en reproductor y Media Session", async ({ win, ev }) => {

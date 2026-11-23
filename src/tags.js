@@ -146,6 +146,7 @@ const Tags = (() => {
   }
 
   function numericValue(b) {
+    if (b.length === 0) return null;
     if (b.length === 1) return b[0];
     if (b.length === 2) return (b[0] << 8) | b[1];
     if (b.length === 4) return be32(b, 0);

@@ -90,6 +90,12 @@ test("MP4: tags de serie, año, género y descripción junto a metadatos de pist
   assert.deepEqual([m.duration, m.width, m.height, m.rotation], [3.6, 1920, 1080, 0]);
 });
 
+test("MP4: etiquetas numéricas vacías se conservan como ausentes", async () => {
+  const m = await Tags.read(mp4File([["tvsn", new Uint8Array()], ["tves", new Uint8Array()]]));
+  assert.equal(m.season, null);
+  assert.equal(m.episode, null);
+});
+
 test("MP3 se delega en el lector ID3", async () => {
   const m = await Tags.read(mp3File(id3Tag({ ver: 3, frames: [textFrame(3, "TIT2", "Desde ID3")] })));
   assert.equal(m.title, "Desde ID3");
