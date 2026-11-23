@@ -10,8 +10,8 @@ function wireShortcuts() {
     if (e.code === "Space" && e.target.closest?.("button, select, a, summary")) return; // activa el control enfocado
     switch (e.code) {
       case "Space": e.preventDefault(); togglePlay(); break;
-      case "ArrowRight": audio.currentTime += 5; break;
-      case "ArrowLeft": audio.currentTime -= 5; break;
+      case "ArrowRight": media.currentTime += 5; break;
+      case "ArrowLeft": media.currentTime -= 5; break;
       case "ArrowUp": e.preventDefault(); els.volume.value = Math.min(1, +els.volume.value + 0.05); els.volume.dispatchEvent(new Event("input")); break;
       case "ArrowDown": e.preventDefault(); els.volume.value = Math.max(0, +els.volume.value - 0.05); els.volume.dispatchEvent(new Event("input")); break;
       case "KeyN": step(1); break;

@@ -12,11 +12,11 @@ const store = {
 // Dos elementos de audio: uno suena y el otro entra durante un fundido cruzado (ver «Fundido»).
 const decks = [$("audio"), $("audio-b")];
 
-let audio = decks[0]; // el deck activo: lo que muestran la barra de progreso, los controles, etc.
+let media = decks[0]; // el deck activo: lo que muestran la barra de progreso, los controles, etc.
 
-const otherDeck = () => decks[audio === decks[0] ? 1 : 0];
+const otherDeck = () => decks[media === decks[0] ? 1 : 0];
 
-const onAudio = (type, fn) => decks.forEach((d) => d.addEventListener(type, (e) => { if (d === audio) fn(e); }));
+const onMedia = (type, fn) => decks.forEach((d) => d.addEventListener(type, (e) => { if (d === media) fn(e); }));
 
 const setVolume = (v) => decks.forEach((d) => (d.volume = v));
 

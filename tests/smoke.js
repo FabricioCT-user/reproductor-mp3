@@ -108,8 +108,8 @@ function captureDownloads(win) {
 
 // Salta cerca del final de la pista actual (espera a conocer la duración).
 async function seekNearEnd(ev, secondsLeft) {
-  await until(() => Number.isFinite(ev("audio.duration")) && ev("audio.duration") > 0);
-  ev(`audio.currentTime = audio.duration - ${secondsLeft}`);
+  await until(() => Number.isFinite(ev("media.duration")) && ev("media.duration") > 0);
+  ev(`media.currentTime = media.duration - ${secondsLeft}`);
 }
 
 const asText = async (c) => (typeof c === "string" ? c : c.text());
@@ -135,7 +135,7 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
   await scenario("Reproducción", async ({ win, ev }) => {
     await win.addFiles([wav(win, "a.wav", { mtime: 1 }), wav(win, "b.wav", { freq: 550, mtime: 2 }), wav(win, "c.wav", { freq: 660, mtime: 3 })]);
     win.loadTrack(0, true, "all");
-    check("reproducir: el tiempo avanza", await until(() => ev("audio.currentTime") > 0.4), ev("audio.currentTime"));
+    check("reproducir: el tiempo avanza", await until(() => ev("media.currentTime") > 0.4), ev("media.currentTime"));
     check("reproducir: el icono pasa a pausa", ev("els['play-icon'].innerHTML").includes("M6 5h4"));
     ev("els.next.click()");
     check("siguiente", ev("state.index") === 1);
@@ -148,19 +148,19 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
 
     // Espacio en el documento alterna; sobre un botón no debe alternar (activa el botón)
     const space = (target) => target.dispatchEvent(new win.KeyboardEvent("keydown", { code: "Space", bubbles: true, cancelable: true }));
-    const wasPaused = ev("audio.paused");
+    const wasPaused = ev("media.paused");
     space(win.document.body);
-    check("atajo Espacio: alterna la reproducción", ev("audio.paused") !== wasPaused, `pausado antes=${wasPaused}`);
+    check("atajo Espacio: alterna la reproducción", ev("media.paused") !== wasPaused, `pausado antes=${wasPaused}`);
     space(win.document.body);
-    await until(() => !ev("audio.paused"));
-    const before = ev("audio.paused");
+    await until(() => !ev("media.paused"));
+    const before = ev("media.paused");
     space(ev("els.clear"));
-    check("Espacio sobre un botón no dispara el atajo global", ev("audio.paused") === before, "se alternó la reproducción");
+    check("Espacio sobre un botón no dispara el atajo global", ev("media.paused") === before, "se alternó la reproducción");
 
     // última pista sin repetir: se detiene; con repetir vuelve a la primera
     await seekNearEnd(ev, 0.4);
     await sleep(1200);
-    check("última canción sin repetir: se detiene", ev("audio.paused") && ev("state.index") === 2, `paused=${ev("audio.paused")} idx=${ev("state.index")}`);
+    check("última canción sin repetir: se detiene", ev("media.paused") && ev("state.index") === 2, `paused=${ev("media.paused")} idx=${ev("state.index")}`);
     ev("els.repeat.click()");
     win.loadTrack(2, true, "all");
     await seekNearEnd(ev, 0.4);
@@ -255,42 +255,42 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     ev("setUserLyrics(state.tracks[0], '[00:00.50]Uno\\n[00:02.00]Dos\\n[00:04.00]Tres')");
     ev("toggleLyrics(false)");
     win.loadTrack(0, true, "all");
-    ev("audio.currentTime = 2.3");
+    ev("media.currentTime = 2.3");
     await until(() => ev("document.querySelector('.lyric-line.active')?.textContent") === "Dos", 2500);
     check("la línea actual se resalta", ev("document.querySelector('.lyric-line.active')?.textContent") === "Dos", ev("document.querySelector('.lyric-line.active')?.textContent"));
     ev("document.querySelectorAll('.lyric-line')[2].click()");
-    check("pulsar una línea salta a ese momento", ev("audio.currentTime") >= 3.9, ev("audio.currentTime"));
-    ev("audio.pause()");
+    check("pulsar una línea salta a ese momento", ev("media.currentTime") >= 3.9, ev("media.currentTime"));
+    ev("media.pause()");
   });
 
   await scenario("Velocidad, temporizador y fundido", async ({ win, ev }) => {
     await win.addFiles([wav(win, "a.wav", { seconds: 8, mtime: 1 }), wav(win, "b.wav", { seconds: 8, freq: 550, mtime: 2 }), wav(win, "c.wav", { seconds: 8, freq: 660, mtime: 3 })]);
     win.setSpeed(1.5);
     win.loadTrack(1, false, "all");
-    check("velocidad: se conserva al cambiar de pista", ev("audio.playbackRate") === 1.5 && ev("localStorage.getItem('speed')") === "1.5",
-      `playbackRate=${ev("audio.playbackRate")} guardado=${ev("localStorage.getItem('speed')")} estado=${ev("state.speed")}`);
+    check("velocidad: se conserva al cambiar de pista", ev("media.playbackRate") === 1.5 && ev("localStorage.getItem('speed')") === "1.5",
+      `playbackRate=${ev("media.playbackRate")} guardado=${ev("localStorage.getItem('speed')")} estado=${ev("state.speed")}`);
     win.setSpeed(1);
 
     win.loadTrack(0, true, "all");
-    await until(() => ev("audio.currentTime") > 0.3);
+    await until(() => ev("media.currentTime") > 0.3);
     ev("setSleep(0.05)"); // 3 s
     check("temporizador: muestra la cuenta atrás", /⏲ 0:0\d/.test(ev("els['sleep-btn'].textContent")), ev("els['sleep-btn'].textContent"));
     await sleep(4000);
-    check("temporizador: detiene la música y restaura el volumen", ev("audio.paused") && ev("audio.volume") === +ev("els.volume.value"), `paused=${ev("audio.paused")} vol=${ev("audio.volume")}`);
+    check("temporizador: detiene la música y restaura el volumen", ev("media.paused") && ev("media.volume") === +ev("els.volume.value"), `paused=${ev("media.paused")} vol=${ev("media.volume")}`);
 
     win.setCrossfade(2);
-    const first = ev("audio");
+    const first = ev("media");
     win.loadTrack(0, true, "all");
-    await until(() => ev("audio.currentTime") > 0.3);
+    await until(() => ev("media.currentTime") > 0.3);
     await seekNearEnd(ev, 3.3);
     check("fundido: empieza al acercarse al final", await until(() => ev("xfade !== null"), 3500));
-    check("fundido: la canción nueva pasa a ser la activa (otro deck)", ev("audio") !== first && ev("state.index") === 1, ev("state.index"));
+    check("fundido: la canción nueva pasa a ser la activa (otro deck)", ev("media") !== first && ev("state.index") === 1, ev("state.index"));
     await until(() => ev("xfade === null"), 4000);
     // la ganancia vuelve a 1 en el siguiente ciclo de audio, no en el mismo instante
     const settled = await until(() => ev("decks.every(d => Math.abs(d._gain.gain.value - 1) < 0.001)"), 1500);
     check("fundido: al terminar, el deck anterior queda pausado y ambos con ganancia 1", ev("otherDeck().paused") && settled, `ganancias=${ev("decks.map(d => d._gain.gain.value.toFixed(3)).join('/')")}`);
     win.setCrossfade(0);
-    ev("audio.pause()");
+    ev("media.pause()");
   });
 
   await scenario("Tema y selección", async ({ win, ev }) => {
@@ -318,22 +318,22 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
       files: [handle(a), handle(b), handle(new win.File(["x"], "nota.txt", { type: "text/plain" })), { getFile: async () => { throw new Error("sin permiso"); } }],
     });
     check("abrir archivos del sistema: se añaden a la biblioteca (solo el audio legible)", ev("state.tracks.length") === 2, ev("state.tracks.map(t => t.fileName).join(',')"));
-    check("abrir archivos del sistema: suena el primero", (await until(() => !ev("audio.paused") && ev("audio.currentTime") > 0.3)) && ev("state.tracks[state.index].fileName") === "abierto1.wav");
+    check("abrir archivos del sistema: suena el primero", (await until(() => !ev("media.paused") && ev("media.currentTime") > 0.3)) && ev("state.tracks[state.index].fileName") === "abierto1.wav");
     check("abrir varios: los demás quedan en la cola", ev("state.queue.length") === 1 && ev("state.queue[0].fileName") === "abierto2.wav");
-    ev("audio.pause()");
+    ev("media.pause()");
     await win.consumeLaunch({ files: [handle(b)] });
     check("volver a abrir un archivo: no se duplica y suena ese", ev("state.tracks.length") === 2 && ev("state.tracks[state.index].fileName") === "abierto2.wav");
     await win.consumeLaunch({ files: [] });
     await win.consumeLaunch();
     check("sin archivos no hace nada", ev("state.tracks.length") === 2);
-    ev("audio.pause()");
+    ev("media.pause()");
 
     // Si el navegador no deja sonar sin un clic previo, no se «reproduce» en silencio: se pausa y se avisa.
     const ctx = ev("analyser.context");
     await ctx.suspend();
     ctx.resume = () => new Promise(() => {}); // simula que el navegador no lo permite
     await win.play();
-    check("sonido bloqueado por el navegador: pausa y avisa en vez de sonar mudo", ev("audio.paused") && /bloque/i.test(ev("els.toast.textContent")), `pausado=${ev("audio.paused")} aviso=${ev("els.toast.textContent")}`);
+    check("sonido bloqueado por el navegador: pausa y avisa en vez de sonar mudo", ev("media.paused") && /bloque/i.test(ev("els.toast.textContent")), `pausado=${ev("media.paused")} aviso=${ev("els.toast.textContent")}`);
   });
 
   await scenario("Lanzador local (Abrir con… en Firefox)", async ({ win, ev }) => {
@@ -343,9 +343,9 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     const stub = (items) => async (url) => (url.endsWith("/esperar") ? json(items) : new win.Response(bytes, { status: 200 }));
 
     check("lanzador: la página recibe el archivo, lo añade y suena", (await win.launcherStep(stub([item]))) === "items" && ev("state.tracks.length") === 1
-      && ev("state.tracks[0].fileName") === "externo.wav" && (await until(() => !ev("audio.paused") && ev("audio.currentTime") > 0.2)), ev("state.tracks.length"));
+      && ev("state.tracks[0].fileName") === "externo.wav" && (await until(() => !ev("media.paused") && ev("media.currentTime") > 0.2)), ev("state.tracks.length"));
     check("lanzador: conserva la fecha del archivo (así no se duplica al reabrirlo)", ev("state.tracks[0].key") === `externo.wav|${bytes.length}|1700000000500`, ev("state.tracks[0].key"));
-    ev("audio.pause()");
+    ev("media.pause()");
     check("lanzador: sin archivos pendientes no hace nada", (await win.launcherStep(stub([]))) === "idle" && ev("state.tracks.length") === 1);
     check("lanzador: reabrir el mismo archivo no lo duplica", (await win.launcherStep(stub([item]))) === "items" && ev("state.tracks.length") === 1);
     check("lanzador: con un servidor sin la cola (404) se desactiva solo", (await win.launcherStep(async () => json({}, 404))) === "unsupported");

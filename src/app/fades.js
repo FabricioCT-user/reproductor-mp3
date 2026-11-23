@@ -19,7 +19,7 @@ function setSleep(minutes) {
 // Detiene la reproducción y restaura el volumen.
 function finishSleep() {
   sleep = null;
-  audio.pause();
+  media.pause();
   setVolume(+els.volume.value);
   renderSleep();
   toast("Temporizador de apagado: música detenida");
@@ -31,7 +31,7 @@ function sleepTick() {
   const left = sleep.endAt - Date.now();
   if (left <= 0) return finishSleep();
   // Fundido de salida durante los últimos segundos.
-  if (left < FADE_MS && !audio.paused) setVolume(+els.volume.value * (left / FADE_MS));
+  if (left < FADE_MS && !media.paused) setVolume(+els.volume.value * (left / FADE_MS));
   renderSleep();
 }
 
@@ -60,19 +60,19 @@ function hasNext() {
 }
 
 function crossfadeCheck() {
-  if (!state.crossfade || xfade || !analyser || audio.paused || sleep?.track) return;
-  const dur = audio.duration;
+  if (!state.crossfade || xfade || !analyser || media.paused || sleep?.track) return;
+  const dur = media.duration;
   if (!isFinite(dur) || dur < 3) return;
-  const remaining = (dur - audio.currentTime) / audio.playbackRate; // tiempo real, no de la pista
+  const remaining = (dur - media.currentTime) / media.playbackRate; // tiempo real, no de la pista
   if (remaining > Math.min(state.crossfade, dur / 3) || !hasNext()) return;
   startCrossfade(Math.max(0.5, remaining));
 }
 
 function startCrossfade(secs) {
-  const out = audio;
+  const out = media;
   const inn = otherDeck();
   xfade = { out, inn, secs, starting: true, timer: 0 };
-  audio = inn; // la canción nueva pasa a ser la activa
+  media = inn; // la canción nueva pasa a ser la activa
   inn._gain.gain.cancelScheduledValues(0);
   inn._gain.gain.value = 0;
   step(1); // carga la siguiente en `inn` y la arranca en silencio

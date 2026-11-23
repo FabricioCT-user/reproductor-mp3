@@ -55,7 +55,7 @@ function renderLyrics() {
       const d = document.createElement("div");
       d.className = "lyric-line" + (line.text ? "" : " gap");
       d.textContent = line.text || "♪";
-      if (L.synced) d.addEventListener("click", () => { audio.currentTime = line.t; });
+      if (L.synced) d.addEventListener("click", () => { media.currentTime = line.t; });
       return d;
     })
   );
@@ -69,7 +69,7 @@ function syncLyrics() {
   const L = parsedLyrics(state.tracks[state.index]);
   if (!L?.synced) return;
   let idx = -1;
-  for (let i = 0; i < L.lines.length && L.lines[i].t <= audio.currentTime + 0.15; i++) idx = i;
+  for (let i = 0; i < L.lines.length && L.lines[i].t <= media.currentTime + 0.15; i++) idx = i;
   if (idx === lyricCursor) return;
   lyricCursor = idx;
   const nodes = els["lyrics-body"].children;
