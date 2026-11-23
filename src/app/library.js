@@ -245,7 +245,7 @@ async function addFiles(fileList) {
   if (state.index === -1 && state.tracks.length) loadTrack(0, false, "all");
 
   const msg = [];
-  if (added) msg.push(`${added} canción(es) añadida(s)`);
+  if (added) msg.push(`${added} pista(s) añadida(s)`);
   if (dupes) msg.push(`${dupes} ya estaba(n) en la biblioteca`);
   if (failed) msg.push(`${failed} no se pudieron leer`);
   if (noSpace) msg.push(`${noSpace} ${noSpace === 1 ? "pista" : "pistas"} solo para esta sesión: no hay espacio`);
@@ -258,7 +258,7 @@ async function addFiles(fileList) {
   }
   if (lyr?.matched) msg.push(`letra para ${lyr.matched}`);
   if (lyr?.missed) msg.push(`${lyr.missed} .lrc sin pareja`);
-  if (resolved) msg.push(`${resolved} canción(es) completan listas importadas`);
+  if (resolved) msg.push(`${resolved} pista(s) completan listas importadas`);
   if (imp) msg.push(...importSummary(imp));
   if (unsupportedVideos.length && !added && !dupes && !failed && !lrcFiles.length && !listFiles.length) {
     msg.push(explainFailure("video", extOf(unsupportedVideos[0].name), ""));
@@ -430,7 +430,7 @@ function render() {
     const li = document.createElement("li");
     li.className = "empty";
     li.textContent = tracks.length && (q || kind !== "all") ? "Sin resultados."
-      : pl ? "Esta lista está vacía. Usa el botón ♫ de una canción para añadirla."
+      : pl ? "Esta lista está vacía. Usa el botón ♫ de una pista para añadirla."
       : "Tu biblioteca está vacía. Arrastra archivos o carpetas aquí, o usa «+ Añadir» / «+ Carpeta».";
     els.playlist.replaceChildren(li, ...pendingNote(pl));
     return;

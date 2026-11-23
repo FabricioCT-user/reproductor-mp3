@@ -50,7 +50,7 @@ async function renamePlaylist() {
 
 function deletePlaylist() {
   const p = currentPlaylist();
-  if (!p || !confirm(`¿Eliminar la lista «${p.name}»? Las canciones se conservan en la biblioteca.`)) return;
+  if (!p || !confirm(`¿Eliminar la lista «${p.name}»? Las pistas se conservan en la biblioteca.`)) return;
   state.playlists = state.playlists.filter((x) => x !== p);
   savePlaylists();
   if (state.playView === p.id) state.playView = "all";
@@ -158,7 +158,7 @@ async function importPlaylistFiles(files) {
 
 function importSummary({ lists, matched, pending, bad }) {
   const out = [];
-  if (lists) out.push(`${lists} lista(s) importada(s) con ${matched} canción(es)`);
+  if (lists) out.push(`${lists} lista(s) importada(s) con ${matched} pista(s)`);
   if (pending) out.push(`${pending} pendiente(s): se enlazarán al importar esos archivos`);
   if (bad) out.push(`${bad} archivo(s) de listas no válido(s)`);
   return out;
@@ -168,7 +168,7 @@ function pendingNote(pl) {
   if (!pl?.pending?.length) return [];
   const li = document.createElement("li");
   li.className = "empty pending";
-  li.textContent = `${pl.pending.length} canción(es) pendiente(s): aparecerán cuando importes esos archivos.`;
+  li.textContent = `${pl.pending.length} pista(s) pendiente(s): aparecerán cuando importes esos archivos.`;
   li.title = pl.pending.map((r) => r.file || r.title).join("\n");
   return [li];
 }
