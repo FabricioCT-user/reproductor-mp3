@@ -10,6 +10,7 @@ const isVideoTrack = (t) => t?.meta?.kind === "video";
 function syncStage(t) {
   const video = isVideoTrack(t);
   els.stage?.classList.toggle("oculto", !video);
+  els.cover.classList.toggle("video-mode", video);
   decks.forEach((d) => d.classList.toggle("oculto", d !== media));
   els.viz.hidden = video;
   if (video) {
@@ -20,6 +21,25 @@ function syncStage(t) {
     draw();
   }
   if (typeof syncFullscreen === "function") syncFullscreen();
+}
+
+let stageClickTimer = 0;
+
+// Retrasar el clic simple para que el segundo clic de un doble clic no alterne reproducción.
+function wireStage() {
+  const stage = $("stage");
+  stage.addEventListener("click", (e) => {
+    if (!e.target.closest("video")) return;
+    if (e.detail > 1) return;
+    clearTimeout(stageClickTimer);
+    stageClickTimer = setTimeout(() => { stageClickTimer = 0; togglePlay(); }, 500);
+  });
+  stage.addEventListener("dblclick", (e) => {
+    if (!e.target.closest("video")) return;
+    clearTimeout(stageClickTimer);
+    stageClickTimer = 0;
+    if (typeof toggleFullscreen === "function") toggleFullscreen();
+  });
 }
 
 // Título, artista y carátula (lo que cambia al editar etiquetas sin reiniciar la reproducción).
@@ -66,6 +86,7 @@ function updatePositionState() {
 }
 
 function loadTrack(i, autoplay, view = "all") {
+  clearTimeout(stageClickTimer);
   pendingNext = null;
   const t = state.tracks[i];
   if (xfade && (!xfade.starting || isVideoTrack(t))) endCrossfade(); // un cambio manual o un video corta el fundido
@@ -326,11 +347,19 @@ function wirePlayer() {
     els.duration.textContent = formatTime(media.duration);
     updatePositionState();
     const t = state.tracks[state.index];
+    if (t && isVideoTrack(t) && media.videoWidth > 0 && media.videoHeight > 0
+      && (t.meta.width !== media.videoWidth || t.meta.height !== media.videoHeight)) {
+      t.meta.width = media.videoWidth;
+      t.meta.height = media.videoHeight;
+      if (t.id != null) Storage.setMeta(t.id, t.meta, META_VERSION).catch(() => {});
+      render();
+    }
     if (t && isVideoTrack(t) && media.videoWidth === 0 && /\.(webm|mkv)$/i.test(t.fileName)) {
       t.meta.kind = "audio";
       if (t.id != null) Storage.setMeta(t.id, t.meta, META_VERSION).catch(() => {});
       syncStage(t);
       renderLyrics();
+      render();
     }
   });
 

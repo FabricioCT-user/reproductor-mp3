@@ -127,6 +127,11 @@
     <section class="library">
       <div class="view-bar">
         <select id="view" aria-label="Lista"></select>
+        <select id="media-filter" aria-label="Tipo de contenido">
+          <option value="all">Todo</option>
+          <option value="audio">Música</option>
+          <option value="video">Videos</option>
+        </select>
         <button id="pl-new" class="btn ghost" title="Crear una lista de reproducción">+ Lista</button>
         <button id="pl-more" class="btn ghost" title="Exportar o importar listas">⋯</button>
         <input type="file" id="pl-import" accept=".json,.m3u,.m3u8" multiple hidden>
