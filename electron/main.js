@@ -113,12 +113,54 @@ async function correrSmoke(win) {
     estado = await win.webContents.executeJavaScript("({ done: window.__done === true, results: window.__results || [] })", true);
     if (estado.done) break;
   }
-  const resultados = estado?.results || [];
+  const resultados = [...(estado?.results || []), ...(await comprobacionesApp(win))];
   const fallos = resultados.filter((r) => !r.ok);
   for (const r of resultados) console.log(`${r.ok ? "ok  " : "FALLO"} ${r.name}${r.detail ? ` — ${r.detail}` : ""}`);
   if (!estado?.done) console.log(`FALLO: la prueba de humo no terminó en ${SMOKE_LIMITE_MS / 1000} s`);
   console.log(`\n${resultados.length - fallos.length}/${resultados.length} correctas`);
   app.exit(estado?.done && resultados.length > 0 && fallos.length === 0 ? 0 : 1);
+}
+
+// Lo que solo existe en la app: se carga la página real (con su CSP) y se comprueba el endurecimiento desde dentro.
+async function comprobacionesApp(win) {
+  const r = [];
+  const check = (name, ok, detail) => r.push({ name: `App: ${name}`, ok: !!ok, detail: ok ? "" : JSON.stringify(detail) });
+  try {
+    await win.loadURL(`${servir.ORIGEN}/index.html`);
+    const d = await win.webContents.executeJavaScript(`(async () => {
+      const estado = async (u) => { try { return (await fetch(u)).status; } catch (e) { return String(e); } };
+      let sw = 0; try { sw = (await navigator.serviceWorker.getRegistrations()).length; } catch {}
+      let evalBloqueado = false; try { (0, eval)("1"); } catch { evalBloqueado = true; }
+      const cab = await fetch("index.html");
+      return {
+        puente: window.reproductor ? { esApp: window.reproductor.esApp, version: window.reproductor.version, congelado: Object.isFrozen(window.reproductor) } : null,
+        sinNode: typeof require === "undefined" && typeof process === "undefined" && typeof module === "undefined",
+        ventanaNueva: window.open("https://example.com/"),
+        notificaciones: await Notification.requestPermission(),
+        sw, evalBloqueado,
+        csp: cab.headers.get("content-security-policy"),
+        nosniff: cab.headers.get("x-content-type-options"),
+        fueraDeLista: [await estado("/package.json"), await estado("/sw.js"), await estado("/electron/main.js"), await estado("/tests/smoke.js")],
+        medio: await estado("/__media/" + "0".repeat(32)),
+        botones: document.querySelectorAll("button").length,
+      };
+    })()`, true);
+    check("el puente expone esApp y la versión, congelado", d.puente?.esApp === true && d.puente.version === app.getVersion() && d.puente.congelado, d.puente);
+    check("la página no tiene Node", d.sinNode, d);
+    check("window.open queda denegado", d.ventanaNueva === null, d.ventanaNueva);
+    check("los permisos se niegan (notificaciones)", d.notificaciones === "denied", d.notificaciones);
+    check("no se registra el service worker", d.sw === 0, d.sw);
+    check("la CSP de la cabecera es la del meta y bloquea eval", d.csp === csp && d.evalBloqueado && d.nosniff === "nosniff", d.csp);
+    check("fuera de la lista blanca, 404 (tests/ se sirve solo por --smoke)", d.fueraDeLista.slice(0, 3).every((s) => s === 404) && d.fueraDeLista[3] === 200, d.fueraDeLista);
+    check("__media aún no sirve nada (T2.1)", d.medio === 404, d.medio);
+    check("la interfaz arranca", d.botones > 10, d.botones);
+    await win.webContents.executeJavaScript('location.href = "https://example.com/"; 1');
+    await new Promise((res) => setTimeout(res, 500));
+    check("la navegación fuera de la app se bloquea", servir.esUrlDeApp(win.webContents.getURL()), win.webContents.getURL());
+  } catch (e) {
+    check("comprobaciones sin excepciones", false, String(e?.stack || e));
+  }
+  return r;
 }
 
 /* ---------- Arranque ---------- */

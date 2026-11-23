@@ -115,7 +115,7 @@ No hay servidor remoto ni análisis: la aplicación solo se descarga a sí misma
 
 ## Desarrollo
 
-Sin dependencias: JavaScript clásico en el navegador, sin empaquetador. Para las pruebas basta con Node 22 o superior (probado con 26).
+Sin dependencias: JavaScript clásico en el navegador, sin empaquetador. Para las pruebas basta con Node 22 o superior (probado con 26). La app de escritorio (en construcción) usa Electron, que solo hace falta para ella: `npm test` no lo necesita.
 
 ```
 index.html  style.css  sw.js  manifest.webmanifest   página, estilos, caché sin conexión, PWA
@@ -130,10 +130,13 @@ src/
   storage.js       biblioteca en IndexedDB (v2: metadatos en «tracks», archivos aparte en «files»; migra la v1 sola)
   app/             la aplicación, un archivo por función:
                    core, library, playlists, lyrics-ui, player, eq, fades, launcher, editor, theme, main
+electron/          app de escritorio (en construcción): main.js (protocolo app://reproductor/ y ventana endurecida),
+                   preload.js (puente mínimo), lib/servir.js (lista blanca del protocolo), lib/argumentos.js
 launcher/          servidor local en Python y lanzador para «Abrir con…» (instalar.sh lo registra en Linux)
 tests/
   unit/            pruebas con node:test (módulos puros, escritor de etiquetas, almacenamiento y migración, coherencia del proyecto, servidor y lanzador)
   smoke.html       pruebas de humo: manejan la aplicación real en el navegador
+  smoke-app.js     ejecuta las mismas pruebas de humo dentro de Electron (npm run smoke:app)
 ```
 
 **Cómo está organizado `src/app/`**: cada archivo solo *declara* (funciones y constantes); no hace nada al cargarse. Todo el cableado de eventos vive en funciones `wire…()` (una por archivo) que `main.js` llama al final, cuando todo ya existe. Por eso el orden de carga solo importa para las constantes que se usan al declarar (`index.html` y las pruebas lo vigilan).
@@ -141,11 +144,22 @@ tests/
 **Pruebas**
 
 ```bash
-npm test                         # unitarias (~80 pruebas, un par de segundos)
+npm test                         # unitarias (~140 pruebas, un par de segundos)
 npm start                        # y abre http://localhost:8000/tests/smoke.html para las de humo
+npm install && npm run smoke:app # las mismas de humo dentro de Electron, sin ventana; sale con 0 o 1
 ```
 
 Las unitarias cargan los mismos scripts que el navegador dentro de un contexto aislado de Node y construyen archivos MP3, FLAC, Ogg y MP4 sintéticos para comprobar lectores y escritor (unsincronización, cabecera extendida, ID3v2.2, carátulas, bloques FLAC…). Las de humo importan archivos, reproducen, reordenan, editan, exportan, recargan y fuerzan fallos (archivos que no se pueden reproducir, `localStorage` corrupto, registros dañados) y comprueban que una biblioteca guardada con la versión anterior de la base (v1) se migra sin perder canciones, letras, ediciones ni orden. La prueba de humo usa audio generado en el propio navegador y no necesita ffmpeg.
+
+**App de escritorio (Electron, en construcción)**
+
+```bash
+npm install          # instala Electron 45.4.1 (descarga el binario la primera vez que se ejecuta)
+npm run app          # abre la app (con menú y herramientas de desarrollo)
+npm run dist         # empaqueta con electron-builder en dist/ (por ahora solo la carpeta, sin instalador)
+```
+
+La app sirve la misma interfaz desde `app://reproductor/`, que solo entrega los archivos de `FILES` de `sw.js` (más `index.html`) y repite la CSP del meta como cabecera. La ventana va endurecida: aislamiento de contexto, sandbox, sin Node en la página, sin ventanas nuevas ni navegación fuera de la app y sin permisos salvo pantalla completa; el paquete lleva los *fuses* de Electron que impiden usarlo como Node (`ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS`, `--inspect`) y solo carga la app del `.asar`. Dentro de la app no se registra el service worker. Abrir archivos desde el sistema y los videos llegan en las próximas tareas.
 
 **Al publicar una versión nueva**, si cambia la lista de archivos de la aplicación actualiza `FILES` y `VERSION` en `sw.js` (una prueba comprueba que `FILES` coincide con lo que carga la página).
 
