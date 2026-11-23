@@ -98,7 +98,7 @@ const appReady = (async function init() {
     for (const rec of saved) {
       if (rec.source === "link" && !window.reproductor) { linked.push(rec.id); continue; }
       let file = null;
-      if (rec.source === "link") file = linkedFile(rec); // si el archivo ya no está no se borra nada (T2.2 lo marcará)
+      if (rec.source === "link") file = linkedFile(rec); // si el archivo ya no está no se borra nada: se marca al final
       else if (rec.source !== "session") {
         try { file = await Storage.getFile(rec.id); } catch { /* se muestra como no disponible; el registro no se borra */ }
       }
@@ -115,6 +115,8 @@ const appReady = (async function init() {
         if (rec.source === "link") state.tracks.push(await makeUnavailableTrack(rec));
       }
     }
+    // Los enlaces se verifican antes de fijar media.src: un 404 de un archivo ausente no es un fallo de códec.
+    await comprobarEstadoEnlaces();
     const last = state.tracks.findIndex((t) => String(t.id) === store.get("lastId") && !t.unavailable);
     const firstPlayable = state.tracks.findIndex((t) => !t.unavailable);
     if (firstPlayable >= 0) loadTrack(last >= 0 ? last : firstPlayable, false, "all");

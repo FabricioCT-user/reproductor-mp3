@@ -227,5 +227,5 @@ async function leer(origen, { limite = MAX_LECTURA, identidad = null } = {}) {
 
 module.exports = {
   EXTENSIONES, LIMITES, MAX_LECTURA, MAX_SUBTITULO, MAX_SUBTITULOS_POR_VIDEO,
-  clasificar, aRuta, validar, recorrer, subtitulosAcompanantes, abrirSeguro, leer,
+  clasificar, aRuta, identidadDe, mismaIdentidad, validar, recorrer, subtitulosAcompanantes, abrirSeguro, leer,
 };

@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { identidadDe } = require("../../electron/lib/rutas");
 const { Enlaces, esId } = require("../../electron/lib/enlaces");
 
 const raiz = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "enlaces-prueba-")));
@@ -15,7 +16,7 @@ const video = (nombre, bytes = 100) => {
   const p = path.join(raiz, nombre);
   fs.writeFileSync(p, Buffer.alloc(bytes, 7));
   const st = fs.statSync(p);
-  return { ruta: p, nombre, tamano: st.size, fecha: Math.floor(st.mtimeMs), tipo: "video/mp4", clase: "video" };
+  return { ruta: p, nombre, tamano: st.size, fecha: Math.floor(st.mtimeMs), tipo: "video/mp4", clase: "video", identidad: identidadDe(st) };
 };
 
 test("enlaces: ids de 32 hex, distintos aunque sea el mismo archivo; se guardan y se recargan", async () => {
@@ -29,7 +30,7 @@ test("enlaces: ids de 32 hex, distintos aunque sea el mismo archivo; se guardan 
   assert.ok(esId(id1) && esId(id2));
   assert.notEqual(id1, id2);
   assert.ok(!id1.includes("uno"));
-  assert.deepEqual(e.obtener(id1), { ruta: v.ruta, tamano: 100, fecha: v.fecha, tipo: "video/mp4" });
+  assert.deepEqual(e.obtener(id1), { ruta: v.ruta, tamano: 100, fecha: v.fecha, tipo: "video/mp4", identidad: v.identidad });
 
   const otra = await new Enlaces(archivo).cargar(); // como tras reiniciar la app
   assert.equal(otra.tamano, 2);
@@ -126,4 +127,15 @@ test("enlaces: estado distingue ok, falta, cambiado y desconocido", async () => 
   const otro = "9".repeat(32);
   assert.deepEqual(await e.estado([ok, falta, cambiado, otro, "nada", 5]), { [ok]: "ok", [falta]: "falta", [cambiado]: "cambiado", [otro]: "desconocido" });
   assert.deepEqual(await e.estado("no es lista"), {});
+});
+
+test("enlaces: estado detecta sustitución con mismo tamaño y fecha", async () => {
+  const e = await new Enlaces(path.join(carpeta(), "enlaces.json")).cargar();
+  const v = video("sustituido.mp4");
+  const id = await e.registrar(v);
+  const reemplazo = `${v.ruta}.nuevo`;
+  fs.writeFileSync(reemplazo, Buffer.alloc(v.tamano, 3));
+  fs.utimesSync(reemplazo, new Date(v.identidad.mtimeMs), new Date(v.identidad.mtimeMs));
+  fs.renameSync(reemplazo, v.ruta);
+  assert.equal((await e.estado([id]))[id], "cambiado");
 });

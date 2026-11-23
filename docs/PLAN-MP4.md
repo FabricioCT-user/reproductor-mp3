@@ -273,7 +273,8 @@ Los 7 puntos pasan, incluido el riesgo n.º 1 (Web Audio con video del mismo ori
 - Pruebas: unitarias de `rango.js` y `enlaces.js` (JSON corrupto → registro vacío sin romper el arranque, escritura atómica); humo en Electron: enlazar un video generado, salto a mitad, EQ conectado, reinicio → sigue disponible; petición a `__media/<id-falso>` y a `__media/../index.html` → 404.
 - Revisión: Gemini **y** Codex.
 
-### T2.2 — Archivos que faltan o cambiaron · **Sonnet** (tras T2.1)
+### T2.2 — Archivos que faltan o cambiaron · **Sonnet** (tras T2.1) · **Hecha**
+> Hecho: `init` (main.js) llama a `comprobarEstadoEnlaces()` al terminar de cargar la biblioteca, sin esperarla (un disco lento no retrasa el arranque ni «Abrir con…»); también se comprueba al pulsar una fila o al abrirla desde el sistema. `enlaces.json` guarda además la identidad del archivo (dev/ino/tamaño/fecha exacta): un archivo sustituido con el mismo tamaño y fecha da «cambiado» y `__media` no lo sirve. «Buscar…» abre el diálogo en modo `{ video: true }` (un solo video), enlaza el elegido, relee sus metadatos y sustituye la pista por otra con el mismo id (`Storage.updateLink`); el enlace viejo se olvida. Una respuesta de estado solo se aplica si la pista sigue en la biblioteca con el mismo `linkId`, así que una comprobación en curso nunca invalida el enlace recién hecho (sin esperas ni marcas de tiempo).
 - Al arrancar (y al reproducir): `estadoEnlaces` → si falta o cambió tamaño/fecha, la fila se marca «no encontrado» con «Buscar…» (diálogo → nuevo enlace conservando letra, subtítulos, ediciones, posición en listas) o «Quitar». Nunca romper el arranque.
 - Las listas exportadas siguen identificando por nombre + tamaño (sin rutas: no filtran la estructura del disco).
 - Humo en Electron: renombrar el archivo enlazado entre reinicios → «no encontrado»; volver a enlazar → recupera sus datos.

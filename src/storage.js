@@ -170,6 +170,28 @@ const Storage = (() => {
     };
   });
 
+  // «Buscar…» (T2.2): la pista pasa a otro enlace conservando id, letra, subtítulos y ediciones. Si llegan `meta` y
+  // `metaVersion` (releídos del archivo elegido) sustituyen a los guardados; si no, se conservan.
+  const updateLink = async (id, file, linkId, { kind, meta, metaVersion } = {}) => {
+    if (!/^[0-9a-f]{32}$/.test(linkId || "")) throw new Error("linkId no válido");
+    return tx("readwrite", ({ tracks }) => {
+      const get = tracks.get(id);
+      get.onsuccess = () => {
+        const rec = get.result;
+        if (!rec) return;
+        rec.name = file.name;
+        rec.type = file.type || "";
+        rec.size = file.size;
+        rec.lastModified = file.lastModified;
+        rec.source = "link";
+        rec.linkId = linkId;
+        rec.kind = kind || rec.kind || "video";
+        if (meta) { rec.meta = meta; rec.metaVersion = metaVersion; }
+        tracks.put(rec);
+      };
+    });
+  };
+
   return {
     setLyrics: (id, text) => setField(id, "lyrics", text),
     setEdits: (id, edits) => setField(id, "edits", edits),
@@ -179,6 +201,7 @@ const Storage = (() => {
     },
     setThumb: (id, thumb) => setField(id, "thumb", thumb instanceof Blob && thumb.size > 0 ? thumb : null),
     setMeta,
+    updateLink,
     add,
     getFile,
     remove: (id) => tx("readwrite", ({ tracks, files }) => { tracks.delete(id); files?.delete(id); }),

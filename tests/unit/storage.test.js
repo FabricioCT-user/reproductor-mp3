@@ -120,6 +120,37 @@ test("add admite metaVersion junto a los metadatos sin guardar campos extra", as
   assert.equal("path" in rec, false);
 });
 
+test("updateLink cambia el enlace sin perder letra, subtítulos, ediciones ni metadatos", async () => {
+  const idb = createFakeIndexedDB();
+  const S = loadStorage(idb);
+  const original = song("viejo.mp4", 120, 100);
+  const id = await S.add(original, {
+    kind: "video", source: "link", linkId: "a".repeat(32), lyrics: "letra",
+    subs: [{ label: "Español", text: "subtítulo", offset: 0 }], edits: { title: "Edición" }, meta: { title: "Original" },
+  });
+  await S.updateLink(id, song("nuevo.mp4", 240, 200), "b".repeat(32), { kind: "video" });
+  const [rec] = await S.all();
+  assert.equal(rec.name, "nuevo.mp4");
+  assert.equal(rec.size, 240);
+  assert.equal(rec.lastModified, 200);
+  assert.equal(rec.linkId, "b".repeat(32));
+  assert.equal(rec.lyrics, "letra");
+  assert.deepEqual(norm(rec.edits), { title: "Edición" });
+  assert.deepEqual(norm(rec.subs), [{ label: "Español", text: "subtítulo", offset: 0 }]);
+  assert.deepEqual(norm(rec.meta), { title: "Original" });
+  assert.equal(raw(idb, "files").length, 0);
+
+  // Con metadatos releídos del archivo elegido, se sustituyen; un linkId no válido no toca nada.
+  await S.updateLink(id, song("nuevo.mp4", 240, 200), "c".repeat(32), { kind: "video", meta: { title: "Releído" }, metaVersion: 2 });
+  await assert.rejects(S.updateLink(id, song("otro.mp4", 1, 1), "../ruta", { kind: "video" }));
+  const [rec2] = await S.all();
+  assert.equal(rec2.linkId, "c".repeat(32));
+  assert.equal(rec2.name, "nuevo.mp4");
+  assert.deepEqual(norm(rec2.meta), { title: "Releído" });
+  assert.equal(rec2.metaVersion, 2);
+  assert.equal(rec2.lyrics, "letra");
+});
+
 test("setLyrics / setEdits solo tocan tracks: el archivo guardado no se reescribe", async () => {
   const idb = createFakeIndexedDB();
   const S = loadStorage(idb);
