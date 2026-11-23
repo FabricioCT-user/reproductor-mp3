@@ -65,6 +65,7 @@ function updatePositionState() {
 }
 
 function loadTrack(i, autoplay, view = "all") {
+  pendingNext = null;
   const t = state.tracks[i];
   if (xfade && (!xfade.starting || isVideoTrack(t))) endCrossfade(); // un cambio manual o un video corta el fundido
   if (!t || t.unavailable) return;
@@ -101,6 +102,30 @@ async function ensureSound() {
 // Pistas entre las que se navega: la vista desde la que se empezó a reproducir.
 const contextList = () => listTracks(state.playView).filter((t) => !t.unavailable);
 
+let pendingNext = null;
+
+// Elige (y fija en modo aleatorio) la siguiente pista para dir > 0 sin alterar la cola ni el estado.
+function peekNext() {
+  if (!state.tracks.length) return null;
+  if (state.queue.length) {
+    const queued = state.queue.find((q) => !q.unavailable);
+    if (queued) return queued;
+  }
+  const list = contextList();
+  const n = list.length;
+  if (!n) return null;
+  const current = state.tracks[state.index];
+  const pos = list.indexOf(current);
+  if (pos < 0) return list[0];
+  if (state.shuffle && n > 1) {
+    if (!pendingNext || pendingNext.unavailable || pendingNext === current || !list.includes(pendingNext)) {
+      do { pendingNext = list[Math.floor(Math.random() * n)]; } while (pendingNext === current);
+    }
+    return pendingNext;
+  }
+  return list[(pos + 1) % n];
+}
+
 function step(dir) {
   if (!state.tracks.length) return;
   if (dir > 0 && state.queue.length) {
@@ -115,12 +140,16 @@ function step(dir) {
   const current = state.tracks[state.index];
   const pos = list.indexOf(current);
   let next;
-  if (pos < 0) next = list[0];
-  else if (state.shuffle && n > 1) {
+  if (dir > 0) {
+    next = peekNext();
+  } else if (pos < 0) {
+    next = list[0];
+  } else if (state.shuffle && n > 1) {
     do { next = list[Math.floor(Math.random() * n)]; } while (next === current);
   } else {
     next = list[(pos + dir + n) % n];
   }
+  if (!next) return;
   loadTrack(state.tracks.indexOf(next), true, state.playView);
 }
 
@@ -248,7 +277,10 @@ function wirePlayer() {
 
   els.next.addEventListener("click", () => step(1));
 
-  els.shuffle.addEventListener("click", () => setToggle(els.shuffle, "shuffle", !state.shuffle));
+  els.shuffle.addEventListener("click", () => {
+    pendingNext = null;
+    setToggle(els.shuffle, "shuffle", !state.shuffle);
+  });
 
   els.repeat.addEventListener("click", () => setToggle(els.repeat, "repeat", !state.repeat));
 

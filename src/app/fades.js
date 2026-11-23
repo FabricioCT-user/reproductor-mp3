@@ -64,10 +64,8 @@ function hasNext() {
   const pos = list.indexOf(current);
   const last = pos === list.length - 1;
   if (last && !state.repeat && !state.shuffle) return false;
-  if (!state.shuffle) {
-    const next = pos < 0 ? list[0] : list[(pos + 1) % list.length];
-    if (isVideoTrack(next)) return false;
-  }
+  const next = peekNext();
+  if (!next || isVideoTrack(next)) return false;
   return true;
 }
 

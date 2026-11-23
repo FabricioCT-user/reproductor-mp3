@@ -376,6 +376,17 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     // la ganancia vuelve a 1 en el siguiente ciclo de audio, no en el mismo instante
     const settled = await until(() => ev("decks.every(d => Math.abs(d._gain.gain.value - 1) < 0.001)"), 1500);
     check("fundido: al terminar, el deck anterior queda pausado y ambos con ganancia 1", ev("otherDeck().paused") && settled, `ganancias=${ev("decks.map(d => d._gain.gain.value.toFixed(3)).join('/')")}`);
+
+    ev("els.shuffle.click()");
+    const beforeShuffle = ev("media");
+    win.loadTrack(0, true, "all");
+    await until(() => ev("media.currentTime") > 0.3);
+    await seekNearEnd(ev, 3.3);
+    check("fundido con aleatorio (solo audio): empieza al acercarse al final", await until(() => ev("xfade !== null"), 3500));
+    check("fundido con aleatorio (solo audio): pasa a otra pista en el otro deck", ev("media") !== beforeShuffle && ev("state.index !== 0"), ev("state.index"));
+    await until(() => ev("xfade === null"), 4000);
+    ev("els.shuffle.click()");
+
     win.setCrossfade(0);
     ev("media.pause()");
   });
@@ -692,6 +703,16 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
       return rec?.meta?.kind === "audio";
     }, 3000);
     check("video: la reclasificación a audio se guarda en meta.kind", saved);
+
+    // 6. Aleatorio con biblioteca audio + video: nunca inicia fundido hacia un video
+    ev("state.playlists.push({ id: 'mix-av', name: 'Mix AV', ids: [state.tracks[0].id, state.tracks[1].id] })");
+    ev("els.shuffle.click()");
+    win.loadTrack(0, true, "mix-av");
+    await until(() => ev("!media.paused && media.currentTime > 0.2"));
+    await seekNearEnd(ev, 0.8);
+    check("video: con aleatorio hacia video pasa al video al terminar", await until(() => ev("state.index === 1"), 4000), ev("state.index"));
+    check("video: con aleatorio hacia video no intenta fundido", xfades === 0 && ev("xfade === null"), `xfades=${xfades}`);
+    ev("els.shuffle.click()");
 
     win.startCrossfade = realXfade;
     win.setCrossfade(0);
