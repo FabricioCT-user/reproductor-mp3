@@ -184,6 +184,8 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     win.loadTrack(0, true, "all");
     check("reproducir: el tiempo avanza", await until(() => ev("media.currentTime") > 0.4), ev("media.currentTime"));
     check("reproducir: el icono pasa a pausa", ev("els['play-icon'].innerHTML").includes("M6 5h4"));
+    check("decks: dos <video> en el escenario, oculto mientras suena audio",
+      ev("decks.every(d => d.tagName === 'VIDEO' && d.parentElement === $('stage'))") && ev("getComputedStyle($('stage')).display") === "none");
     ev("els.next.click()");
     check("siguiente", ev("state.index") === 1);
     await sleep(500);
