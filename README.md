@@ -131,10 +131,11 @@ src/
   storage.js       biblioteca en IndexedDB (v2: metadatos en «tracks», archivos aparte en «files»; migra la v1 sola)
   app/             la aplicación, un archivo por función:
                    core, library, playlists, lyrics-ui, player, eq, fades, launcher, editor, theme, main
-electron/          app de escritorio (en construcción): main.js (protocolo app://reproductor/, ventana endurecida, instancia
+electron/          app de escritorio: main.js (protocolo app://reproductor/, ventana endurecida, instancia
                    única y archivos abiertos desde el sistema), preload.js (puente mínimo), lib/servir.js (lista blanca
                    del protocolo), lib/argumentos.js, lib/rutas.js (validar rutas), lib/entregas.js (ids de archivos abiertos),
-                   lib/enlaces.js (registro de videos enlazados), lib/rango.js y lib/medios.js (servir videos con Range)
+                   lib/enlaces.js (registro de videos enlazados), lib/rango.js, lib/medios.js (servir videos con Range)
+                   y lib/escritorio.js (integración .desktop opcional del AppImage)
 launcher/          servidor local en Python y lanzador para «Abrir con…» (instalar.sh lo registra en Linux)
 tests/
   unit/            pruebas con node:test (módulos puros, escritor de etiquetas, almacenamiento y migración, coherencia del proyecto, servidor y lanzador)
@@ -154,13 +155,26 @@ npm install && npm run smoke:app # las mismas de humo dentro de Electron, sin ve
 
 Las unitarias cargan los mismos scripts que el navegador dentro de un contexto aislado de Node y construyen archivos MP3, FLAC, Ogg y MP4 sintéticos para comprobar lectores y escritor (unsincronización, cabecera extendida, ID3v2.2, carátulas, bloques FLAC…). Las de humo importan archivos, reproducen, reordenan, editan, exportan, recargan y fuerzan fallos (archivos que no se pueden reproducir, `localStorage` corrupto, registros dañados) y comprueban que una biblioteca guardada con la versión anterior de la base (v1) se migra sin perder canciones, letras, ediciones ni orden. La prueba de humo del navegador usa audio generado en el propio navegador y no necesita ffmpeg; la de Electron genera con ffmpeg los videos que enlaza (uno de 5 minutos, para que los saltos abran y cancelen peticiones de verdad) y cuenta en `/proc/self/fd` que no quede ningún archivo abierto.
 
-**App de escritorio (Electron, en construcción)**
+**App de escritorio (Electron) — instalación y empaquetado**
 
 ```bash
-npm install          # instala Electron 45.4.1 (descarga el binario la primera vez que se ejecuta)
+npm install          # instala Electron 45.4.1 y electron-builder (solo desarrollo)
 npm run app          # abre la app (con menú y herramientas de desarrollo)
-npm run dist         # empaqueta con electron-builder en dist/ (por ahora solo la carpeta, sin instalador)
+npm run dist         # genera los paquetes Linux en dist/ (.pacman, .AppImage y .deb)
 ```
+
+> En Arch Linux, `electron-builder` usa su `fpm` empaquetado (Ruby) para generar `.pacman` y `.deb`, que necesita `libxcrypt-compat` (`libcrypt.so.1`). Si solo quieres el AppImage: `npx electron-builder --linux AppImage`.
+
+- **Arch Linux (`.pacman`):** instala el paquete generado en `dist/` con `sudo pacman -U dist/reproductor-mp3-*.pacman`. Registra el binario `/usr/bin/reproductor`, el icono y el archivo `.desktop` con asociaciones de audio y video («Abrir con… → Reproductor»). Configura el sandbox automáticamente (espacios de nombres de usuario o `chrome-sandbox` SUID si el kernel no los permite; nunca `--no-sandbox`).
+- **AppImage (`.AppImage`):** dale permiso de ejecución (`chmod +x dist/Reproductor-*.AppImage`) y ejecútalo directamente. Como el AppImage no registra asociaciones por sí solo, puedes integrarlo en el menú y en «Abrir con…» con:
+
+  ```bash
+  ./Reproductor-1.0.0.AppImage --instalar-escritorio
+  ```
+
+  Esto escribe `~/.local/share/applications/reproductor.desktop` y el icono en `~/.local/share/icons/hicolor/512x512/apps/reproductor.png` apuntando a la ruta actual del AppImage (vuelve a ejecutarlo si lo mueves de sitio; para quitarlo basta borrar ambos archivos). También funciona con gestores como AppImageLauncher o Gear Lever. En distros donde AppArmor restringe los espacios de nombres de usuario sin privilegios (Ubuntu ≥ 23.10), usa el paquete `.deb` en lugar del AppImage.
+- **Debian / Ubuntu (`.deb`):** `sudo apt install ./dist/reproductor-mp3_*.deb`. Registra las mismas asociaciones de audio y video e instala el perfil de AppArmor/sandbox.
+- **Sin auto-actualización ni telemetría:** los paquetes no se conectan a ningún servidor ni comprueban actualizaciones.
 
 La app sirve la misma interfaz desde `app://reproductor/`, que solo entrega los archivos de `FILES` de `sw.js` (más `index.html`) y repite la CSP del meta como cabecera. La ventana va endurecida: aislamiento de contexto, sandbox, sin Node en la página, sin ventanas nuevas ni navegación fuera de la app y sin permisos salvo pantalla completa; el paquete lleva los *fuses* de Electron que impiden usarlo como Node (`ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS`, `--inspect`) y solo carga la app del `.asar`. Dentro de la app no se registra el service worker.
 

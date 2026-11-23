@@ -135,11 +135,60 @@ test("Electron: el paquete incluye lo que sirve el protocolo y no las pruebas", 
   const glob = (g) => new RegExp(`^${g.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*\*\//g, "(?:.*/)?").replace(/\*/g, "[^/]*")}$`);
   const patrones = pkg.build.files.map(glob);
   const incluido = (f) => patrones.some((p) => p.test(f));
-  for (const f of [...servir.listaBlanca(read("sw.js")), "sw.js", "package.json", pkg.main, "electron/preload.js", "electron/lib/servir.js", "electron/lib/argumentos.js", "electron/lib/rutas.js", "electron/lib/entregas.js"]) {
+  for (const f of [...servir.listaBlanca(read("sw.js")), "sw.js", "package.json", pkg.main, "electron/preload.js", "electron/lib/servir.js", "electron/lib/argumentos.js", "electron/lib/rutas.js", "electron/lib/entregas.js", "electron/lib/escritorio.js"]) {
     assert.ok(incluido(f), `build.files no incluye ${f}`);
   }
-  for (const f of [...servir.PRUEBAS, "tests/smoke-app.js", "launcher/servidor.py", "node_modules/x/index.js"]) assert.ok(!incluido(f), `build.files incluye ${f}`);
+  for (const f of [...servir.PRUEBAS, "tests/smoke-app.js", "launcher/servidor.py", "docs/PLAN-MP4.md", ".github/workflows/test.yml", "node_modules/x/index.js"]) assert.ok(!incluido(f), `build.files incluye ${f}`);
   assert.equal(pkg.main, "electron/main.js");
+});
+
+test("Electron: empaquetado, asociaciones de archivos (fileAssociations ↔ rutas.js ↔ isMedia) y sin --no-sandbox", () => {
+  const b = pkg.build;
+  assert.equal(b.productName, "Reproductor");
+  assert.equal(b.appId, "io.github.fabricioct-user.reproductor");
+  assert.equal(b.asar, true);
+  assert.equal(b.publish, null, "no debe configurarse auto-actualización");
+  assert.ok(fs.existsSync(path.join(ROOT, b.linux.icon)), `falta icono ${b.linux.icon}`);
+  assert.ok(b.linux.target.includes("pacman") && b.linux.target.includes("AppImage"), "debe empaquetar pacman y AppImage");
+  assert.ok(b.pacman.executableArgs.includes("%F"), "pacman debe pasar %F");
+  assert.ok(b.deb.executableArgs.includes("%F"), "deb debe pasar %F");
+  assert.ok(Array.isArray(b.appImage.executableArgs), "appImage debe fijar executableArgs para evitar --no-sandbox por defecto");
+  assert.doesNotMatch(JSON.stringify(b), /--no-sandbox/, "nunca usar --no-sandbox");
+
+  // Extensiones de fileAssociations === extensiones de audio/video en rutas.js === isMedia de src/util.js.
+  const rutas = require("../../electron/lib/rutas");
+  const util = require("./helpers").load("util.js");
+  const isMedia = util("isMedia");
+
+  const extsPaquete = b.fileAssociations.flatMap((a) => (Array.isArray(a.ext) ? a.ext : [a.ext]));
+  assert.equal(new Set(extsPaquete).size, extsPaquete.length, "extensión duplicada en fileAssociations");
+  for (const ext of extsPaquete) assert.match(ext, /^[a-z0-9]+$/, `extensión mal escrita en fileAssociations: ${ext}`);
+
+  const extsRutas = Object.entries(rutas.EXTENSIONES)
+    .filter(([, [clase]]) => clase === "audio" || clase === "video")
+    .map(([ext]) => ext.slice(1));
+  assert.deepEqual([...extsPaquete].sort(), [...extsRutas].sort(), "fileAssociations desincronizado con electron/lib/rutas.js");
+
+  const utilSrc = read("src/util.js");
+  const extsUtil = [
+    ...utilSrc.match(/isAudio[\s\S]*?\\\.\(([a-z0-9|]+)\)\$/)[1].split("|"),
+    ...utilSrc.match(/isVideo[\s\S]*?\\\.\(([a-z0-9|]+)\)\$/)[1].split("|"),
+  ];
+  assert.deepEqual([...extsPaquete].sort(), [...extsUtil].sort(), "fileAssociations desincronizado con isAudio/isVideo de src/util.js");
+  for (const ext of extsPaquete) assert.equal(isMedia({ name: `prueba.${ext}`, type: "" }), true, `isMedia no reconoce .${ext}`);
+
+  // Todos los MIME de audio/video de rutas.js están en linux.mimeTypes y sin duplicados,
+  // y coinciden con los integrados en electron/lib/escritorio.js (para el AppImage empaquetado).
+  const escritorio = require("../../electron/lib/escritorio");
+  const mimes = b.linux.mimeTypes;
+  assert.ok(Array.isArray(mimes) && mimes.length > 0);
+  assert.equal(new Set(mimes).size, mimes.length, "MIME duplicado en linux.mimeTypes");
+  assert.deepEqual(escritorio.MIME_TYPES, mimes, "escritorio.MIME_TYPES desincronizado con build.linux.mimeTypes");
+  assert.equal(escritorio.NOMBRE_APP, b.productName);
+  assert.equal(escritorio.CATEGORIAS, b.linux.category);
+  for (const [ext, [clase, mime]] of Object.entries(rutas.EXTENSIONES)) {
+    if (clase === "audio" || clase === "video") assert.ok(mimes.includes(mime), `linux.mimeTypes no incluye ${mime} (${ext})`);
+  }
 });
 
 test("Electron: versiones exactas, fuses de seguridad y npm test sin Electron", () => {

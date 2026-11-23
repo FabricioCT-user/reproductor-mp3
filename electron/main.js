@@ -9,6 +9,7 @@ const path = require("node:path");
 const { analizar } = require("./lib/argumentos");
 const { Enlaces } = require("./lib/enlaces");
 const { Entregas } = require("./lib/entregas");
+const escritorio = require("./lib/escritorio");
 const medios = require("./lib/medios");
 const rutas = require("./lib/rutas");
 const servir = require("./lib/servir");
@@ -16,6 +17,20 @@ const servir = require("./lib/servir");
 const RAIZ = path.join(__dirname, "..");
 const args = analizar(process.argv, { empaquetada: app.isPackaged });
 const SMOKE_LIMITE_MS = 10 * 60 * 1000;
+
+// Integración opcional del AppImage en el escritorio: escribe .desktop e icono y sale sin abrir ventana.
+if (args.instalarEscritorio) {
+  escritorio.instalar({ raiz: RAIZ }).then((r) => {
+    console.log(`Instalado: ${r.escritorio}`);
+    console.log(`Icono: ${r.icono}`);
+    console.log(`Ejecutable: ${r.ejecutable}`);
+    app.exit(0);
+  }).catch((e) => {
+    console.error(`Error al instalar la entrada de escritorio: ${e.message}`);
+    app.exit(1);
+  });
+  return;
+}
 
 // La prueba de humo vacía la base de datos: nunca sobre la carpeta de datos real.
 if (args.smoke && !args.datos) {
