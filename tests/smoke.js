@@ -376,6 +376,27 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     // la ganancia vuelve a 1 en el siguiente ciclo de audio, no en el mismo instante
     const settled = await until(() => ev("decks.every(d => Math.abs(d._gain.gain.value - 1) < 0.001)"), 1500);
     check("fundido: al terminar, el deck anterior queda pausado y ambos con ganancia 1", ev("otherDeck().paused") && settled, `ganancias=${ev("decks.map(d => d._gain.gain.value.toFixed(3)).join('/')")}`);
+
+    ev("els.shuffle.click()");
+    const beforeShuffle = ev("media");
+    win.loadTrack(0, true, "all");
+    await until(() => ev("media.currentTime") > 0.3);
+    await seekNearEnd(ev, 3.3);
+    check("fundido con aleatorio (solo audio): empieza al acercarse al final", await until(() => ev("xfade !== null"), 3500));
+    check("fundido con aleatorio (solo audio): pasa a otra pista en el otro deck", ev("media") !== beforeShuffle && ev("state.index !== 0"), ev("state.index"));
+    await until(() => ev("xfade === null"), 4000);
+
+    // La pista que anuncia peekNext() es la que carga step(1), y alternar el aleatorio descarta la elección.
+    const peeked = ev("state.tracks.indexOf(peekNext())");
+    check("aleatorio: peekNext es estable mientras no se avanza", ev("state.tracks.indexOf(peekNext())") === peeked);
+    ev("step(1)");
+    check("aleatorio: step(1) carga la pista que anunció peekNext", ev("state.index") === peeked, `${ev("state.index")} vs ${peeked}`);
+    ev("peekNext()");
+    ev("els.shuffle.click()");
+    check("aleatorio: desactivarlo descarta la elección pendiente", ev("pendingNext") === null);
+    ev("els.shuffle.click()");
+    ev("els.shuffle.click()");
+
     win.setCrossfade(0);
     ev("media.pause()");
   });
@@ -589,6 +610,123 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
       { name: "texto.mp3", blob: "no soy un archivo", type: "audio/mpeg" }, // blob que no es Blob
       { name: "bueno.wav", blob: new File([wavBytes({ seconds: 1 })], "bueno.wav", { type: "audio/wav" }), type: "audio/wav" },
     ]);
+  });
+
+  await scenario("Video en el escenario", async ({ win, ev }) => {
+    async function makeWebm(name, { withVideo = true, seconds = 2.6 } = {}) {
+      const ac = new win.AudioContext();
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      const dest = ac.createMediaStreamDestination();
+      osc.frequency.value = 440;
+      gain.gain.value = 0.25;
+      osc.connect(gain);
+      gain.connect(dest);
+      osc.start();
+
+      const tracks = [...dest.stream.getAudioTracks()];
+      let timer = 0;
+      if (withVideo) {
+        const canvas = win.document.createElement("canvas");
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext("2d");
+        let frameIdx = 0;
+        const paint = () => {
+          ctx.fillStyle = "#162030";
+          ctx.fillRect(0, 0, 64, 64);
+          ctx.fillStyle = "#4fa3ff";
+          ctx.fillRect((frameIdx++ * 6) % 48, 20, 16, 24);
+        };
+        paint();
+        timer = win.setInterval(paint, 100);
+        tracks.unshift(...canvas.captureStream(10).getVideoTracks());
+      }
+
+      const stream = new win.MediaStream(tracks);
+      const mime = withVideo ? "video/webm" : "audio/webm";
+      const rec = win.MediaRecorder.isTypeSupported(mime) ? new win.MediaRecorder(stream, { mimeType: mime }) : new win.MediaRecorder(stream);
+      const chunks = [];
+      rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+      const stopped = new Promise((r) => { rec.onstop = r; });
+      rec.start();
+      await sleep(seconds * 1000);
+      rec.stop();
+      await stopped;
+      if (timer) win.clearInterval(timer);
+      tracks.forEach((t) => t.stop());
+      await ac.close().catch(() => {});
+      return new win.File(chunks, name, { type: mime, lastModified: withVideo ? 101 : 102 });
+    }
+
+    const videoFile = await makeWebm("clip.webm", { withVideo: true, seconds: 2.6 });
+    const audioWebm = await makeWebm("solo-audio.webm", { withVideo: false, seconds: 1.5 });
+    await win.addFiles([
+      wav(win, "a.wav", { seconds: 3, mtime: 1 }),
+      videoFile,
+      wav(win, "b.wav", { seconds: 3, freq: 550, mtime: 2 }),
+      audioWebm,
+    ]);
+
+    let xfades = 0;
+    const realXfade = win.startCrossfade;
+    win.startCrossfade = (...a) => { xfades++; return realXfade(...a); };
+    win.setCrossfade(2);
+
+    // 1. Audio inicial: escenario oculto, visualizador visible, botón «Letra»
+    win.loadTrack(0, true, "all");
+    await until(() => ev("!media.paused && media.currentTime > 0.2"));
+    check("video: en audio el escenario está oculto y el visualizador visible",
+      ev("getComputedStyle($('stage')).display === 'none' && !els.viz.hidden && els['lyrics-toggle'].textContent === 'Letra'"));
+
+    // 2. Transición audio → video sin fundido
+    await seekNearEnd(ev, 0.8);
+    check("video: pasa de audio a video al terminar", await until(() => ev("state.index === 1"), 4000), ev("state.index"));
+    check("video: audio → video no intenta fundido", xfades === 0 && ev("xfade === null"), `xfades=${xfades}`);
+
+    // 3. Reproduciendo video: videoWidth > 0, deck activo visible, visualizador parado, EQ conectado, botón «Subtítulos»
+    check("video: tiene videoWidth > 0", await until(() => ev("media.videoWidth > 0 && media.currentTime > 0.2"), 4000), ev("media.videoWidth"));
+    check("video: escenario visible con solo el deck activo",
+      ev("getComputedStyle($('stage')).display !== 'none' && !media.classList.contains('oculto') && otherDeck().classList.contains('oculto')"));
+    check("video: visualizador oculto y draw() parado", ev("els.viz.hidden && !vizRunning"));
+    check("video: botón pasa a Subtítulos y no abre el panel de letra",
+      (() => { ev("els['lyrics-toggle'].click()"); return ev("els['lyrics-toggle'].textContent === 'Subtítulos' && els.lyrics.hidden"); })());
+    const eqSignal = await until(() => ev("(() => { if (!analyser || !eqFilters.length) return false; const b = new Uint8Array(analyser.frequencyBinCount); analyser.getByteFrequencyData(b); return b.some(v => v > 0); })()"), 3000);
+    check("video: el EQ sigue conectado al grafo de Web Audio", eqSignal && ev("eqFilters.length === 10 && decks.every(d => d._gain)"));
+
+    // 4. Transición video → audio sin fundido
+    await seekNearEnd(ev, 0.8);
+    check("video: pasa de video a audio al terminar", await until(() => ev("state.index === 2"), 4000), ev("state.index"));
+    check("video: video → audio no intenta fundido", xfades === 0 && ev("xfade === null"), `xfades=${xfades}`);
+    check("video: al volver a audio se oculta el escenario y vuelve el visualizador",
+      await until(() => ev("getComputedStyle($('stage')).display === 'none' && !els.viz.hidden && vizRunning && els['lyrics-toggle'].textContent === 'Letra'"), 2500));
+
+    // 5. .webm solo audio (videoWidth === 0) se reclasifica a audio y se guarda en meta.kind
+    win.loadTrack(3, true, "all");
+    check("video: .webm sin imagen se reclasifica a audio",
+      await until(() => ev("state.tracks[3].meta.kind === 'audio' && getComputedStyle($('stage')).display === 'none' && !els.viz.hidden"), 4000),
+      ev("state.tracks[3].meta.kind"));
+    const saved = await until(async () => {
+      const db = await openDbAsIs();
+      const rec = (await getAll(db, "tracks")).find((r) => r.name === "solo-audio.webm");
+      db.close();
+      return rec?.meta?.kind === "audio";
+    }, 3000);
+    check("video: la reclasificación a audio se guarda en meta.kind", saved);
+
+    // 6. Aleatorio con biblioteca audio + video: nunca inicia fundido hacia un video
+    ev("state.playlists.push({ id: 'mix-av', name: 'Mix AV', ids: [state.tracks[0].id, state.tracks[1].id] })");
+    ev("els.shuffle.click()");
+    win.loadTrack(0, true, "mix-av");
+    await until(() => ev("!media.paused && media.currentTime > 0.2"));
+    await seekNearEnd(ev, 0.8);
+    check("video: con aleatorio hacia video pasa al video al terminar", await until(() => ev("state.index === 1"), 4000), ev("state.index"));
+    check("video: con aleatorio hacia video no intenta fundido", xfades === 0 && ev("xfade === null"), `xfades=${xfades}`);
+    ev("els.shuffle.click()");
+
+    win.startCrossfade = realXfade;
+    win.setCrossfade(0);
+    ev("media.pause()");
   });
 
   /* ---------- Resultado ---------- */

@@ -4,6 +4,23 @@ const ICON_PLAY = '<path d="M8 5v14l11-7z"/>';
 
 const ICON_PAUSE = '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
 
+const isVideoTrack = (t) => t?.meta?.kind === "video";
+
+// Muestra el escenario (solo el deck activo) y oculta el visualizador mientras suena un video.
+function syncStage(t) {
+  const video = isVideoTrack(t);
+  $("stage")?.classList.toggle("oculto", !video);
+  decks.forEach((d) => d.classList.toggle("oculto", d !== media));
+  els.viz.hidden = video;
+  if (video) {
+    vizRunning = false;
+    ctx2d.clearRect(0, 0, els.viz.width, els.viz.height);
+  } else if (analyser && !media.paused && !vizRunning) {
+    vizRunning = true;
+    draw();
+  }
+}
+
 // Título, artista y carátula (lo que cambia al editar etiquetas sin reiniciar la reproducción).
 function showMeta(t) {
   if (t) loadCover(t);
@@ -30,6 +47,7 @@ function showTrack(t) {
   els.seek.disabled = !t;
   els.seek.value = 0;
   els.current.textContent = els.duration.textContent = "0:00";
+  syncStage(t);
   renderLyrics();
 }
 
@@ -47,8 +65,9 @@ function updatePositionState() {
 }
 
 function loadTrack(i, autoplay, view = "all") {
-  if (xfade && !xfade.starting) endCrossfade(); // un cambio manual corta el fundido en curso
+  pendingNext = null;
   const t = state.tracks[i];
+  if (xfade && (!xfade.starting || isVideoTrack(t))) endCrossfade(); // un cambio manual o un video corta el fundido
   if (!t || t.unavailable) return;
   state.index = i;
   state.playView = view;
@@ -83,6 +102,30 @@ async function ensureSound() {
 // Pistas entre las que se navega: la vista desde la que se empezó a reproducir.
 const contextList = () => listTracks(state.playView).filter((t) => !t.unavailable);
 
+let pendingNext = null;
+
+// Elige (y fija en modo aleatorio) la siguiente pista para dir > 0 sin alterar la cola ni el estado.
+function peekNext() {
+  if (!state.tracks.length) return null;
+  if (state.queue.length) {
+    const queued = state.queue.find((q) => !q.unavailable);
+    if (queued) return queued;
+  }
+  const list = contextList();
+  const n = list.length;
+  if (!n) return null;
+  const current = state.tracks[state.index];
+  const pos = list.indexOf(current);
+  if (pos < 0) return list[0];
+  if (state.shuffle && n > 1) {
+    if (!pendingNext || pendingNext.unavailable || pendingNext === current || !list.includes(pendingNext)) {
+      do { pendingNext = list[Math.floor(Math.random() * n)]; } while (pendingNext === current);
+    }
+    return pendingNext;
+  }
+  return list[(pos + 1) % n];
+}
+
 function step(dir) {
   if (!state.tracks.length) return;
   if (dir > 0 && state.queue.length) {
@@ -97,12 +140,16 @@ function step(dir) {
   const current = state.tracks[state.index];
   const pos = list.indexOf(current);
   let next;
-  if (pos < 0) next = list[0];
-  else if (state.shuffle && n > 1) {
+  if (dir > 0) {
+    next = peekNext();
+  } else if (pos < 0) {
+    next = list[0];
+  } else if (state.shuffle && n > 1) {
     do { next = list[Math.floor(Math.random() * n)]; } while (next === current);
   } else {
     next = list[(pos + dir + n) % n];
   }
+  if (!next) return;
   loadTrack(state.tracks.indexOf(next), true, state.playView);
 }
 
@@ -180,7 +227,7 @@ function accentColor() {
 function draw() {
   const { width: w, height: h } = els.viz;
   ctx2d.clearRect(0, 0, w, h);
-  if (media.paused) { vizRunning = false; return; }
+  if (media.paused || isVideoTrack(state.tracks[state.index])) { vizRunning = false; return; }
   requestAnimationFrame(draw);
 
   analyser.getByteFrequencyData(freq);
@@ -230,7 +277,10 @@ function wirePlayer() {
 
   els.next.addEventListener("click", () => step(1));
 
-  els.shuffle.addEventListener("click", () => setToggle(els.shuffle, "shuffle", !state.shuffle));
+  els.shuffle.addEventListener("click", () => {
+    pendingNext = null;
+    setToggle(els.shuffle, "shuffle", !state.shuffle);
+  });
 
   els.repeat.addEventListener("click", () => setToggle(els.repeat, "repeat", !state.repeat));
 
@@ -255,12 +305,22 @@ function wirePlayer() {
   onMedia("play", () => {
     els["play-icon"].innerHTML = ICON_PAUSE;
     updatePositionState();
-    if (analyser && !vizRunning) { vizRunning = true; draw(); }
+    if (analyser && !vizRunning && !isVideoTrack(state.tracks[state.index])) { vizRunning = true; draw(); }
   });
 
   onMedia("pause", () => { els["play-icon"].innerHTML = ICON_PLAY; updatePositionState(); if (xfade) endCrossfade(); });
 
-  onMedia("loadedmetadata", () => { els.duration.textContent = formatTime(media.duration); updatePositionState(); });
+  onMedia("loadedmetadata", () => {
+    els.duration.textContent = formatTime(media.duration);
+    updatePositionState();
+    const t = state.tracks[state.index];
+    if (t && isVideoTrack(t) && media.videoWidth === 0 && /\.(webm|mkv)$/i.test(t.fileName)) {
+      t.meta.kind = "audio";
+      if (t.id != null) Storage.setMeta(t.id, t.meta, META_VERSION).catch(() => {});
+      syncStage(t);
+      renderLyrics();
+    }
+  });
 
   onMedia("timeupdate", () => {
     els.current.textContent = formatTime(media.currentTime);

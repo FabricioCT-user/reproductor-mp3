@@ -52,15 +52,25 @@ function setCrossfade(s) {
 
 // ¿Pasará la reproducción sola a otra canción al terminar esta? (misma lógica que «ended»)
 function hasNext() {
+  const current = state.tracks[state.index];
+  if (isVideoTrack(current)) return false;
+  if (state.queue.length) {
+    const queued = state.queue.find((q) => !q.unavailable);
+    if (queued) return !isVideoTrack(queued);
+  }
   const list = contextList();
   if (!list.length) return false;
   if (state.repeat && !state.shuffle && list.length === 1) return false; // esa canción se repite sin fundido
-  const last = list.indexOf(state.tracks[state.index]) === list.length - 1;
-  return !(last && !state.repeat && !state.shuffle && !state.queue.length);
+  const pos = list.indexOf(current);
+  const last = pos === list.length - 1;
+  if (last && !state.repeat && !state.shuffle) return false;
+  const next = peekNext();
+  if (!next || isVideoTrack(next)) return false;
+  return true;
 }
 
 function crossfadeCheck() {
-  if (!state.crossfade || xfade || !analyser || media.paused || sleep?.track) return;
+  if (!state.crossfade || xfade || !analyser || media.paused || sleep?.track || isVideoTrack(state.tracks[state.index])) return;
   const dur = media.duration;
   if (!isFinite(dur) || dur < 3) return;
   const remaining = (dur - media.currentTime) / media.playbackRate; // tiempo real, no de la pista
