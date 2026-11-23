@@ -9,6 +9,7 @@
   --accent-ink: #0b0d14;
   --accent-soft: #7c93ff22;
   --danger: #ff7a7a;
+  --warn: #f0b44c;
   --fill-1: #ffffff0d;
   --fill-2: #ffffff14;
   --tile: #222633;
@@ -34,6 +35,7 @@
   --accent-ink: #ffffff;
   --accent-soft: #3f58d61f;
   --danger: #d62f3f;
+  --warn: #a65f00;
   --fill-1: #0000000a;
   --fill-2: #00000012;
   --tile: #dde1ed;
@@ -230,9 +232,10 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .thumb.video-thumb { position: relative; color: #fff; background-color: #090a0d; }
 .video-mark { font-size: .8rem; text-shadow: 0 1px 3px #000; }
 .t-text { flex: 1; min-width: 0; }
-.t-name, .t-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.t-name, .t-sub, .t-warn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .t-name { font-size: .92rem; }
 .t-sub { font-size: .78rem; color: var(--muted); }
+.t-warn { font-size: .74rem; color: var(--warn); margin-top: 2px; }
 .t-btn { opacity: 0; background: none; border: 0; color: var(--muted); font-size: 1.1rem; cursor: pointer; padding: 4px 9px; border-radius: 6px; }
 .playlist li:hover .t-btn, .playlist li:focus-within .t-btn, .t-btn:focus-visible { opacity: 1; }
 .playlist li:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

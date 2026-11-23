@@ -63,13 +63,45 @@ async function linkVideo(file) {
 
 const forgetLink = (t) => { if (t.linkId) window.reproductor?.olvidar?.(t.linkId).catch(() => {}); };
 
+const isMp4File = (f) => /\.(mp4|m4v|m4a|mov)$/i.test(f.name)
+  || /^video\/(mp4|quicktime|x-m4v)$/i.test(f.type || "")
+  || /^audio\/(mp4|x-m4a)$/i.test(f.type || "");
+
+const isMkvFile = (f) => /\.(webm|mkv)$/i.test(f.name)
+  || /^(video|audio)\/(webm|x-matroska)$/i.test(f.type || "");
+
+function assessTrackCompat(t) {
+  const res = checkCompatibility({
+    kind: t.meta?.kind,
+    ext: extOf(t.fileName),
+    mime: t.file?.type || "",
+    codecs: t.meta?.codecs || "",
+  }, (type) => media.canPlayType(type));
+  t.compatWarning = res.ok ? null : res.reason;
+  t.ac3Unsupported = res.ac3Unsupported;
+}
+
 async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = null) {
   const meta = cachedMeta || await Tags.read(file);
-  if (/\.(mp4|m4v|mov)$/i.test(file.name) || file.type === "video/mp4" || file.type === "video/quicktime") {
-    try { meta.kind = await MP4.kind(file) || meta.kind; } catch { /* tipo MIME como alternativa */ }
+  let probedCached = false;
+  if (isMp4File(file) && (!cachedMeta || cachedMeta.codecs == null)) {
+    try {
+      const info = await MP4.probe(file);
+      if (info.kind) meta.kind = info.kind;
+      meta.codecs = info.codecs;
+      probedCached = !!cachedMeta;
+    } catch { /* tipo MIME como alternativa */ }
+  } else if (isMkvFile(file) && (!cachedMeta || cachedMeta.codecs == null)) {
+    try {
+      const info = await MKV.probe(file);
+      if (info.kind) meta.kind = info.kind;
+      meta.codecs = info.codecs;
+      probedCached = !!cachedMeta;
+    } catch { /* tipo MIME como alternativa */ }
   }
   if (!meta.kind && isVideo(file)) meta.kind = "video";
   const savedMeta = trackMeta(meta, file);
+  if (probedCached && id != null) Storage.setMeta(id, savedMeta, META_VERSION).catch(() => {});
   const fallback = file.name.replace(/\.[^.]+$/, "");
   const t = {
     id,
@@ -89,6 +121,7 @@ async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = n
     edits,
   };
   applyEdits(t);
+  assessTrackCompat(t);
   return t;
 }
 
@@ -156,12 +189,15 @@ async function addFiles(fileList) {
   const lrcFiles = all.filter(isLrc);
   const listFiles = all.filter(isListFile);
   const files = all.filter(isMedia);
+  const unsupportedVideos = all.filter((f) => !isMedia(f) && !isLrc(f) && !isListFile(f) && UNSUPPORTED_VIDEO_EXT.has(extOf(f.name)));
 
   let added = 0;
   let dupes = 0;
   let failed = 0;
   let noSpace = 0;
   let storeErr = 0;
+  let compatWarned = 0;
+  let lastCompatReason = "";
   const keys = new Set(state.tracks.map((t) => t.key));
   for (const [i, file] of files.entries()) {
     const key = fileKey(file);
@@ -180,6 +216,7 @@ async function addFiles(fileList) {
       catch (e) { storeFail = e?.name === "QuotaExceededError" ? "quota" : "other"; }
       state.tracks.push(track);
       added++;
+      if (track.compatWarning) { compatWarned++; lastCompatReason = track.compatWarning; }
       if (storeFail === "quota") noSpace++;
       else if (storeFail) storeErr++;
       if (added % 25 === 0) render();
@@ -203,13 +240,25 @@ async function addFiles(fileList) {
   if (failed) msg.push(`${failed} no se pudieron leer`);
   if (noSpace) msg.push(`${noSpace} ${noSpace === 1 ? "pista" : "pistas"} solo para esta sesión: no hay espacio`);
   if (storeErr) msg.push(`${storeErr} ${storeErr === 1 ? "pista" : "pistas"} solo para esta sesión: no se pudo guardar`);
+  if (compatWarned === 1 && added === 1 && !dupes && !failed && !noSpace && !storeErr) {
+    msg.length = 0;
+    msg.push(`Puede no reproducirse: ${lastCompatReason}`);
+  } else if (compatWarned) {
+    msg.push(`${compatWarned} puede(n) no reproducirse`);
+  }
   if (lyr?.matched) msg.push(`letra para ${lyr.matched}`);
   if (lyr?.missed) msg.push(`${lyr.missed} .lrc sin pareja`);
   if (resolved) msg.push(`${resolved} canción(es) completan listas importadas`);
   if (imp) msg.push(...importSummary(imp));
-  if (all.length && !files.length && !lrcFiles.length && !listFiles.length) msg.push("No se encontró ningún archivo multimedia");
-  const warnStore = noSpace > 0 || storeErr > 0;
-  if (msg.length && (warnStore || !(added === 1 && all.length === 1))) toast(msg.join(" · "), warnStore ? 5000 : undefined);
+  if (unsupportedVideos.length && !added && !dupes && !failed && !lrcFiles.length && !listFiles.length) {
+    msg.push(explainFailure("video", extOf(unsupportedVideos[0].name), ""));
+  } else if (unsupportedVideos.length) {
+    msg.push(`${unsupportedVideos.length} formato(s) no compatible(s) (${extOf(unsupportedVideos[0].name).toUpperCase()})`);
+  } else if (all.length && !files.length && !lrcFiles.length && !listFiles.length) {
+    msg.push("No se encontró ningún archivo multimedia");
+  }
+  const warnImportant = noSpace > 0 || storeErr > 0 || compatWarned > 0 || unsupportedVideos.length > 0;
+  if (msg.length && (warnImportant || !(added === 1 && all.length === 1))) toast(msg.join(" · "), warnImportant ? 6000 : undefined);
   else els.toast.hidden = true;
 }
 
@@ -385,6 +434,7 @@ function render() {
       const i = indexOf.get(t);
       const li = document.createElement("li");
       li.classList.toggle("unavailable", t.unavailable);
+      li.classList.toggle("compat-warn", !!t.compatWarning);
       li.tabIndex = 0; // se puede recorrer con Tab y activar con Intro
       li.classList.toggle("active", t === current);
       li.classList.toggle("selected", state.selected.has(t));
@@ -422,6 +472,13 @@ function render() {
         + (t.meta?.kind === "video" && t.meta.width > 0 && t.meta.height > 0 ? `${t.meta.width}×${t.meta.height} · ` : "")
         + ([t.artist, t.album].filter(Boolean).join(" · ") || "Artista desconocido");
       text.append(name, sub);
+      if (t.compatWarning) {
+        const warn = document.createElement("div");
+        warn.className = "t-warn";
+        warn.textContent = `⚠ Puede no reproducirse: ${t.compatWarning}`;
+        warn.title = warn.textContent;
+        text.append(warn);
+      }
 
       const btn = (cls, title, label, fn) => {
         const b = document.createElement("button");

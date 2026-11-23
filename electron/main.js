@@ -276,7 +276,7 @@ async function correrSmoke(win) {
     if (estado.done) break;
   }
   const resultados = [...(estado?.results || []), ...(await comprobacionesAbrir(win)), ...(await comprobacionesEnlaces(win)),
-    ...(await comprobacionesApp(win))];
+    ...(await comprobacionesCompatibilidad(win)), ...(await comprobacionesApp(win))];
   const fallos = resultados.filter((r) => !r.ok);
   for (const r of resultados) console.log(`${r.ok ? "ok  " : "FALLO"} ${r.name}${r.detail ? ` — ${r.detail}` : ""}`);
   if (!estado?.done) console.log(`FALLO: la prueba de humo no terminó en ${SMOKE_LIMITE_MS / 1000} s`);
@@ -503,6 +503,60 @@ async function comprobacionesEnlaces(win) {
       check("un enlace cuyo archivo ya no está no se borra al arrancar", d.hay && d.rec?.linkId === id && leerEnlaces().includes(id), d);
     } finally { fs.renameSync(`${rutaVideo}.movido`, rutaVideo); }
     check("al final no queda ningún descriptor abierto", await hastaCerrados(), abiertos());
+  } catch (e) {
+    check("comprobaciones sin excepciones", false, String(e?.stack || e));
+  }
+  return r;
+}
+
+// Compatibilidad de códecs (T3.1): smoke-app.js genera un MP4 H.264 + AC-3 real con ffmpeg.
+// En esta build de Electron el AC-3 reproduce mudo sin lanzar error: se detecta vía stsd + canPlayType,
+// se marca en la fila de la biblioteca y avisa al reproducirlo.
+async function comprobacionesCompatibilidad(win) {
+  const r = [];
+  const check = (name, ok, detail) => r.push({ name: `App, compatibilidad: ${name}`, ok: !!ok, detail: ok ? "" : JSON.stringify(detail) });
+  const ev = (js) => win.webContents.executeJavaScript(js, true);
+  const pausa = (ms) => new Promise((res) => setTimeout(res, ms));
+  const hasta = async (js, ms = 8000) => {
+    const fin = Date.now() + ms;
+    while (Date.now() < fin) { if (await ev(js)) return true; await pausa(100); }
+    return false;
+  };
+  const carpeta = path.dirname(rutas.aRuta(args.archivos[0], process.cwd()));
+  const rutaAc3 = path.join(path.dirname(carpeta), "ac3.mp4");
+  try {
+    await win.loadURL(`${servir.ORIGEN}/index.html`);
+    await ev("appReady.then(() => 1)");
+    const dbg = win.webContents.debugger;
+    dbg.attach("1.3");
+    try {
+      const { root } = await dbg.sendCommand("DOM.getDocument");
+      const { nodeId } = await dbg.sendCommand("DOM.querySelector", { nodeId: root.nodeId, selector: "#file-input" });
+      await dbg.sendCommand("DOM.setFileInputFiles", { nodeId, files: [rutaAc3] });
+    } finally { dbg.detach(); }
+    await hasta(`state.tracks.some((t) => t.fileName === "ac3.mp4")`);
+    const imp = await ev(`(() => {
+      const t = state.tracks.find((x) => x.fileName === "ac3.mp4");
+      const rows = [...els.playlist.querySelectorAll("li")];
+      const row = rows.find((li) => li.querySelector(".t-name")?.textContent === "ac3");
+      return {
+        hay: !!t, kind: t?.meta?.kind ?? null, codecs: t?.meta?.codecs ?? null,
+        warn: t?.compatWarning ?? null, rowWarn: row?.querySelector(".t-warn")?.textContent ?? null,
+        toastImport: els.toast.hidden ? "" : els.toast.textContent,
+      };
+    })()`);
+    check("MP4 AC-3 real se importa, extrae códecs (avc1 + ac-3) y marca la fila como «puede no reproducirse»",
+      imp.hay && imp.kind === "video" && /avc1\./i.test(imp.codecs || "") && /\bac-3\b/i.test(imp.codecs || "")
+      && /AC-3/i.test(imp.warn || "") && /puede no reproducirse/i.test(imp.rowWarn || "") && /AC-3/i.test(imp.rowWarn || ""), imp);
+
+    // Al reproducirlo, avisa de que el audio AC-3 no es compatible.
+    await ev(`els.toast.hidden = true; loadTrack(state.tracks.findIndex((t) => t.fileName === "ac3.mp4"), true, "all"); 1`);
+    const avisoOk = await hasta(`!els.toast.hidden && /el audio AC-3 no es compatible/i.test(els.toast.textContent)`);
+    const playInfo = await ev(`({ toast: els.toast.textContent, hidden: els.toast.hidden, w: media.videoWidth })`);
+    check("al reproducir el MP4 AC-3 muestra el aviso de audio AC-3 no compatible", avisoOk, playInfo);
+
+    await ev(`media.pause(); media.removeAttribute("src"); media.load(); removeTrack(state.tracks.findIndex((t) => t.fileName === "ac3.mp4")); 1`);
+    await pausa(200);
   } catch (e) {
     check("comprobaciones sin excepciones", false, String(e?.stack || e));
   }

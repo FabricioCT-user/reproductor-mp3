@@ -85,9 +85,26 @@ function updatePositionState() {
   } catch { /* El navegador puede no admitir el estado de posición. */ }
 }
 
+let warnedAc3 = false;
+let warnedNoVideo = false;
+
+function warnIfAc3(t) {
+  if (!t || warnedAc3) return;
+  const ac3 = t.ac3Unsupported || (!!t.meta?.codecs && checkCompatibility({
+    kind: t.meta.kind,
+    ext: extOf(t.fileName),
+    codecs: t.meta.codecs,
+  }, (type) => media.canPlayType(type)).ac3Unsupported);
+  if (!ac3) return;
+  warnedAc3 = true;
+  toast(t.meta?.kind === "video" ? "El audio AC-3 no es compatible (el video se verá sin sonido)" : "El audio AC-3 no es compatible", 6000);
+}
+
 function loadTrack(i, autoplay, view = "all") {
   clearTimeout(stageClickTimer);
   pendingNext = null;
+  warnedAc3 = false;
+  warnedNoVideo = false;
   const t = state.tracks[i];
   if (xfade && (!xfade.starting || isVideoTrack(t))) endCrossfade(); // un cambio manual o un video corta el fundido
   if (!t || t.unavailable) return;
@@ -338,7 +355,9 @@ function wirePlayer() {
   onMedia("play", () => {
     els["play-icon"].innerHTML = ICON_PAUSE;
     updatePositionState();
-    if (analyser && !vizRunning && !isVideoTrack(state.tracks[state.index])) { vizRunning = true; draw(); }
+    const t = state.tracks[state.index];
+    if (analyser && !vizRunning && !isVideoTrack(t)) { vizRunning = true; draw(); }
+    warnIfAc3(t);
   });
 
   onMedia("pause", () => { els["play-icon"].innerHTML = ICON_PLAY; updatePositionState(); if (xfade) endCrossfade(); });
@@ -354,13 +373,23 @@ function wirePlayer() {
       if (t.id != null) Storage.setMeta(t.id, t.meta, META_VERSION).catch(() => {});
       render();
     }
-    if (t && isVideoTrack(t) && media.videoWidth === 0 && /\.(webm|mkv)$/i.test(t.fileName)) {
-      t.meta.kind = "audio";
-      if (t.id != null) Storage.setMeta(t.id, t.meta, META_VERSION).catch(() => {});
-      syncStage(t);
-      renderLyrics();
-      render();
+    if (t && isVideoTrack(t) && media.videoWidth === 0) {
+      const indeterminateMkv = (/\.(webm|mkv)$/i.test(t.fileName)
+        || /^(video|audio)\/(webm|x-matroska)$/i.test(t.file?.type || "")) && !t.meta.codecs;
+      if (indeterminateMkv) {
+        t.meta.kind = "audio";
+        if (t.id != null) Storage.setMeta(t.id, t.meta, META_VERSION).catch(() => {});
+        syncStage(t);
+        renderLyrics();
+        render();
+      } else if (!warnedNoVideo) {
+        warnedNoVideo = true;
+        const msg = "Se oye pero el códec de video no es compatible";
+        if (!t.compatWarning) { t.compatWarning = msg; render(); }
+        toast(msg, 6000);
+      }
     }
+    if (!media.paused) warnIfAc3(t);
   });
 
   onMedia("timeupdate", () => {
@@ -384,14 +413,17 @@ function wirePlayer() {
 
   onMedia("error", () => {
     if (!media.getAttribute("src")) return;
-    const title = state.tracks[state.index]?.title ?? "la canción";
+    const t = state.tracks[state.index];
+    const title = t?.title ?? "la pista";
+    const reason = t ? explainFailure(t.meta?.kind, extOf(t.fileName), t.meta?.codecs) : "";
+    if (t && reason && !t.compatWarning) { t.compatWarning = reason; render(); }
     const limit = Math.max(1, contextList().length);
     if (++failures >= limit) {
       failures = 0;
-      toast(limit > 1 ? "Ninguna canción de la lista se puede reproducir en este navegador" : `No se puede reproducir «${title}»`, 6000);
+      toast(limit > 1 ? "Ninguna pista de la lista se puede reproducir en este reproductor" : `No se puede reproducir «${title}»: ${reason}`, 7000);
       return;
     }
-    toast(`No se puede reproducir «${title}»; se salta`, 3000);
+    toast(`No se puede reproducir «${title}» (${reason}); se salta`, 5000);
     step(1);
   });
 

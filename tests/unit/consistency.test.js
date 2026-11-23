@@ -27,6 +27,7 @@ test("los scripts se cargan en un orden válido (lo que usa cada uno ya está de
   before("lyrics.js", "tags.js");
   before("id3.js", "tags.js");
   before("mp4.js", "tags.js");
+  before("mkv.js", "library.js");
   before("id3.js", "tag-writer.js");
   before("tags.js", "tag-writer.js");
   assert.equal(order.at(-1), "main.js");
