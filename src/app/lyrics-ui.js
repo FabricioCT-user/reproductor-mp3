@@ -93,7 +93,7 @@ function renderLyrics() {
   if (!L) {
     const p = document.createElement("p");
     p.className = "lyrics-empty";
-    p.textContent = t ? "No hay letra para esta canción. Carga un archivo .lrc, o súbelo junto al audio con el mismo nombre." : "";
+    p.textContent = t ? "No hay letra para esta pista. Carga un archivo .lrc, o súbelo junto al audio con el mismo nombre." : "";
     els["lyrics-body"].replaceChildren(p);
     return;
   }

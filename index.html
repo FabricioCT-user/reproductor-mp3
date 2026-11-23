@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-WgWwGTjSx6i7mDtllt6fzds2uaHWSMIOKCmDnR6Fcl8='; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>Reproductor MP3</title>
+  <title>Reproductor</title>
   <meta name="theme-color" content="#0e1015">
   <script>
     // Aplica el tema antes de pintar para evitar un destello.
@@ -107,7 +107,7 @@
       <div class="extras">
         <button id="speed-btn" class="btn ghost eq-toggle" title="Velocidad de reproducción ( [ y ] )">1×</button>
         <button id="sleep-btn" class="btn ghost eq-toggle" title="Temporizador de apagado">⏲ Temporizador</button>
-        <button id="xfade-btn" class="btn ghost eq-toggle" title="Fundido entre canciones">⇄</button>
+        <button id="xfade-btn" class="btn ghost eq-toggle" title="Fundido entre pistas">⇄</button>
         <button id="lyrics-toggle" class="btn ghost eq-toggle" title="Letra (L)" aria-pressed="false">Letra</button>
         <button id="theme-btn" class="btn ghost eq-toggle" title="Tema">◐</button>
         <button id="eq-toggle" class="btn ghost eq-toggle" title="Ecualizador" aria-pressed="false">EQ</button>
@@ -144,22 +144,22 @@
           + Añadir
           <input type="file" id="file-input" accept="audio/*,video/*,.mp4,.m4v,.webm,.mov,.mkv,.flac,.m4a,.ogg,.opus,.lrc,.srt,.vtt" multiple hidden>
         </label>
-        <label class="btn" title="Importar todas las canciones de una carpeta (incluye subcarpetas)">
+        <label class="btn" title="Importar todas las pistas de una carpeta (incluye subcarpetas)">
           + Carpeta
           <input type="file" id="folder-input" webkitdirectory multiple hidden>
         </label>
-        <button id="select-btn" class="btn ghost" title="Seleccionar varias canciones para editarlas a la vez (también Ctrl/Cmd + clic)" aria-pressed="false">Seleccionar</button>
+        <button id="select-btn" class="btn ghost" title="Seleccionar varias pistas para editarlas a la vez (también Ctrl/Cmd + clic)" aria-pressed="false">Seleccionar</button>
         <button id="clear" class="btn ghost" title="Vaciar biblioteca">Vaciar</button>
       </div>
       <div id="select-bar" class="select-bar" hidden>
         <span id="select-count">0 seleccionadas</span>
-        <button id="select-all" class="link-btn" title="Seleccionar todas las canciones visibles">Todas</button>
+        <button id="select-all" class="link-btn" title="Seleccionar todas las pistas visibles">Todas</button>
         <button id="select-none" class="link-btn">Ninguna</button>
         <span class="spacer"></span>
         <button id="select-edit" class="btn" disabled>Editar</button>
         <button id="select-done" class="btn ghost">Listo</button>
       </div>
-      <ul id="playlist" class="playlist" aria-label="Biblioteca de canciones"></ul>
+      <ul id="playlist" class="playlist" aria-label="Biblioteca de pistas"></ul>
       <div class="hint">Arrastra archivos o carpetas a cualquier parte de la ventana · la biblioteca se guarda en este navegador</div>
     </section>
   </main>

@@ -6,7 +6,7 @@ let sleep = null; // { endAt } (tiempo) o { track: true } (al terminar la canci�
 
 function renderSleep() {
   els["sleep-btn"].classList.toggle("active", !!sleep);
-  els["sleep-btn"].textContent = !sleep ? "⏲" : sleep.track ? "⏲ Fin de canción" : `⏲ ${fmtClock(sleep.endAt - Date.now())}`;
+  els["sleep-btn"].textContent = !sleep ? "⏲" : sleep.track ? "⏲ Fin de pista" : `⏲ ${fmtClock(sleep.endAt - Date.now())}`;
 }
 
 function setSleep(minutes) {
@@ -129,9 +129,9 @@ function wireFades() {
   els["sleep-btn"].addEventListener("click", (e) => {
     const mark = (on) => (on ? "✓" : "\u2003");
     showMenu(e.currentTarget, [
-      ...(sleep ? [{ label: sleep.track ? "✕ Cancelar (al terminar la canción)" : `✕ Cancelar (quedan ${fmtClock(sleep.endAt - Date.now())})`, fn: () => setSleep(null) }] : []),
+      ...(sleep ? [{ label: sleep.track ? "✕ Cancelar (al terminar la pista)" : `✕ Cancelar (quedan ${fmtClock(sleep.endAt - Date.now())})`, fn: () => setSleep(null) }] : []),
       ...[15, 30, 45, 60, 90].map((m) => ({ label: `${mark(false)} ${m} minutos`, fn: () => setSleep(m) })),
-      { label: `${mark(sleep?.track)} Al terminar la canción`, fn: () => setSleep("track") },
+      { label: `${mark(sleep?.track)} Al terminar la pista`, fn: () => setSleep("track") },
       { label: `${mark(false)} Personalizado…`, fn: async () => {
           const res = await pedirTexto({ titulo: "¿Cuántos minutos?", valor: "20" });
           const m = parseFloat(String(res ?? "").replace(",", "."));
@@ -145,7 +145,7 @@ function wireFades() {
   els["xfade-btn"].addEventListener("click", (e) => {
     showMenu(e.currentTarget, [
       ...XFADES.map((s) => ({ label: `${state.crossfade === s ? "✓" : "\u2003"} ${s ? `${s} segundos` : "Sin fundido"}`, fn: () => setCrossfade(s) })),
-      { label: "Solo al pasar sola a la siguiente canción", disabled: true },
+      { label: "Solo al pasar sola a la siguiente pista", disabled: true },
     ]);
   });
 }

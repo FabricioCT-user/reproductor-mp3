@@ -1,4 +1,4 @@
-# Reproductor MP3
+# Reproductor
 
 [![Pruebas](https://github.com/FabricioCT-user/reproductor-mp3/actions/workflows/test.yml/badge.svg)](https://github.com/FabricioCT-user/reproductor-mp3/actions/workflows/test.yml)
 [![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-blue.svg)](LICENSE)
@@ -70,14 +70,14 @@ Para usar la versión web, arranca el servidor estático (se detiene con Ctrl+C)
 npm run web           # servidor estático en http://127.0.0.1:8000
 ```
 
-y abre <http://127.0.0.1:8000>. Desde Chrome o Edge puedes **instalarla como app** (icono de instalar en la barra de direcciones, o menú ⋮ → «Instalar Reproductor MP3»). Una vez instalada se abre en su propia ventana y también funciona sin el servidor (se sirve desde la copia guardada).
+y abre <http://127.0.0.1:8000>. Desde Chrome o Edge puedes **instalarla como app** (icono de instalar en la barra de direcciones, o menú ⋮ → «Instalar Reproductor»). Una vez instalada se abre en su propia ventana y también funciona sin el servidor (se sirve desde la copia guardada).
 
 ### Abrir un archivo con doble clic («Abrir con…»)
 
 Con la app **instalada** (Chrome o Edge de escritorio), el sistema la ofrece como programa para abrir `.mp3`, `.flac`, `.m4a`, `.ogg`, `.oga`, `.opus`, `.aac` y `.wav`:
 
 1. Instala la app como se explica arriba.
-2. Clic derecho sobre un archivo de audio → **Abrir con** → *Reproductor MP3* (en Windows: «Elegir otra aplicación»; en macOS: «Obtener información» → «Abrir con»). Para que sea el programa por defecto, marca «Usar siempre» o cámbialo en las propiedades del tipo de archivo.
+2. Clic derecho sobre un archivo de audio → **Abrir con** → *Reproductor* (en Windows: «Elegir otra aplicación»; en macOS: «Obtener información» → «Abrir con»). Para que sea el programa por defecto, marca «Usar siempre» o cámbialo en las propiedades del tipo de archivo.
 3. El archivo se añade a la biblioteca y empieza a sonar. Si abres varios a la vez, suena el primero y el resto quedan en la cola. Si la app ya está abierta, los archivos van a esa ventana.
 
 Si el navegador no permite que algo suene sin que hayas tocado la página, la app lo pausa y avisa («pulsa ▶») en vez de reproducir en silencio.
