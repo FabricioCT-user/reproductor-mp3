@@ -65,7 +65,7 @@ const appReady = (async function init() {
     for (const rec of saved) {
       if (rec.source === "link" && !window.reproductor) { linked.push(rec.id); continue; }
       let file = null;
-      if (rec.source === "link") file = linkedFile(rec); // si el archivo ya no está no se borra nada (T2.2 lo marcará)
+      if (rec.source === "link") file = linkedFile(rec); // si el archivo ya no está no se borra nada: se marca al final
       else if (rec.source !== "session") {
         try { file = await Storage.getFile(rec.id); } catch { /* se muestra como no disponible; el registro no se borra */ }
       }
@@ -96,6 +96,9 @@ const appReady = (async function init() {
   toggleLyrics(store.get("lyrics") !== "1");
   renderViews();
   render();
+  // Con la biblioteca ya cargada: marca los videos enlazados cuyo archivo falta o cambió (T2.2). Sin esperar: un disco
+  // lento no retrasa el arranque ni lo que llega por «Abrir con…»; las filas se actualizan al llegar la respuesta.
+  comprobarEstadoEnlaces().catch(() => {});
 })();
 
 // Archivos abiertos desde el sistema: app web instalada, lanzador local o app de escritorio.

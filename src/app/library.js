@@ -66,6 +66,93 @@ async function linkVideo(file) {
 
 const forgetLink = (t) => { if (t.linkId) window.reproductor?.olvidar?.(t.linkId).catch(() => {}); };
 
+// T2.2: videos enlazados cuyo archivo falta o cambió. El principal compara ruta, tamaño, fecha e identidad
+// (estadoEnlaces); la fila queda «No encontrado» con «Buscar…» y «Quitar». Una respuesta solo se aplica si la pista
+// sigue en la biblioteca con el mismo linkId: «Buscar…» sustituye la pista por otra con un linkId nuevo, así que una
+// comprobación que estaba en curso nunca invalida el enlace recién hecho.
+const ENLACE_ROTO = new Set(["falta", "cambiado", "desconocido"]);
+
+// → true si cambió algo visible.
+function aplicarEstadoEnlace(t, linkId, estado) {
+  if (!state.tracks.includes(t) || t.linkId !== linkId) return false;
+  const marcada = t.unavailable && t.unavailableReason === "link";
+  if (estado === "ok") {
+    if (!marcada || !t.file) return false; // sin archivo (no se pudo leer al arrancar) solo se recupera con «Buscar…»
+    t.unavailable = false;
+    delete t.unavailableReason;
+    return true;
+  }
+  if (!ENLACE_ROTO.has(estado) || marcada) return false;
+  t.unavailable = true;
+  t.unavailableReason = "link";
+  return true;
+}
+
+// Al arrancar, con la biblioteca ya cargada (lo llama init en main.js). Nunca rompe el arranque: si el principal no
+// responde, las filas quedan como estaban.
+async function comprobarEstadoEnlaces() {
+  const app = window.reproductor;
+  if (!app?.estadoEnlaces) return;
+  const enlazadas = state.tracks.filter((t) => t.linkId).map((t) => ({ t, linkId: t.linkId }));
+  let cambios = false;
+  for (let i = 0; i < enlazadas.length; i += 250) {
+    const grupo = enlazadas.slice(i, i + 250);
+    const estados = await app.estadoEnlaces(grupo.map((x) => x.linkId)).catch(() => null);
+    for (const { t, linkId } of grupo) if (aplicarEstadoEnlace(t, linkId, estados?.[linkId])) cambios = true;
+  }
+  if (cambios) render();
+}
+
+// Antes de reproducir una pista enlazada. → false si el archivo falta o cambió (la fila queda marcada y se avisa).
+// Si no se puede saber (versión web, error del principal), se deja intentar.
+async function comprobarEnlaceAntesDeReproducir(t) {
+  const app = window.reproductor;
+  if (!t?.linkId || !app?.estadoEnlaces) return true;
+  const linkId = t.linkId;
+  const estado = (await app.estadoEnlaces([linkId]).catch(() => null))?.[linkId];
+  if (aplicarEstadoEnlace(t, linkId, estado)) render();
+  if (t.linkId === linkId && ENLACE_ROTO.has(estado)) {
+    toast("Archivo no encontrado o cambiado. Usa «Buscar…» para volver a enlazarlo.", 6000);
+    return false;
+  }
+  return true;
+}
+
+// «Buscar…»: la persona elige el video en el diálogo nativo y la pista pasa a apuntar a él con un enlace nuevo.
+// Se conservan id, letra, subtítulos, ediciones, posición en la biblioteca, en la cola y en las listas (que guardan el id).
+// Los metadatos se releen del archivo elegido (puede ser otra copia u otra versión).
+async function buscarEnlace(t) {
+  const app = window.reproductor;
+  if (!app?.elegirArchivos || !app.enlazar) return;
+  let items;
+  try { items = await app.elegirArchivos({ video: true }); } catch { toast("No se pudo abrir el diálogo", 5000); return; }
+  if (!items.length) return; // cancelado
+  const elegido = items.find((it) => it?.kind === "video" && typeof it.id === "string");
+  if (!elegido) { toast("Elige un archivo de video", 4000); return; }
+  if (!state.tracks.includes(t)) return; // se quitó mientras el diálogo estaba abierto
+  let link = null;
+  try {
+    link = await linkVideo(new LinkedFile(elegido, { entrega: elegido.id }));
+    const nueva = await makeTrack(t.id, link, t.userLyrics, t.edits, null, t.subs);
+    if (!state.tracks.includes(t)) throw new Error("la pista se quitó mientras se enlazaba");
+    if (t.id != null) {
+      await Storage.updateLink(t.id, link, link.linkId, { kind: nueva.meta.kind, meta: nueva.meta, metaVersion: META_VERSION });
+    }
+    const i = state.tracks.indexOf(t);
+    state.tracks[i] = nueva;
+    state.queue = state.queue.map((q) => (q === t ? nueva : q));
+    if (state.selected.delete(t)) state.selected.add(nueva);
+    revokeCovers(t);
+    forgetLink(t);
+    if (i === state.index) loadTrack(i, false, state.playView); // estaba cargada con el enlace viejo
+    render();
+    toast("Archivo enlazado");
+  } catch {
+    if (link?.linkId) app.olvidar(link.linkId).catch(() => {});
+    toast("No se pudo volver a enlazar el archivo", 5000);
+  }
+}
+
 const isMp4File = (f) => /\.(mp4|m4v|m4a|mov)$/i.test(f.name)
   || /^video\/(mp4|quicktime|x-m4v)$/i.test(f.type || "")
   || /^audio\/(mp4|x-m4a)$/i.test(f.type || "");
@@ -143,7 +230,7 @@ async function makeUnavailableTrack(rec) {
     size: rec.size || 0, key: `${fileName}|${rec.size || 0}|${rec.lastModified || 0}`,
     meta,
     dir: "", embeddedLyrics: null, userLyrics: rec.lyrics || "", subs, subIndex: subs.length ? 0 : -1, _lastSubIndex: 0,
-    url: null, unavailable: true,
+    url: null, unavailable: true, unavailableReason: rec.source === "link" ? "link" : "storage",
     linkId: rec.source === "link" ? rec.linkId : null,
     orig: { title: meta.title || fallback, artist: meta.artist || "", album: meta.album || "", coverUrl: null },
     edits: rec.edits || null,
@@ -300,7 +387,7 @@ async function openFromSystem(files) {
   const trackOf = (f) => state.tracks.find((t) => t.key === fileKey(f));
   const first = trackOf(mediaFiles[0]);
   if (!first) return;
-  loadTrack(state.tracks.indexOf(first), true, "all");
+  if (await comprobarEnlaceAntesDeReproducir(first)) loadTrack(state.tracks.indexOf(first), true, "all");
   for (const f of mediaFiles.slice(1)) {
     const t = trackOf(f);
     if (t && t !== first && !state.queue.includes(t)) state.queue.push(t);
@@ -504,7 +591,7 @@ function render() {
           ? `${t.meta.show}${t.meta.season != null ? ` · T${t.meta.season}` : ""}${t.meta.episode != null ? ` · E${t.meta.episode}` : ""}`
           : [t.artist, t.meta?.year].filter(Boolean).join(" · "))
         : [t.artist, t.album].filter(Boolean).join(" · ");
-      sub.textContent = (t.unavailable ? "No disponible · " : "") + (qpos ? `En cola #${qpos} · ` : "")
+      sub.textContent = (t.unavailable ? (t.unavailableReason === "link" ? "No encontrado · " : "No disponible · ") : "") + (qpos ? `En cola #${qpos} · ` : "")
         + [resolution, program || (!video && t.album ? t.album : "Artista desconocido")].filter(Boolean).join(" · ");
       text.append(name, sub);
       if (t.compatWarning) {
@@ -527,17 +614,28 @@ function render() {
       const eb = btn("t-btn", "Editar etiquetas", "✎", () => openEditor(t));
       qb.disabled = eb.disabled = !!t.unavailable;
       const pb = btn("t-btn", "Añadir a una lista", "♫", (b) => openMenu(b, t));
-      const rm = pl
+      const buscar = t.unavailable && t.unavailableReason === "link"
+        ? btn("t-btn", "Buscar el archivo enlazado", "Buscar…", () => buscarEnlace(t))
+        : null;
+      const rm = t.unavailable && t.unavailableReason === "link"
+        ? btn("t-btn remove", "Quitar de la biblioteca", "Quitar", () => removeTrack(i))
+        : pl
         ? btn("t-btn remove", "Quitar de esta lista", "✕", () => removeFromPlaylist(pl, t))
         : btn("t-btn remove", "Quitar de la biblioteca", "✕", () => removeTrack(i));
 
-      li.append(...(state.selecting ? [check] : []), thumb, text, qb, pb, eb, rm);
+      li.append(...(state.selecting ? [check] : []), thumb, text, ...(buscar ? [buscar] : []), qb, pb, eb, rm);
       li.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target === li) li.click(); });
       li.addEventListener("click", (e) => {
-        if (t.unavailable) { toast("Este archivo no está disponible", 4000); return; }
+        // Una fila «No encontrado» con archivo se vuelve a comprobar al pulsarla: quizá el archivo ha vuelto.
+        const reintentar = t.unavailable && t.unavailableReason === "link" && t.file && !state.selecting && !e.ctrlKey && !e.metaKey;
+        if (t.unavailable && !reintentar) { toast("Este archivo no está disponible", 4000); return; }
         if (state.selecting) return toggleSelect(t, shown, e.shiftKey);
         if (e.ctrlKey || e.metaKey) { setSelecting(true); return toggleSelect(t, shown, false); } // atajo para entrar en el modo
-        loadTrack(i, true, state.view);
+        comprobarEnlaceAntesDeReproducir(t).then((ok) => {
+          const n = state.tracks.indexOf(t); // la biblioteca pudo cambiar mientras se comprobaba
+          if (ok && n >= 0 && !t.unavailable) loadTrack(n, true, state.view);
+          else if (ok && t.unavailable) toast("Este archivo no está disponible", 4000);
+        });
       });
 
       if (!q && kind === "all" && !state.selecting) {

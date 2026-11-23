@@ -7,6 +7,7 @@
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
+const { mismaIdentidad } = require("./rutas");
 
 const ID = /^[0-9a-f]{32}$/;
 const FORMATO = 1;
@@ -16,10 +17,15 @@ const esId = (id) => typeof id === "string" && ID.test(id);
 // Entrada leída del JSON → entrada válida o null (lo que no encaja se descarta sin romper el resto).
 function limpiarEntrada(e) {
   if (!e || typeof e !== "object") return null;
-  const { ruta, tamano, fecha, tipo } = e;
+  const { ruta, tamano, fecha, tipo, identidad } = e;
   if (typeof ruta !== "string" || !path.isAbsolute(ruta) || ruta.includes("\0")) return null;
   if (!Number.isSafeInteger(tamano) || tamano < 0 || !Number.isFinite(fecha)) return null;
-  return { ruta, tamano, fecha, tipo: typeof tipo === "string" ? tipo : "" };
+  // Identidad del archivo al enlazarlo (dev/ino/tamaño/fecha exacta): detecta una sustitución con mismo tamaño y fecha.
+  const fin = (x) => (Number.isFinite(x) ? x : undefined);
+  const id = identidad && Number.isFinite(identidad.dev) && Number.isFinite(identidad.ino)
+    ? { dev: identidad.dev, ino: identidad.ino, tamano: fin(identidad.tamano), mtimeMs: fin(identidad.mtimeMs) }
+    : null;
+  return { ruta, tamano, fecha, tipo: typeof tipo === "string" ? tipo : "", identidad: id };
 }
 
 class Enlaces {
@@ -49,7 +55,7 @@ class Enlaces {
 
   // Resultado de rutas.validar (un video) → id nuevo. Cada pista tiene su id: olvidar uno no afecta a otra.
   async registrar(v) {
-    const e = limpiarEntrada({ ruta: v.ruta, tamano: v.tamano, fecha: v.fecha, tipo: v.tipo });
+    const e = limpiarEntrada({ ruta: v.ruta, tamano: v.tamano, fecha: v.fecha, tipo: v.tipo, identidad: v.identidad });
     if (!e) throw new Error("entrada no válida");
     let id;
     do id = crypto.randomBytes(16).toString("hex"); while (this.mapa.has(id));
@@ -73,16 +79,20 @@ class Enlaces {
     await this.guardar();
   }
 
-  // ids → { id: "ok" | "falta" | "cambiado" | "desconocido" } (T2.2 lo usará para marcar «no encontrado»).
+  // ids → { id: "ok" | "falta" | "cambiado" | "desconocido" } (T2.2: la interfaz marca «No encontrado»). En tandas de
+  // 64 stat a la vez; los ids repetidos o mal formados se ignoran.
   async estado(ids) {
     const out = {};
-    for (const id of Array.isArray(ids) ? ids.slice(0, 100000) : []) {
-      if (!esId(id)) continue;
-      const e = this.mapa.get(id);
-      if (!e) { out[id] = "desconocido"; continue; }
-      const st = await fs.promises.stat(e.ruta).catch(() => null);
-      if (!st?.isFile()) out[id] = "falta";
-      else out[id] = st.size === e.tamano && Math.floor(st.mtimeMs) === Math.floor(e.fecha) ? "ok" : "cambiado";
+    const validos = [...new Set(Array.isArray(ids) ? ids.slice(0, 100000).filter(esId) : [])];
+    for (let i = 0; i < validos.length; i += 64) {
+      await Promise.all(validos.slice(i, i + 64).map(async (id) => {
+        const e = this.mapa.get(id);
+        if (!e) { out[id] = "desconocido"; return; }
+        const st = await fs.promises.stat(e.ruta).catch(() => null);
+        if (!st?.isFile()) out[id] = "falta";
+        else out[id] = st.size === e.tamano && Math.floor(st.mtimeMs) === Math.floor(e.fecha)
+          && (!e.identidad || mismaIdentidad(st, e.identidad)) ? "ok" : "cambiado";
+      }));
     }
     return out;
   }

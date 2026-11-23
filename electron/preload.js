@@ -34,8 +34,9 @@ contextBridge.exposeInMainWorld("reproductor", Object.freeze({
     abrir = cb;
     recoger().catch(() => {});
   },
-  // Diálogo nativo (multiselección; { carpeta: true } elige carpetas y recorre sus subcarpetas). [] si se cancela.
-  elegirArchivos: (opciones) => ipcRenderer.invoke("reproductor:elegir", { carpeta: opciones?.carpeta === true }).then(lista),
+  // Diálogo nativo (multiselección; { carpeta: true } elige carpetas y recorre sus subcarpetas; { video: true } elige un
+  // solo video, para «Buscar…» de T2.2). [] si se cancela.
+  elegirArchivos: (opciones) => ipcRenderer.invoke("reproductor:elegir", { carpeta: opciones?.carpeta === true, video: opciones?.video === true }).then(lista),
   // Bytes (Uint8Array) de un archivo entregado, o null; cada id sirve una vez. Los videos no se leen (T2.1 los enlazará).
   leer: (id) => ipcRenderer.invoke("reproductor:leer", typeof id === "string" ? id : ""),
   // Enlaza un video: el id de una entrega (kind "video") o un File con ruta real. → { linkId, name, size, lastModified,
@@ -47,6 +48,6 @@ contextBridge.exposeInMainWorld("reproductor", Object.freeze({
   },
   // Quita un enlace del registro (al borrar la pista). → true si existía.
   olvidar: (linkId) => ipcRenderer.invoke("reproductor:olvidar", typeof linkId === "string" ? linkId : ""),
-  // ids → { id: "ok" | "falta" | "cambiado" | "desconocido" } (para T2.2).
+  // ids → { id: "ok" | "falta" | "cambiado" | "desconocido" } (T2.2: filas «No encontrado»).
   estadoEnlaces: (ids) => ipcRenderer.invoke("reproductor:estado-enlaces", lista(ids).filter((i) => typeof i === "string")),
 }));

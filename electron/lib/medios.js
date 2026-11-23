@@ -40,7 +40,7 @@ async function servir(entrada, metodo, cabeceraRange, { trozo = TROZO } = {}) {
   let fh;
   try {
     let st;
-    ({ fh, st } = await abrirSeguro(entrada.ruta));
+    ({ fh, st } = await abrirSeguro(entrada.ruta, entrada.identidad));
     const r = rango.analizar(cabeceraRange, st.size);
     const cab = rango.cabeceras(r, st.size, clasificar(entrada.ruta)?.tipo); // por extensión
     if (r.estado === 416 || metodo === "HEAD" || st.size === 0) {

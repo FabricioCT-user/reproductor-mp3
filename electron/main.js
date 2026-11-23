@@ -170,24 +170,32 @@ app.on("second-instance", (_e, argv, cwd) => {
   registrar(analizar(argv, { empaquetada: app.isPackaged }).archivos, cwd).then(abrirEnLaApp).catch((e) => console.error(e));
 });
 
-// Diálogo nativo. En Linux y Windows no puede elegir a la vez archivos y carpetas: son dos modos.
-// En la prueba de humo no se puede manejar un diálogo nativo: devuelve la carpeta de los archivos de argv.
-async function elegir(carpeta) {
+// Diálogo nativo. En Linux y Windows no puede elegir a la vez archivos y carpetas: son dos modos. `video` elige un solo
+// video («Buscar…» de T2.2) y entrega solo ese (sin subtítulos acompañantes: la pista ya tiene los suyos).
+// En la prueba de humo no se puede manejar un diálogo nativo: devuelve la carpeta de los archivos de argv, el primero
+// de ellos o, con `video`, el primer video de argv.
+async function elegir({ carpeta = false, video = false } = {}) {
   let r;
   if (args.smoke) {
-    const primero = rutas.aRuta(args.archivos[0], process.cwd());
+    const deArgv = args.archivos.map((a) => rutas.aRuta(a, process.cwd())).filter(Boolean);
+    const primero = video ? deArgv.find((p) => rutas.clasificar(p)?.clase === "video") : deArgv[0];
     r = { canceled: !primero, filePaths: primero ? [carpeta ? path.dirname(primero) : primero] : [] };
   } else {
-    const extensiones = Object.keys(rutas.EXTENSIONES).map((e) => e.slice(1));
+    const extensiones = (clase) => Object.entries(rutas.EXTENSIONES).filter(([, [c]]) => !clase || c === clase).map(([e]) => e.slice(1));
     r = await dialog.showOpenDialog(ventana, carpeta
       ? { title: "Añadir carpeta", properties: ["openDirectory", "multiSelections"] }
-      : { title: "Añadir archivos", properties: ["openFile", "multiSelections"], filters: [{ name: "Audio, video, letras y subtítulos", extensions: extensiones }] });
+      : video
+        ? { title: "Buscar el video", properties: ["openFile"], filters: [{ name: "Video", extensions: extensiones("video") }] }
+        : { title: "Añadir archivos", properties: ["openFile", "multiSelections"], filters: [{ name: "Audio, video, letras y subtítulos", extensions: extensiones() }] });
   }
   if (r.canceled) return [];
   const items = [];
   for (const p of r.filePaths) {
     if (carpeta) for (const v of await rutas.recorrer(p)) items.push(entregas.registrar(v));
-    else items.push(...(await registrar([p], process.cwd())));
+    else if (video) {
+      const v = await rutas.validar(p);
+      if (v?.clase === "video") items.push(entregas.registrar(v));
+    } else items.push(...(await registrar([p], process.cwd())));
   }
   return items;
 }
@@ -222,7 +230,7 @@ function cablearIpc() {
   });
   ipcMain.handle("reproductor:elegir", async (event, opciones) => {
     if (!deLaApp(event)) return [];
-    return elegir(opciones?.carpeta === true);
+    return elegir({ carpeta: opciones?.carpeta === true, video: opciones?.video === true });
   });
   // Bytes de un archivo entregado (audio, letra, subtítulos; nunca video), o null. Cada id sirve una sola vez.
   ipcMain.handle("reproductor:leer", async (event, id) => {
@@ -523,14 +531,62 @@ async function comprobacionesEnlaces(win) {
     check("al quitar la pista se olvida su enlace (404 y fuera de enlaces.json)", borrado === 404 && !leerEnlaces().includes(otroId)
       && !leerEnlaces().includes("otro video"), { borrado });
 
-    // Si el archivo desaparece, al arrancar no se borra nada (T2.2 lo marcará).
+    // T2.2: archivo renombrado entre reinicios → fila no disponible; volver a enlazar conserva sus datos y posición.
+    const t2 = await ev(`(async () => {
+      const t = state.tracks.find((x) => x.fileName === "video.mp4");
+      await Storage.setLyrics(t.id, "Letra T2.2");
+      await Storage.setEdits(t.id, { title: "Título T2.2" });
+      await Storage.setSubs(t.id, [{ label: "Guardado", text: "subtítulo conservado", offset: 0 }]);
+      const lista = { id: "t22-smoke", name: "T2.2", ids: [t.id] };
+      state.playlists.push(lista); savePlaylists();
+      return { id: t.id, pos: state.tracks.indexOf(t), lista: lista.id };
+    })()`);
     fs.renameSync(rutaVideo, `${rutaVideo}.movido`);
     try {
       await win.loadURL(`${servir.ORIGEN}/index.html`);
       await ev("appReady.then(() => 1)");
+      const detectado = await hasta(`state.tracks.find((t) => t.id === ${JSON.stringify(t2.id)})?.unavailable === true`);
       d = await registro("video.mp4");
-      check("un enlace cuyo archivo ya no está no se borra al arrancar", d.hay && d.rec?.linkId === id && leerEnlaces().includes(id), d);
+      const estadoFila = await ev(`({ noEncontrado: document.body.textContent.includes("No encontrado"), buscar: [...document.querySelectorAll("button")].some((b) => b.textContent === "Buscar…") })`);
+      check("tras renombrar entre reinicios la fila aparece «No encontrado» con Buscar… y conserva el registro",
+        detectado && estadoFila.noEncontrado && estadoFila.buscar && d.hay && d.rec?.linkId === id && leerEnlaces().includes(id), { d, estadoFila });
+      // Pulsar la fila mientras falta: vuelve a comprobar, avisa y no la carga.
+      await ev(`(() => { els.toast.hidden = true; [...els.playlist.querySelectorAll("li")].find((x) => x.textContent.includes("Título T2.2")).click(); return 1; })()`);
+      const avisa = await hasta(`!els.toast.hidden && /no encontrado/i.test(els.toast.textContent)`, 5000);
+      const fila = await ev(`({ aviso: els.toast.textContent, actual: state.tracks[state.index]?.id ?? null, pausado: media.paused })`);
+      check("pulsar una fila «No encontrado» avisa y no la reproduce", avisa && (fila.actual !== t2.id || fila.pausado), fila);
     } finally { fs.renameSync(`${rutaVideo}.movido`, rutaVideo); }
+    // «Buscar…» (el diálogo de la prueba devuelve el video de argv, ya en su sitio): enlace nuevo, mismos datos.
+    const pulsado = await ev(`(() => {
+      const li = [...els.playlist.querySelectorAll("li")].find((x) => x.textContent.includes("Título T2.2"));
+      const b = [...(li?.querySelectorAll("button") || [])].find((x) => x.textContent === "Buscar…");
+      b?.click();
+      return !!b;
+    })()`);
+    const sel = `state.tracks.find((t) => t.id === ${JSON.stringify(t2.id)})`;
+    const recuperado = await hasta(`${sel}?.linkId !== ${JSON.stringify(id)} && ${sel}?.unavailable === false`);
+    // Una comprobación posterior (o una respuesta vieja) no vuelve a marcarla.
+    await ev("comprobarEstadoEnlaces().then(() => 1)");
+    const datosRecuperados = await ev(`(async () => {
+      const t = ${sel};
+      const rec = (await Storage.all()).find((x) => x.id === t.id);
+      return { pulsado: ${pulsado}, anterior: ${JSON.stringify(id)}, pos: state.tracks.indexOf(t), rec,
+        playlist: state.playlists.find((p) => p.id === ${JSON.stringify(t2.lista)})?.ids.includes(t.id),
+        disponible: !t.unavailable, unavailableReason: t.unavailableReason ?? null, estado: await window.reproductor.estadoEnlaces([t.linkId]),
+        subs: t.subs, userLyrics: t.userLyrics, title: t.title, linkId: t.linkId, url: t.url, aviso: els.toast.textContent,
+        fila: [...els.playlist.querySelectorAll("li")].find((x) => x.textContent.includes("Título T2.2"))?.textContent ?? null };
+    })()`);
+    check("Buscar… vuelve a enlazar y conserva letra, subtítulos, ediciones, lista y posición",
+      recuperado && datosRecuperados.pos === t2.pos && datosRecuperados.playlist && datosRecuperados.disponible
+      && datosRecuperados.rec?.lyrics === "Letra T2.2" && datosRecuperados.rec?.edits?.title === "Título T2.2"
+      && datosRecuperados.rec?.subs?.[0]?.text === "subtítulo conservado" && datosRecuperados.rec?.linkId === datosRecuperados.linkId
+      && datosRecuperados.userLyrics === "Letra T2.2" && datosRecuperados.title === "Título T2.2" && datosRecuperados.subs?.[0]?.text === "subtítulo conservado"
+      && datosRecuperados.linkId !== id && datosRecuperados.url === `__media/${datosRecuperados.linkId}` && !/No encontrado/.test(datosRecuperados.fila)
+      && !leerEnlaces().includes(id) && leerEnlaces().includes(datosRecuperados.linkId), datosRecuperados);
+    await ev(`(() => { const li = [...els.playlist.querySelectorAll("li")].find((x) => x.textContent.includes("Título T2.2")); li.click(); return 1; })()`);
+    const suena3 = await hasta(`!media.paused && media.currentTime > 0.3 && media.currentSrc.endsWith("/__media/" + ${sel}.linkId)`);
+    await ev(`media.pause(); media.removeAttribute("src"); media.load(); 1`);
+    check("la pista vuelta a enlazar suena al pulsarla", suena3, await ev(`({ src: media.currentSrc, error: media.error?.code ?? null })`));
     check("al final no queda ningún descriptor abierto", await hastaCerrados(), abiertos());
   } catch (e) {
     check("comprobaciones sin excepciones", false, String(e?.stack || e));
