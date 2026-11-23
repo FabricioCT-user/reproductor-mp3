@@ -230,7 +230,7 @@ function cablearIpc() {
     const e = entregas.tomar(id);
     if (!e) return null; // inventado, caducado, ya leído o un video
     const limite = e.clase === "subtitulo" ? rutas.MAX_SUBTITULO : rutas.MAX_LECTURA;
-    return rutas.leer(e.ruta, { limite }).catch(() => null); // ya no está, es otra cosa o es demasiado grande
+    return rutas.leer(e, { limite }).catch(() => null); // ya no está, es otra cosa o es demasiado grande
   });
   ipcMain.handle("reproductor:enlazar", async (event, x) => {
     if (!deLaApp(event)) return null;

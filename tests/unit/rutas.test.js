@@ -2,6 +2,7 @@
 // No necesitan Electron: usan una carpeta temporal real (enlaces simbólicos, carpetas, nombres con espacios).
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -163,7 +164,66 @@ test("subtitulosAcompanantes + leer: si el archivo se sustituye por un symlink e
 
   fs.unlinkSync(sub);
   fs.symlinkSync(privado, sub);
-  await assert.rejects(rutas.leer(r[0].ruta, { limite: rutas.MAX_SUBTITULO }));
+  await assert.rejects(rutas.leer(r[0], { limite: rutas.MAX_SUBTITULO }));
+});
+
+test("subtitulosAcompanantes + leer: si se sustituye por otro archivo regular (mismo tamaño), leer falla por identidad", async () => {
+  const v = crear("toctou-reg/Cine.mp4", "mp4");
+  const sub = crear("toctou-reg/Cine.srt", "Original");
+  const r = await rutas.subtitulosAcompanantes(v);
+  assert.equal((await rutas.leer(r[0], { limite: rutas.MAX_SUBTITULO })).toString(), "Original");
+
+  const otro = crear("toctou-reg/otro.tmp", "Sustitut");
+  fs.unlinkSync(sub);
+  fs.renameSync(otro, sub);
+  await assert.rejects(rutas.leer(r[0], { limite: rutas.MAX_SUBTITULO }));
+});
+
+test("subtitulosAcompanantes + leer: si se sustituye por una FIFO, leer falla sin colgarse", { skip: process.platform === "win32" }, async () => {
+  const v = crear("toctou-fifo/Cine.mp4", "mp4");
+  const sub = crear("toctou-fifo/Cine.srt", "Original");
+  const r = await rutas.subtitulosAcompanantes(v);
+
+  fs.unlinkSync(sub);
+  execFileSync("mkfifo", [sub]);
+
+  const conTope = (p) => Promise.race([
+    p,
+    new Promise((_, rej) => setTimeout(() => rej(new Error("se colgó abriendo FIFO")), 1500)),
+  ]);
+  await assert.rejects(conTope(rutas.leer(r[0], { limite: rutas.MAX_SUBTITULO })), (e) => !/colgó/.test(e.message));
+  await assert.rejects(conTope(rutas.leer(sub, { limite: rutas.MAX_SUBTITULO })), (e) => !/colgó/.test(e.message));
+});
+
+test("subtitulosAcompanantes + leer: si el directorio padre se sustituye por un symlink, leer falla", async () => {
+  const v = crear("toctou-padre/real/Cine.mp4", "mp4");
+  const sub = crear("toctou-padre/real/Cine.srt", "Original");
+  const falso = crear("toctou-padre/otro/Cine.srt", "Privado!");
+  const r = await rutas.subtitulosAcompanantes(v);
+
+  const dirReal = path.dirname(sub);
+  const dirOtro = path.dirname(falso);
+  fs.rmSync(dirReal, { recursive: true, force: true });
+  fs.symlinkSync(dirOtro, dirReal);
+  await assert.rejects(rutas.leer(r[0], { limite: rutas.MAX_SUBTITULO }));
+});
+
+test("entregas + leer: conserva la identidad sin exponerla a la interfaz y rechaza sustituciones", async () => {
+  const p = crear("toctou-entregas/tema.mp3", "datos-1");
+  const v = await rutas.validar(p);
+  const e = new Entregas();
+  const pub = e.registrar(v);
+  assert.equal(pub.identidad, undefined);
+  assert.ok(!JSON.stringify(pub).includes(String(v.identidad.ino)));
+
+  const tomada = e.tomar(pub.id);
+  assert.equal((await rutas.leer(tomada)).toString(), "datos-1");
+
+  const pub2 = e.registrar(v);
+  const otro = crear("toctou-entregas/otro.tmp", "datos-2");
+  fs.unlinkSync(p);
+  fs.renameSync(otro, p);
+  await assert.rejects(rutas.leer(e.tomar(pub2.id)));
 });
 
 /* ----- entregas.js ----- */
