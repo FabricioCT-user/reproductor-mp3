@@ -3,23 +3,25 @@
 [![Pruebas](https://github.com/FabricioCT-user/reproductor-mp3/actions/workflows/test.yml/badge.svg)](https://github.com/FabricioCT-user/reproductor-mp3/actions/workflows/test.yml)
 [![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-blue.svg)](LICENSE)
 
-Reproductor de música local que corre en el navegador. **Sin dependencias ni build**: tus archivos nunca salen de tu equipo.
+Reproductor de música local que corre en el navegador. **Sin build**: tus archivos nunca salen de tu equipo.
 
 ## Inicio rápido
 
-**Requisitos:** un navegador moderno (probado en Chromium) y `python3`. Con `npm` el comando es más corto, pero no es imprescindible.
+**Requisitos:** un navegador moderno (probado en Chromium), Node.js y npm. Para servir solo la versión web también puedes usar Python 3.
 
 ```bash
 git clone https://github.com/FabricioCT-user/reproductor-mp3.git
 cd reproductor-mp3
-npm start                          # sin npm: python3 launcher/servidor.py
+npm run web                        # servidor web estático en http://127.0.0.1:8000
 ```
 
-1. Abre <http://localhost:8000>.
+Con `npm install`, `npm start` abre la app de escritorio (Electron).
+
+1. Abre <http://127.0.0.1:8000>.
 2. Pulsa **`+ Añadir`** (o **`+ Carpeta`**), o arrastra tus canciones a la ventana. Quedan guardadas en el navegador: no hay que volver a importarlas.
 3. Pulsa una canción y a disfrutar. Las [funciones](#funciones) y los [atajos](#atajos) están más abajo.
 
-¿Quieres abrir un MP3 con doble clic desde tu gestor de archivos? Mira [Abrir archivos con doble clic](#abrir-un-archivo-con-doble-clic-abrir-con) (Chrome o Edge, app instalada) o [el lanzador para Firefox y otros navegadores](#abrir-archivos-con-doble-clic-en-firefox-u-otro-navegador-el-lanzador-linux).
+¿Quieres abrir un archivo desde tu gestor de archivos? Instala la app de escritorio con el paquete de tu sistema.
 
 ## Funciones
 
@@ -62,13 +64,13 @@ npm start                          # sin npm: python3 launcher/servidor.py
 
 ## Uso
 
-Arranca el servidor local (se detiene con Ctrl+C):
+Para usar la versión web, arranca el servidor estático (se detiene con Ctrl+C):
 
 ```bash
-npm start            # servidor local en http://localhost:8000 (también vale: python3 -m http.server 8000)
+npm run web           # servidor estático en http://127.0.0.1:8000
 ```
 
-y abre <http://localhost:8000>. Desde Chrome o Edge puedes **instalarla como app** (icono de instalar en la barra de direcciones, o menú ⋮ → «Instalar Reproductor MP3»). Una vez instalada se abre en su propia ventana y también funciona sin el servidor (se sirve desde la copia guardada).
+y abre <http://127.0.0.1:8000>. Desde Chrome o Edge puedes **instalarla como app** (icono de instalar en la barra de direcciones, o menú ⋮ → «Instalar Reproductor MP3»). Una vez instalada se abre en su propia ventana y también funciona sin el servidor (se sirve desde la copia guardada).
 
 ### Abrir un archivo con doble clic («Abrir con…»)
 
@@ -80,35 +82,17 @@ Con la app **instalada** (Chrome o Edge de escritorio), el sistema la ofrece com
 
 Si el navegador no permite que algo suene sin que hayas tocado la página, la app lo pausa y avisa («pulsa ▶») en vez de reproducir en silencio.
 
-### Abrir archivos con doble clic en Firefox (u otro navegador): el lanzador (Linux)
-
-Si no quieres o no puedes instalar la app (Firefox no lo permite), hay un pequeño **lanzador** en `launcher/` que se registra en «Abrir con…» y abre el reproductor, en el navegador que uses, con el archivo ya cargado:
-
-```bash
-./launcher/instalar.sh                    # una sola vez: añade «Reproductor MP3» a «Abrir con…»
-./launcher/instalar.sh --predeterminado   # (opcional) además lo pone como programa por defecto de los archivos de audio
-./launcher/instalar.sh --quitar           # lo elimina
-```
-
-Después, clic derecho sobre un MP3 (o FLAC, M4A, OGG, OPUS, AAC, WAV) → **Abrir con** → *Reproductor MP3*. El lanzador arranca el servidor local si hace falta (se apaga solo tras 30 minutos sin uso), abre tu navegador en `http://localhost:8000` y la página recoge el archivo, lo añade a la biblioteca y lo reproduce. Si el reproductor ya está abierto, **no abre otra pestaña**: el archivo llega a esa. Si seleccionas varios, suena el primero y el resto quedan en la cola.
-
-- También sirve desde la terminal: `./launcher/reproductor cancion.mp3 otra.flac`; y `./launcher/reproductor --detener` apaga el servidor.
-- Requiere `python3` (no hay que instalar nada más). Cambia el puerto con `REPRODUCTOR_PORT`.
-- **Primera vez en Firefox:** Firefox bloquea el sonido automático en una pestaña recién abierta; verás el aviso «pulsa ▶» y basta un clic. Para evitarlo: Ajustes → Privacidad y seguridad → Reproducción automática → Configuración → añade `http://localhost:8000` con «Permitir audio y vídeo».
-- Tu biblioteca es la de `http://localhost:8000`: si usas esa misma dirección con `npm start`, es la misma biblioteca. No conviene tener a la vez otro servidor en ese puerto (el lanzador avisa si está ocupado).
-- **Seguridad:** el servidor escucha solo en `127.0.0.1`, rechaza peticiones cuyo `Host` no sea el suyo (DNS rebinding) o que vengan de otros sitios, no tiene ningún endpoint para registrar rutas (el lanzador usa una carpeta privada, `~/.cache/reproductor-mp3/cola`) y solo entrega archivos de audio que el lanzador haya encolado. Está cubierto por pruebas automáticas.
-
 ### Si usas Firefox
 
-Firefox de escritorio no permite instalar aplicaciones web ni registrarlas en «Abrir con…»; en Linux usa el lanzador de arriba. Sin él, para un MP3 que ya tienes descargado:
+Firefox de escritorio no permite instalar aplicaciones web ni registrarlas en «Abrir con…». Para reproducir un archivo local:
 
-1. Abre la app (<http://localhost:8000>).
+1. Abre la app (<http://127.0.0.1:8000>).
 2. Arrastra el archivo (o toda la carpeta) a la ventana, o usa `+ Añadir` / `+ Carpeta`.
 3. Queda guardado en la biblioteca: no hay que volver a importarlo la próxima vez.
 
 Consejo: fija la pestaña (clic derecho → *Fijar pestaña*) para tener el reproductor siempre a mano. Firefox no se ha probado todavía con esta aplicación.
 
-> Tu biblioteca, tus listas y tus ajustes se guardan en el navegador y **ligados a la dirección exacta** (`localhost:8000` no comparte datos con `localhost:3000`). Si borras los datos del sitio se pierden; exporta tus listas antes si te importa conservarlas. Los archivos de música se copian dentro del almacenamiento del navegador.
+> Tu biblioteca, tus listas y tus ajustes se guardan en el navegador y **ligados a la dirección exacta** (`127.0.0.1:8000` no comparte datos con `localhost:8000`). Si borras los datos del sitio se pierden; exporta tus listas antes si te importa conservarlas. Los archivos de música se copian dentro del almacenamiento del navegador.
 
 ## Formatos y compatibilidad
 
@@ -128,7 +112,7 @@ ffmpeg -i entrada.mkv -c:v copy -c:a aac salida.mp4
 
 ## Privacidad
 
-No hay servidor remoto ni análisis: la aplicación solo se descarga a sí misma (el servidor local de `npm start` escucha únicamente en tu equipo). Una política de seguridad de contenido (CSP) impide cargar nada de otros sitios.
+No hay servidor remoto ni análisis: la aplicación solo se descarga a sí misma (el servidor web local escucha únicamente en tu equipo). Una política de seguridad de contenido (CSP) impide cargar nada de otros sitios.
 
 ## Desarrollo
 
@@ -146,15 +130,14 @@ src/
   tag-writer.js    escritor de etiquetas para copias de MP3 y FLAC
   storage.js       biblioteca en IndexedDB (v2: metadatos en «tracks», archivos aparte en «files»; migra la v1 sola)
   app/             la aplicación, un archivo por función:
-                   core, library, playlists, lyrics-ui, player, eq, fades, launcher, editor, theme, main
+                   core, library, playlists, lyrics-ui, player, eq, fades, editor, theme, main
 electron/          app de escritorio: main.js (protocolo app://reproductor/, ventana endurecida, instancia
                    única y archivos abiertos desde el sistema), preload.js (puente mínimo), lib/servir.js (lista blanca
                    del protocolo), lib/argumentos.js, lib/rutas.js (validar rutas), lib/entregas.js (ids de archivos abiertos),
                    lib/enlaces.js (registro de videos enlazados), lib/rango.js, lib/medios.js (servir videos con Range)
                    y lib/escritorio.js (integración .desktop opcional del AppImage)
-launcher/          servidor local en Python y lanzador para «Abrir con…» (instalar.sh lo registra en Linux)
 tests/
-  unit/            pruebas con node:test (módulos puros, escritor de etiquetas, almacenamiento y migración, coherencia del proyecto, servidor y lanzador)
+  unit/            pruebas con node:test (módulos puros, escritor de etiquetas, almacenamiento y migración, coherencia del proyecto)
   smoke.html       pruebas de humo: manejan la aplicación real en el navegador
   smoke-app.js     ejecuta las mismas pruebas de humo dentro de Electron (npm run smoke:app)
 ```
@@ -165,7 +148,7 @@ tests/
 
 ```bash
 npm test                         # unitarias (~175 pruebas, unos segundos)
-npm start                        # y abre http://localhost:8000/tests/smoke.html para las de humo
+npm run web                      # y abre http://127.0.0.1:8000/tests/smoke.html para las de humo
 npm install && npm run smoke:app # las mismas de humo dentro de Electron, sin ventana; sale con 0 o 1 (necesita ffmpeg)
 ```
 
@@ -197,7 +180,7 @@ La app sirve la misma interfaz desde `app://reproductor/`, que solo entrega los 
 
 **Abrir archivos en la app:** `npm run app -- ~/Música/cancion.mp3 "$HOME/Música/otra canción.flac"` (rutas absolutas: npm ejecuta desde la carpeta del proyecto; también valen URLs `file://`) los añade a la biblioteca, suena el primero y los demás quedan en la cola. Con la app ya abierta, abrir más archivos (otra vez el mismo comando o, cuando exista el paquete, «Abrir con…») no abre otra ventana: los entrega a la abierta y la pone al frente. En la app, «+ Añadir» y «+ Carpeta» usan el diálogo del sistema. El proceso principal solo acepta archivos regulares (resuelve enlaces simbólicos y mira la extensión del destino) de audio, video, `.lrc`, `.srt` o `.vtt`, y la interfaz nunca ve rutas: recibe un id de un solo uso y pide con él los bytes, que se copian a la biblioteca como cualquier otro archivo. Los subtítulos aún no se abren.
 
-**Videos en la app: se enlazan, no se copian.** Un video que llega por «Abrir con…», el diálogo, arrastrándolo o con el selector de archivos se registra en `enlaces.json`, dentro de la carpeta de datos de la app (permisos 0600), con un id opaco; la biblioteca (IndexedDB) guarda solo ese id (`source: "link"`) y nunca la ruta. La interfaz lo reproduce desde `app://reproductor/__media/<id>`, que el proceso principal sirve con `Range` propio (`206`, `416`, tipo por extensión) leyendo el archivo por trozos de 512 KB solo cuando el reproductor los pide y cerrándolo en cuanto cancela la petición (al saltar), así que un video de varios GB ni se copia ni se carga en memoria. Las etiquetas se leen también por `Range`. Solo se sirven ids registrados; quitar la pista olvida su enlace. Si el archivo se mueve o se borra, la pista no se pierde (avisar «no encontrado» y volver a enlazarlo llegará después). El audio se sigue copiando a la biblioteca, y la versión web no cambia: allí los videos se copian como cualquier archivo. La asociación con el gestor de archivos («Abrir con…») llega con el empaquetado; hasta entonces sigue el lanzador de `launcher/`.
+**Videos en la app: se enlazan, no se copian.** Un video que llega por «Abrir con…», el diálogo, arrastrándolo o con el selector de archivos se registra en `enlaces.json`, dentro de la carpeta de datos de la app (permisos 0600), con un id opaco; la biblioteca (IndexedDB) guarda solo ese id (`source: "link"`) y nunca la ruta. La interfaz lo reproduce desde `app://reproductor/__media/<id>`, que el proceso principal sirve con `Range` propio (`206`, `416`, tipo por extensión) leyendo el archivo por trozos de 512 KB solo cuando el reproductor los pide y cerrándolo en cuanto cancela la petición (al saltar), así que un video de varios GB ni se copia ni se carga en memoria. Las etiquetas se leen también por `Range`. Solo se sirven ids registrados; quitar la pista olvida su enlace. Si el archivo se mueve o se borra, la pista no se pierde (avisar «no encontrado» y volver a enlazarlo llegará después). El audio se sigue copiando a la biblioteca, y la versión web no cambia: allí los videos se copian como cualquier archivo. La asociación con el gestor de archivos («Abrir con…») se ofrece con la app de escritorio instalada.
 
 **Al publicar una versión nueva**, si cambia la lista de archivos de la aplicación actualiza `FILES` y `VERSION` en `sw.js` (una prueba comprueba que `FILES` coincide con lo que carga la página).
 
@@ -205,7 +188,6 @@ La app sirve la misma interfaz desde `app://reproductor/`, que solo entrega los 
 
 - La lista de canciones no está virtualizada: con cientos va bien; con decenas de miles aún no se ha probado.
 - Las copias con etiquetas solo existen para MP3 y FLAC. En MP3 con etiqueta ID3v2.2 (muy antiguo) la copia solo lleva las etiquetas editadas.
-- El lanzador solo existe para Linux (usa un archivo `.desktop` y Python 3). En Windows y macOS usa la app instalada desde Chrome o Edge.
 - Las ediciones y las letras cargadas viven en el navegador; no viajan con el archivo salvo que descargues la copia.
 - «Abrir con…» solo funciona con la app instalada en Chrome o Edge de escritorio, y la integración con el sistema (menú contextual, programa por defecto) depende del sistema operativo: sus pruebas automáticas cubren la parte de la app, no el propio menú del sistema.
 - Probado en Chromium; en Firefox y Safari el audio, el almacenamiento y las carpetas deberían funcionar, pero no se ha verificado.

@@ -303,12 +303,9 @@ async function filesFromApp(items) {
   return files;
 }
 
-// Fuentes de «Abrir con…»/doble clic: launchQueue (app web instalada en Chrome o Edge), la cola del lanzador local
-// (launcher/) y la app de escritorio. Todas esperan a que la biblioteca guardada esté cargada.
+// Fuentes de «Abrir con…»/doble clic: launchQueue (app web instalada en Chrome o Edge) y la app de escritorio.
 function wireSystemOpen(ready) {
   if ("launchQueue" in window) window.launchQueue.setConsumer((params) => ready.then(() => consumeLaunch(params)));
-
-  ready.then(runLauncher);
 
   const app = window.reproductor;
   if (!app?.onAbrir) return;

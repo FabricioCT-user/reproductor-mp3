@@ -36,7 +36,7 @@ test("la raíz es index.html; la consulta y el fragmento se ignoran", () => {
 });
 
 test("rechaza lo que no está en la lista: otros archivos, mayúsculas, barra final, directorios", () => {
-  for (const r of ["/sw.js", "/package.json", "/electron/main.js", "/launcher/servidor.py", "/src", "/src/", "/src/app/",
+  for (const r of ["/sw.js", "/package.json", "/electron/main.js", "/src", "/src/", "/src/app/",
     "/INDEX.HTML", "/Style.css", "/index.html/", "/style.css/.", "/.git/config", "/index.htm", "/style.css%00"]) {
     assert.equal(get(r).estado, 404, r);
   }
