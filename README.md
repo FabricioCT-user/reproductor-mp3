@@ -18,25 +18,38 @@
   <a href="https://fabricioct-user.github.io/tarareo/"><img src="https://img.shields.io/badge/Probar_con_ejemplos-demo_web-1f6feb?style=for-the-badge" alt="Probar con ejemplos"></a>
 </p>
 
-## Capturas
-
-![Captura de la biblioteca](docs/img/biblioteca.png)
-
-![Captura de la letra sincronizada](docs/img/letra.png)
-
-![Captura de la reproducción de video](docs/img/video.png)
+<p align="center">
+  <img src="docs/img/biblioteca.png" width="760" alt="Biblioteca de Tarareo con una canción abierta">
+</p>
 
 ## Funciones
 
 - **Biblioteca** que se guarda en el navegador: añade archivos, carpetas enteras (con subcarpetas) o arrástralos a la ventana. Búsqueda y orden arrastrando.
-- **Audio** en MP3, FLAC, Ogg Vorbis, Opus, M4A y WAV; **video** en MP4, WebM, MKV y MOV, según los códecs que soporte tu navegador o Electron.
 - **Listas** con nombre, cola de reproducción y exportación o importación en JSON o M3U8.
-- **Fundido** entre canciones, temporizador de apagado, ecualizador de 10 bandas y velocidad de 0,5× a 2× sin cambiar el tono.
-- **Letras sincronizadas**, incrustadas o en archivos `.lrc`. Pulsa una línea para saltar a ella.
-- **Etiquetas**: edita título, artista, álbum y carátula de una o varias pistas. Los originales no se modifican; puedes descargar una copia con las etiquetas escritas (MP3 y FLAC).
-- **Video**: pantalla completa, imagen en imagen, subtítulos SRT y WebVTT, y miniaturas.
-- **App de escritorio**: se abre con «Abrir con…» y enlaza los videos sin copiarlos.
+- **App de escritorio:** se abre con «Abrir con…» y enlaza los videos sin copiarlos.
 - **Instalable** como app web (PWA), con tema claro u oscuro, y funciona sin conexión.
+
+### Música
+
+<img src="docs/img/letra.png" width="260" align="right" alt="Letra sincronizada con la línea actual resaltada">
+
+- MP3, FLAC, Ogg Vorbis, Opus, M4A y WAV.
+- **Letras sincronizadas**, incrustadas o en archivos `.lrc`. Pulsa una línea para saltar a ella.
+- **Fundido** entre canciones, temporizador de apagado, ecualizador de 10 bandas y velocidad de 0,5× a 2× sin cambiar el tono.
+- **Etiquetas:** edita título, artista, álbum y carátula de una o varias pistas. Los originales no se modifican; puedes descargar una copia con las etiquetas escritas (MP3 y FLAC).
+
+<br clear="both">
+
+### Video
+
+<img src="docs/img/video.png" width="260" align="left" alt="Video con subtítulos en el reproductor">
+
+- MP4, WebM, MKV y MOV, según los códecs que soporte tu navegador o Electron.
+- **Subtítulos** SRT y WebVTT, que puedes adelantar o retrasar.
+- **Pantalla completa** e **imagen en imagen**.
+- **Miniaturas** de los videos en la biblioteca.
+
+<br clear="both">
 
 ## Instalación
 
