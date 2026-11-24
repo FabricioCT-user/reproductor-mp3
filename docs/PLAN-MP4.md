@@ -340,7 +340,8 @@ Con Electron la tabla deja de depender del navegador de la persona: se prueba **
 - Sin cambios en el método (`<video muted>` fuera del grafo, `seeked`, canvas, JPEG ~20 KB en `tracks.thumb`). En Electron el `<video>` auxiliar usa la URL `__media/<id>` (el salto con `Range` hace que sea rápido incluso en videos de varios GB).
 - Revisión: Gemini.
 
-### T5.3 — Editor con video · **Haiku**
+### T5.3 — Editor con video · **Haiku** · **Hecha**
+> Hecho: el editor (`src/app/editor.js`) funciona igual con pistas de video: título, artista, álbum y carátula/miniatura. Quitar o cambiar la carátula no pierde ni regenera `tracks.thumb`, reflejándose de inmediato en la lista y en el reproductor. «Guardar y descargar copia» se oculta para pistas de video (TagWriter solo escribe MP3/FLAC); en edición múltiple mezclada sigue visible si hay algún audio MP3/FLAC y los videos se saltan al descargar sin leer el archivo entero en memoria. Se previenen errores al manejar pistas no disponibles (sin `file`) o videos enlazados en Electron (`LinkedFile`), sin escribir nunca sobre el original. Textos adaptados («pista» y «miniatura»). Pruebas completas en `tests/smoke.js`.
 - Sin cambios («descargar copia» oculto para video). En Electron «descargar» sigue siendo descarga (diálogo de guardar de Electron); no se escribe nunca sobre el original.
 - Revisión: Codex.
 

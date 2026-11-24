@@ -1,4 +1,4 @@
-// Editor de etiquetas (una canción o varias a la vez) y copias con las etiquetas escritas.
+// Editor de etiquetas (una pista o varias a la vez) y copias con las etiquetas escritas.
 
 // editing: { tracks, batch, touched, cover, previewUrl }
 //   touched: campos que el usuario ha tocado (en lote solo se cambian esos)
@@ -6,6 +6,14 @@
 let editing = null;
 
 const FIELDS = ["title", "artist", "album"];
+
+const isVideoTrackItem = (t) => {
+  if (!t) return false;
+  if (t.meta?.kind === "video" || t.kind === "video") return true;
+  if (t.file && typeof isVideo === "function" && isVideo(t.file)) return true;
+  if (t.fileName && typeof isVideo === "function" && isVideo({ name: t.fileName, type: "" })) return true;
+  return false;
+};
 
 const sameValue = (tracks, get) => {
   const v = get(tracks[0]);
@@ -16,7 +24,7 @@ function paintEditCover() {
   const c = editing.cover;
   let url = null;
   if (c instanceof Blob) url = editing.previewUrl ??= URL.createObjectURL(c);
-  else if (c === undefined) url = editing.batch ? null : editing.tracks[0].orig.coverUrl;
+  else if (c === undefined) url = editing.batch ? null : (editing.tracks[0].orig.coverUrl || editing.tracks[0].thumbUrl);
   els["edit-cover"].style.backgroundImage = url ? `url(${url})` : "";
   els["edit-cover"].classList.toggle("has-art", !!url);
 }
@@ -28,13 +36,20 @@ function setDraftCover(v) {
   paintEditCover();
 }
 
-// Abre el editor para una canción o, con varias, en modo lote.
+async function canWriteTrack(t) {
+  if (!t || !t.file || isVideoTrackItem(t)) return false;
+  if (typeof LinkedFile !== "undefined" && t.file instanceof LinkedFile) return false;
+  return !!(await TagWriter.kind(t.file).catch(() => null));
+}
+
+// Abre el editor para una pista o, con varias, en modo lote.
 function openEditor(target) {
   const tracks = Array.isArray(target) ? target : [target];
   const batch = tracks.length > 1;
   if (!batch) loadCover(tracks[0]).then(() => {
     if (editing?.tracks === tracks) paintEditCover();
   });
+  if (editing?.previewUrl) URL.revokeObjectURL(editing.previewUrl);
   editing = { tracks, batch, touched: new Set(), cover: batch ? undefined : tracks[0].edits?.cover, previewUrl: null };
   els["edit-heading"].textContent = batch ? `Editar ${tracks.length} pistas` : "Editar etiquetas";
   els["edit-note"].textContent = batch
@@ -46,13 +61,20 @@ function openEditor(target) {
     els[`edit-${f}`].value = v ?? "";
     els[`edit-${f}`].placeholder = batch && v === null ? "(varios valores)" : "";
   }
+  const allVideo = tracks.every(isVideoTrackItem);
+  const anyVideo = tracks.some(isVideoTrackItem);
+  const icon = els["edit-cover"].querySelector("span");
+  if (icon) icon.textContent = allVideo ? "▶" : "♪";
+  els["edit-cover-clear"].textContent = allVideo
+    ? "Quitar miniatura"
+    : (anyVideo ? "Quitar carátula o miniatura" : "Quitar carátula");
   paintEditCover();
   els["edit-download"].hidden = true;
   els["edit-download"].textContent = batch ? "Guardar y descargar copias" : "Guardar y descargar copia";
-  Promise.all(tracks.map((t) => TagWriter.kind(t.file))).then((kinds) => {
+  Promise.all(tracks.map((t) => canWriteTrack(t))).then((kinds) => {
     if (editing?.tracks === tracks) els["edit-download"].hidden = !kinds.some(Boolean); // solo MP3 y FLAC
   });
-  els["edit-dialog"].showModal();
+  if (!els["edit-dialog"].open) els["edit-dialog"].showModal();
   const first = els[batch ? "edit-artist" : "edit-title"];
   first.focus();
   first.select();
@@ -106,7 +128,9 @@ function saveEditor() {
 
 // Genera una copia del archivo con las ediciones escritas dentro. Devuelve "ok", "sin-formato" o "sin-cambios".
 async function downloadEditedCopy(t) {
-  const format = await TagWriter.kind(t.file);
+  if (!t || !t.file || isVideoTrackItem(t)) return "sin-formato";
+  if (typeof LinkedFile !== "undefined" && t.file instanceof LinkedFile) return "sin-formato";
+  const format = await TagWriter.kind(t.file).catch(() => null);
   if (!format) return "sin-formato";
   const e = t.edits;
   if (!e) return "sin-cambios";
@@ -131,8 +155,13 @@ async function downloadEditedCopy(t) {
 async function downloadCopies(tracks) {
   const n = { ok: 0, "sin-formato": 0, "sin-cambios": 0, error: 0 };
   for (const t of tracks) {
-    try { n[await downloadEditedCopy(t)]++; } catch { n.error++; }
-    if (tracks.length > 1) await new Promise((r) => setTimeout(r, 400)); // el navegador agrupa las descargas múltiples
+    try {
+      const res = await downloadEditedCopy(t);
+      n[res]++;
+      if (res === "ok" && tracks.length > 1) await new Promise((r) => setTimeout(r, 400)); // el navegador agrupa las descargas múltiples
+    } catch {
+      n.error++;
+    }
   }
   const msg = [];
   if (n.ok) msg.push(`${n.ok} copia(s) descargada(s)`);
@@ -153,6 +182,7 @@ function wireEditor() {
   els["edit-dialog"].addEventListener("click", (e) => { if (e.target === els["edit-dialog"]) els["edit-dialog"].close(); }); // clic fuera
 
   els["edit-dialog"].addEventListener("close", () => {
+    if (els["edit-dialog"].open) return;
     if (editing?.previewUrl) URL.revokeObjectURL(editing.previewUrl);
     editing = null;
   });
@@ -182,6 +212,6 @@ function wireEditor() {
     if (img && editing) setDraftCover(img); else toast("No se pudo leer la imagen");
   });
 
-  // Doble clic sobre el título o el artista de la canción actual abre el editor.
+  // Doble clic sobre el título o el artista de la pista actual abre el editor.
   els.title.parentElement.addEventListener("dblclick", () => { const t = state.tracks[state.index]; if (t) openEditor(t); });
 }
