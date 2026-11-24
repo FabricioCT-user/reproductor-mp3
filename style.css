@@ -194,7 +194,8 @@ input[type="range"] { accent-color: var(--accent); cursor: pointer; }
 input[type="range"]:disabled { cursor: default; opacity: .4; }
 
 /* Biblioteca */
-.library { display: flex; flex-direction: column; gap: 12px; min-height: 0; max-height: 640px; }
+/* contain: size: la lista no estira la fila; el panel mide lo que el reproductor (mínimo 560 px) y la lista se desplaza dentro. */
+.library { display: flex; flex-direction: column; gap: 12px; contain: size; min-height: 560px; }
 .view-bar { display: flex; flex-wrap: wrap; gap: 8px; }
 .view-bar select {
   flex: 1 1 160px; min-width: 0;
@@ -267,7 +268,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
   .player { grid-template-columns: minmax(0, 1fr); }
   .cover { max-width: 260px; width: 100%; margin: 0 auto; }
   .cover.video-mode { max-width: none; }
-  .library { max-height: 420px; }
+  .library { contain: none; min-height: 0; max-height: 420px; }
 }
 
 /* Ecualizador */
