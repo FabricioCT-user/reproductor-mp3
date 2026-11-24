@@ -4,11 +4,17 @@
 
 const path = require("node:path");
 
-function rutaDatos({ xdgConfigHome, home, userDataDir } = {}) {
-  if (typeof userDataDir === "string" && path.isAbsolute(userDataDir)) return path.resolve(userDataDir);
+function rutaDatos({ xdgConfigHome, home, userDataDir, appData, cwd = process.cwd() } = {}) {
+  if (typeof userDataDir === "string" && userDataDir.length > 0) {
+    return path.resolve(cwd, userDataDir);
+  }
   const base = typeof xdgConfigHome === "string" && path.isAbsolute(xdgConfigHome)
     ? xdgConfigHome
-    : path.join(home || require("node:os").homedir(), ".config");
+    : typeof appData === "string" && path.isAbsolute(appData)
+      ? appData
+      : typeof home === "string" && path.isAbsolute(home)
+        ? path.join(home, ".config")
+        : require("node:os").tmpdir();
   return path.join(base, "reproductor-mp3");
 }
 

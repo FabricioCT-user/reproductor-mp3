@@ -7,8 +7,8 @@ const dev = (...a) => analizar(["/ruta/electron", ".", ...a]);
 const pkg = (...a) => analizar(["/opt/Reproductor/reproductor", ...a], { empaquetada: true });
 
 test("sin argumentos", () => {
-  assert.deepEqual(dev(), { smoke: false, instalarEscritorio: false, datos: null, archivos: [] });
-  assert.deepEqual(pkg(), { smoke: false, instalarEscritorio: false, datos: null, archivos: [] });
+  assert.deepEqual(dev(), { smoke: false, instalarEscritorio: false, datos: null, errorDatos: null, archivos: [] });
+  assert.deepEqual(pkg(), { smoke: false, instalarEscritorio: false, datos: null, errorDatos: null, archivos: [] });
 });
 
 test("en desarrollo se salta la carpeta de la app; empaquetada no", () => {
@@ -31,11 +31,15 @@ test("--instalar-escritorio en desarrollo y empaquetada; tras «--» es archivo"
   assert.deepEqual(tras.archivos, ["--instalar-escritorio"]);
 });
 
-test("--user-data-dir solo con ruta absoluta, normalizada", () => {
+test("--user-data-dir resuelve rutas relativas desde cwd y rechaza valores vacíos", () => {
   assert.equal(dev("--user-data-dir=/tmp/x/../datos").datos, "/tmp/datos");
-  assert.equal(dev("--user-data-dir=relativa").datos, null);
-  assert.equal(dev("--user-data-dir=").datos, null);
-  assert.equal(dev("--user-data-dir", "/tmp/x").datos, null); // solo la forma con «=»
+  assert.equal(analizar(["e", ".", "--user-data-dir=relativa"], { cwd: "/tmp/cwd" }).datos, "/tmp/cwd/relativa");
+  assert.equal(dev("--user-data-dir=").errorDatos !== null, true);
+  const separada = analizar(["e", ".", "--user-data-dir", "perfil", "cancion.mp3"], { cwd: "/tmp/cwd" });
+  assert.equal(separada.datos, "/tmp/cwd/perfil");
+  assert.deepEqual(separada.archivos, ["cancion.mp3"]);
+  assert.match(dev("--user-data-dir").errorDatos, /ruta no vacía/);
+  assert.match(dev("--user-data-dir", "").errorDatos, /ruta no vacía/);
   assert.equal(pkg("--user-data-dir=/tmp/d").datos, "/tmp/d");
 });
 

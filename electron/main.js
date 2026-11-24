@@ -63,6 +63,12 @@ if (args.instalarEscritorio) {
   return;
 }
 
+if (args.errorDatos) {
+  console.error(`Error: ${args.errorDatos}`);
+  process.exit(2);
+  return;
+}
+
 // La prueba de humo vacía la base de datos: nunca sobre la carpeta de datos real.
 if (args.smoke && !args.datos) {
   console.error("--smoke exige --user-data-dir=<carpeta temporal> (usa «npm run smoke:app»)");
@@ -71,8 +77,10 @@ if (args.smoke && !args.datos) {
 // Mantiene la carpeta real de Reproductor 1.0.0 tras el cambio de paquete; --user-data-dir prevalece.
 app.setPath("userData", rutaDatos({
   xdgConfigHome: process.env.XDG_CONFIG_HOME,
-  home: os.homedir(),
+  home: process.env.HOME,
   userDataDir: args.datos,
+  appData: app.getPath("appData"),
+  cwd: process.cwd(),
 }));
 
 // Una sola instancia por carpeta de datos: si ya hay una abierta, le pasa sus archivos («second-instance») y se cierra.

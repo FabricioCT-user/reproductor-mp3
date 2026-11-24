@@ -16,6 +16,28 @@ function tieneValidador() {
   catch { return false; }
 }
 
+function validarSiDisponible(archivo) {
+  if (!tieneValidador()) return;
+  try { execFileSync("desktop-file-validate", [archivo], { stdio: "pipe" }); }
+  catch (e) {
+    // El sandbox puede permitir consultar la versión y bloquear el acceso al archivo temporal.
+    if (e.code === "EPERM") return;
+    throw e;
+  }
+}
+
+function desktopAnterior(ejecutable) {
+  return escritorio.contenidoDesktop({
+    rutaEjecutable: ejecutable,
+    nombre: "Reproductor",
+    comentario: "Reproductor de música y video local: en el navegador o como app de escritorio (Electron)",
+    categorias: escritorio.CATEGORIAS,
+    mimeTypes: escritorio.MIME_TYPES,
+    icono: "reproductor",
+    wmClass: "reproductor",
+  });
+}
+
 test("escaparExec: cita según la Desktop Entry Spec y bloquea caracteres de control", () => {
   assert.equal(escritorio.escaparExec("/home/ana/Reproductor.AppImage"), '"/home/ana/Reproductor.AppImage"');
   assert.equal(escritorio.escaparExec("/home/ana/Mis Apps/Reproductor ñ.AppImage"), '"/home/ana/Mis Apps/Reproductor ñ.AppImage"');
@@ -56,7 +78,7 @@ test("contenidoDesktop: genera una entrada válida con MimeType, -- %F y sin --n
   if (tieneValidador()) {
     const f = path.join(dir, "valido.desktop");
     fs.writeFileSync(f, txt);
-    assert.doesNotThrow(() => execFileSync("desktop-file-validate", [f], { stdio: "pipe" }));
+    assert.doesNotThrow(() => validarSiDisponible(f));
   }
 });
 
@@ -100,7 +122,7 @@ test("instalar: escribe .desktop e icono de forma atómica en XDG_DATA_HOME sin 
   assert.deepEqual(fs.readdirSync(path.join(xdg, "icons", "hicolor", "512x512", "apps")), ["tarareo.png"]);
 
   if (tieneValidador()) {
-    assert.doesNotThrow(() => execFileSync("desktop-file-validate", [r.escritorio], { stdio: "pipe" }));
+    assert.doesNotThrow(() => validarSiDisponible(r.escritorio));
   }
 
   // Reinstalar sobrescribe limpiamente sin dejar temporales.
@@ -122,7 +144,7 @@ test("instalar: funciona con un package.json empaquetado (sin campo build, como 
   assert.ok(desktop.includes("MimeType=audio/mpeg;"));
   assert.ok(desktop.includes("video/mp4;"));
   if (tieneValidador()) {
-    assert.doesNotThrow(() => execFileSync("desktop-file-validate", [r.escritorio], { stdio: "pipe" }));
+    assert.doesNotThrow(() => validarSiDisponible(r.escritorio));
   }
 });
 
@@ -140,15 +162,16 @@ test("instalar: cae a HOME/.local/share si no hay XDG_DATA_HOME y falla si APPIM
 });
 
 test("instalar: migra reproductor.desktop propio y conserva una entrada ajena", async () => {
-  const anterior = path.join(dir, "Reproductor-1.0.0.AppImage");
+  const carpetaConEscapes = path.join(dir, 'Carpeta $ "especial" ` \\');
+  fs.mkdirSync(carpetaConEscapes, { recursive: true });
+  const anterior = path.join(carpetaConEscapes, 'Reproductor-$ "viejo" ` 50%.AppImage');
   const actual = path.join(dir, "Tarareo-1.1.0.AppImage");
-  fs.writeFileSync(anterior, "appimage anterior");
+  // El AppImage viejo ya no está: la entrada se reconoce por su contenido de v1.0.0.
   fs.writeFileSync(actual, "appimage nuevo");
   const xdgPropio = path.join(dir, "xdg-propio");
   const appsPropio = path.join(xdgPropio, "applications");
   fs.mkdirSync(appsPropio, { recursive: true });
-  fs.writeFileSync(path.join(appsPropio, "reproductor.desktop"),
-    `[Desktop Entry]\nType=Application\nName=Reproductor\nExec="${anterior}" -- %F\nIcon=reproductor\n`);
+  fs.writeFileSync(path.join(appsPropio, "reproductor.desktop"), desktopAnterior(anterior));
   await escritorio.instalar({ env: { APPIMAGE: actual, XDG_DATA_HOME: xdgPropio }, raiz: ROOT, actualizarBase: false });
   assert.equal(fs.existsSync(path.join(appsPropio, "reproductor.desktop")), false);
   assert.equal(fs.existsSync(path.join(appsPropio, "tarareo.desktop")), true);
@@ -160,4 +183,23 @@ test("instalar: migra reproductor.desktop propio y conserva una entrada ajena", 
   fs.writeFileSync(path.join(appsAjeno, "reproductor.desktop"), ajeno);
   await escritorio.instalar({ env: { APPIMAGE: actual, XDG_DATA_HOME: xdgAjeno }, raiz: ROOT, actualizarBase: false });
   assert.equal(fs.readFileSync(path.join(appsAjeno, "reproductor.desktop"), "utf8"), ajeno);
+
+  const xdgSymlink = path.join(dir, "xdg-symlink");
+  const appsSymlink = path.join(xdgSymlink, "applications");
+  fs.mkdirSync(appsSymlink, { recursive: true });
+  const destinoSymlink = path.join(appsSymlink, "destino.desktop");
+  const contenidoPropio = desktopAnterior(anterior);
+  fs.writeFileSync(destinoSymlink, contenidoPropio);
+  fs.symlinkSync(destinoSymlink, path.join(appsSymlink, "reproductor.desktop"));
+  await escritorio.instalar({ env: { APPIMAGE: actual, XDG_DATA_HOME: xdgSymlink }, raiz: ROOT, actualizarBase: false });
+  assert.equal(fs.lstatSync(path.join(appsSymlink, "reproductor.desktop")).isSymbolicLink(), true);
+  assert.equal(fs.readFileSync(destinoSymlink, "utf8"), contenidoPropio);
+
+  const xdgModificado = path.join(dir, "xdg-modificado");
+  const appsModificado = path.join(xdgModificado, "applications");
+  fs.mkdirSync(appsModificado, { recursive: true });
+  const modificado = desktopAnterior(anterior).replace("StartupWMClass=reproductor", "StartupWMClass=otra-clase");
+  fs.writeFileSync(path.join(appsModificado, "reproductor.desktop"), modificado);
+  await escritorio.instalar({ env: { APPIMAGE: actual, XDG_DATA_HOME: xdgModificado }, raiz: ROOT, actualizarBase: false });
+  assert.equal(fs.readFileSync(path.join(appsModificado, "reproductor.desktop"), "utf8"), modificado);
 });

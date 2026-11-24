@@ -166,14 +166,61 @@ async function instalar({ env = process.env, raiz, actualizarBase = true } = {})
 
 async function esEscritorioAnteriorPropio(archivo) {
   let texto;
-  try { texto = await fs.promises.readFile(archivo, "utf8"); } catch { return false; }
-  const nombre = /^Name=Reproductor$/m.test(texto);
-  const icono = /^Icon=reproductor$/m.test(texto);
-  const exec = /^Exec="((?:[^"\\]|\\.)+)" -- %F$/m.exec(texto);
-  if (!nombre || !icono || !exec) return false;
-  const ejecutable = exec[1];
-  if (!/(?:^|\/)Reproductor(?:-[^/]+)?\.AppImage$/.test(ejecutable)) return false;
-  try { return (await fs.promises.stat(ejecutable)).isFile(); } catch { return false; }
+  try {
+    const st = await fs.promises.lstat(archivo);
+    if (!st.isFile() || st.isSymbolicLink()) return false;
+    texto = await fs.promises.readFile(archivo, "utf8");
+  } catch { return false; }
+  const lineas = texto.split("\n");
+  const esperadas = contenidoDesktop({
+    rutaEjecutable: "/Reproductor.AppImage",
+    nombre: "Reproductor",
+    comentario: "Reproductor de música y video local: en el navegador o como app de escritorio (Electron)",
+    categorias: CATEGORIAS,
+    mimeTypes: MIME_TYPES,
+    icono: "reproductor",
+    wmClass: "reproductor",
+  }).split("\n");
+  const exec = /^Exec="([^\n]+)" -- %F$/.exec(lineas[4] || "");
+  if (lineas.length !== esperadas.length || !exec) return false;
+  for (let i = 0; i < esperadas.length; i++) {
+    if (i !== 4 && lineas[i] !== esperadas[i]) return false;
+  }
+  const cadena = desescaparCadenaDesktop(exec[1]);
+  if (cadena === null) return false;
+  const ejecutable = desescaparArgumentoExec(cadena);
+  return ejecutable !== null && /(?:^|\/)Reproductor(?:-[^/]+)?\.AppImage$/.test(ejecutable);
+}
+
+// Desktop Entry codifica primero la cadena completa y luego el argumento de Exec.
+function desescaparCadenaDesktop(valor) {
+  let salida = "";
+  for (let i = 0; i < valor.length; i++) {
+    if (valor[i] !== "\\") { salida += valor[i]; continue; }
+    const c = valor[++i];
+    if (c === "\\") salida += "\\";
+    else if (c === "n") salida += "\n";
+    else if (c === "r") salida += "\r";
+    else if (c === "t") salida += "\t";
+    else return null;
+  }
+  return salida;
+}
+
+function desescaparArgumentoExec(valor) {
+  let salida = "";
+  for (let i = 0; i < valor.length; i++) {
+    const c = valor[i];
+    if (c === "\\") {
+      const siguiente = valor[++i];
+      if (!["\\", '"', "`", "$"].includes(siguiente)) return null;
+      salida += siguiente;
+    } else if (c === "%") {
+      if (valor[++i] !== "%") return null;
+      salida += "%";
+    } else salida += c;
+  }
+  return salida;
 }
 
 module.exports = {

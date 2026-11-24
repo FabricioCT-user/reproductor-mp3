@@ -7,20 +7,37 @@ const path = require("node:path");
 // - En desarrollo (`electron . …`) argv[1] es la carpeta de la app; empaquetada, argv[1] ya es un argumento.
 // - --smoke: carga la prueba de humo (solo en desarrollo: el paquete no lleva tests/).
 // - --instalar-escritorio: instala el archivo .desktop y el icono para el AppImage en ~/.local/share y sale.
-// - --user-data-dir=<ruta absoluta>: carpeta de datos (la usa smoke:app con una temporal).
+// - --user-data-dir <ruta> o --user-data-dir=<ruta>: carpeta absoluta o relativa al cwd.
+//   La usa smoke:app con una temporal explícita.
 // - El resto de opciones (--algo, incluidas las de Chromium) se ignoran; lo que no empieza por - son archivos (TE.2).
 //   Tras «--» todo son archivos.
-function analizar(argv, { empaquetada = false } = {}) {
-  const res = { smoke: false, instalarEscritorio: false, datos: null, archivos: [] };
+function analizar(argv, { empaquetada = false, cwd = process.cwd() } = {}) {
+  const res = { smoke: false, instalarEscritorio: false, datos: null, errorDatos: null, archivos: [] };
   let soloArchivos = false;
-  for (const a of argv.slice(empaquetada ? 1 : 2)) {
+  const argumentos = argv.slice(empaquetada ? 1 : 2);
+  for (let i = 0; i < argumentos.length; i++) {
+    const a = argumentos[i];
     if (typeof a !== "string" || a === "") continue;
     if (soloArchivos || !a.startsWith("-")) { res.archivos.push(a); continue; }
     if (a === "--") { soloArchivos = true; continue; }
     if (a === "--smoke") { if (!empaquetada) res.smoke = true; continue; }
     if (a === "--instalar-escritorio") { res.instalarEscritorio = true; continue; }
-    const m = /^--user-data-dir=(.+)$/.exec(a);
-    if (m && path.isAbsolute(m[1])) res.datos = path.normalize(m[1]);
+    if (a === "--user-data-dir") {
+      const valor = argumentos[i + 1];
+      if (typeof valor !== "string" || valor.length === 0 || valor.startsWith("-")) {
+        res.errorDatos = "--user-data-dir requiere una ruta no vacía (usa --user-data-dir=<ruta>)";
+      } else {
+        res.datos = path.resolve(cwd, valor);
+        // Evita que el valor separado por espacio se agregue también como archivo de audio.
+        i++;
+      }
+      continue;
+    }
+    if (a.startsWith("--user-data-dir=")) {
+      const valor = a.slice("--user-data-dir=".length);
+      if (!valor) res.errorDatos = "--user-data-dir requiere una ruta no vacía";
+      else res.datos = path.resolve(cwd, valor);
+    }
   }
   return res;
 }
