@@ -25,6 +25,8 @@
   color-scheme: dark;
 }
 
+[hidden] { display: none !important; }
+
 :root[data-theme="light"] {
   --bg: #eceef5;
   --panel: #ffffffd9;

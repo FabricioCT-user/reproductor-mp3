@@ -130,6 +130,7 @@ const appReady = (async function init() {
   renderSleep();
   toggleLyrics(store.get("lyrics") !== "1");
   renderViews();
+  libraryReady = true;
   render();
 })();
 

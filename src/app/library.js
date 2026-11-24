@@ -3,6 +3,7 @@
 const META_VERSION = 2;
 const MAX_WEB_VIDEO_BYTES = 2 * 1024 * 1024 * 1024;
 let videoPersistRequested = false;
+let libraryReady = false;
 
 function ensureVideoPersist() {
   if (videoPersistRequested || window.reproductor) return;
@@ -734,12 +735,18 @@ async function clearLibrary() {
   savePlaylists();
   state.index = -1;
   await Storage.clear().catch(() => {});
+  if (els["demo-status"]) { els["demo-status"].hidden = true; els["demo-status"].textContent = ""; }
   showTrack(null);
   render();
 }
 
 function render() {
-  if (els["demo-examples"]) els["demo-examples"].hidden = !!window.reproductor || state.tracks.length > 0;
+  const demoButton = els["demo-examples"];
+  if (demoButton) {
+    const eligible = libraryReady && !window.reproductor && state.tracks.length === 0
+      && state.view === "all" && !state.filter && state.mediaFilter === "all";
+    demoButton.hidden = !eligible;
+  }
   if (state.selecting) {
     for (const t of state.selected) if (!state.tracks.includes(t)) state.selected.delete(t);
     updateSelectBar();
@@ -759,6 +766,7 @@ function render() {
     li.textContent = tracks.length && (q || kind !== "all") ? "Sin resultados."
       : pl ? "Esta lista está vacía. Usa el botón ♫ de una pista para añadirla."
       : "Tu biblioteca está vacía. Arrastra archivos o carpetas aquí, o usa «+ Añadir» / «+ Carpeta».";
+    if (demoButton && !demoButton.hidden && !pl) li.appendChild(demoButton);
     els.playlist.replaceChildren(li, ...pendingNote(pl));
     return;
   }
@@ -966,7 +974,7 @@ function wireLibrary() {
   els["demo-examples"].addEventListener("click", async () => {
     const button = els["demo-examples"];
     const status = els["demo-status"];
-    if (button.disabled || window.reproductor || state.tracks.length) return;
+    if (button.disabled || !libraryReady || window.reproductor || state.tracks.length) return;
     button.disabled = true;
     button.setAttribute("aria-busy", "true");
     status.hidden = false;

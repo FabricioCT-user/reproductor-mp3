@@ -149,21 +149,24 @@ async function waitReady(win) {
   return true;
 }
 
-async function openApp(prepare, reset = true) {
+async function openApp(prepare, reset = true, options = {}) {
   if (reset) await resetStorage();
   if (prepare) await prepare();
   // La página real lleva una CSP sin «unsafe-eval», y estas pruebas necesitan eval para leer sus variables internas:
   // se carga la misma página sin esa etiqueta (la CSP se comprueba aparte, en las pruebas unitarias y en el navegador).
+  const pauseStorage = options.pauseStorage
+    ? "const __storageAll = Storage.all; Storage.all = () => new Promise(resolve => { window.__releaseStorageAll = () => __storageAll().then(resolve); });"
+    : "";
   const html = (await (await fetch("../index.html", { cache: "no-cache" })).text())
     .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, "")
     .replace("<head>", '<head><base href="../">')
-    .replace('<script src="src/app/main.js"></script>', '<script>const __tagsRead = Tags.read; window.__tagsReadCount = 0; Tags.read = (...a) => { window.__tagsReadCount++; return __tagsRead(...a); };</script><script src="src/app/main.js"></script>');
+    .replace('<script src="src/app/main.js"></script>', `<script>const __tagsRead = Tags.read; window.__tagsReadCount = 0; Tags.read = (...a) => { window.__tagsReadCount++; return __tagsRead(...a); }; ${pauseStorage}</script><script src="src/app/main.js"></script>`);
   const frame = document.createElement("iframe");
   frame.srcdoc = html;
   document.body.append(frame);
   await new Promise((r) => frame.addEventListener("load", r, { once: true }));
   const win = frame.contentWindow;
-  const ready = await waitReady(win);
+  const ready = options.waitReady === false ? null : await waitReady(win);
   win.confirm = () => true;
   return { frame, win, ready, hostApp: !!window.reproductor, ev: (code) => win.eval(code) };
 }
@@ -177,13 +180,13 @@ async function responderDialogo(win, valor) {
   win.document.getElementById("prompt-form").requestSubmit();
 }
 
-async function scenario(title, fn, prepare) {
+async function scenario(title, fn, prepare, options = {}) {
   let app;
   document.getElementById("summary").textContent = `Ejecutando: ${title}…`;
   (window.__log ||= []).push(`${new Date().toISOString().slice(11, 19)} ${title}`);
   try {
-    app = await openApp(prepare);
-    if (!app.ready) { check(`${title}: la aplicación arranca`, false, "no llegó a inicializarse (¿error al cargar?)"); return; }
+    app = await openApp(prepare, true, options);
+    if (options.waitReady !== false && !app.ready) { check(`${title}: la aplicación arranca`, false, "no llegó a inicializarse (¿error al cargar?)"); return; }
     await Promise.race([fn(app), sleep(40000).then(() => { throw new Error("tiempo agotado"); })]);
   } catch (e) {
     check(`${title}: sin excepciones`, false, e.stack || e);
@@ -218,10 +221,16 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
       check("demo: el smoke de Electron no accede a ejemplos fuera de su lista blanca", !!button);
       return;
     }
-    check("demo web: botón visible con biblioteca vacía", !!button && !button.hidden);
+    check("demo web: botón visible con biblioteca vacía", !!button && !button.hidden
+      && win.getComputedStyle(button).display !== "none");
     ev("window.reproductor = {}; render()");
     check("demo: botón oculto en app de escritorio", button.hidden);
     ev("delete window.reproductor; render()");
+    ev("state.filter = els.filter.value = 'sin resultados'; render()");
+    check("demo: botón oculto con un filtro", button.hidden && win.getComputedStyle(button).display === "none");
+    ev("state.filter = els.filter.value = ''; state.playlists.push({ id: 'demo-vacia', name: 'Vacía', ids: [] }); state.view = 'demo-vacia'; render()");
+    check("demo: botón oculto en una lista vacía", button.hidden && win.getComputedStyle(button).display === "none");
+    ev("state.playlists.pop(); state.view = 'all'; render()");
 
     const realFetch = win.fetch.bind(win);
     let calls = 0;
@@ -234,11 +243,49 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     win.fetch = realFetch;
     check("demo: se importan las tres pistas y el vídeo", ev("state.tracks.length") === 4, titles(ev));
     check("demo: pistas con artista y álbum de ejemplo", ev("state.tracks.every(t => t.meta.artist === 'Tarareo (ejemplo)' && t.meta.album === 'Pequeños paisajes')"));
+    check("demo: las tres pistas de audio tienen carátula", ev("state.tracks.filter(t => t.meta.kind === 'audio').length === 3 && state.tracks.filter(t => t.meta.kind === 'audio').every(t => t.meta.hasCover)"));
     check("demo: doble clic lanza una sola descarga por archivo", calls === 6, `fetch=${calls}`);
     check("demo: letra LRC emparejada", ev("state.tracks.find(t => t.fileName === 'Brisa.mp3')?.userLyrics?.includes('La tarde baja')"));
     check("demo: subtítulos VTT emparejados", ev("state.tracks.find(t => t.fileName === 'Paseo.webm')?.subs?.length") > 0);
     check("demo: no comienza la reproducción", ev("media.paused") && ev("state.index") === 0);
-    check("demo: botón desaparece tras la importación", button.hidden);
+    check("demo: botón desaparece tras la importación", button.hidden && win.getComputedStyle(button).display === "none");
+    ev("els.clear.click()");
+    check("demo: al vaciar se limpia el estado de importación", win.document.getElementById("demo-status").hidden
+      && !win.document.getElementById("demo-status").textContent.includes("Ejemplos añadidos"));
+  });
+
+  await scenario("Botón de demo espera la biblioteca guardada", async ({ win, ev }) => {
+    const button = win.document.getElementById("demo-examples");
+    check("demo: botón oculto mientras se lee una biblioteca guardada", button.hidden
+      && win.getComputedStyle(button).display === "none" && !ev("libraryReady"));
+    ev("__releaseStorageAll()");
+    await win.eval("appReady");
+    check("demo: biblioteca guardada cargada impide ofrecer demo", ev("libraryReady && state.tracks.length === 1")
+      && button.hidden && win.getComputedStyle(button).display === "none");
+  }, async () => {
+    const db = await openDb();
+    const file = new File([wavBytes({ seconds: 1 })], "guardada.wav", { type: "audio/wav" });
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(["tracks", "files"], "readwrite");
+      const request = tx.objectStore("tracks").add({ name: file.name, type: file.type, size: file.size, lastModified: file.lastModified, kind: "audio", source: "blob" });
+      request.onsuccess = () => tx.objectStore("files").put({ id: request.result, blob: file });
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  }, { pauseStorage: true, waitReady: false });
+
+  await scenario("Pistas añadidas durante la descarga de ejemplos", async ({ win, ev }) => {
+    const button = win.document.getElementById("demo-examples");
+    let release;
+    const pending = new Promise((resolve) => { release = resolve; });
+    win.fetch = () => pending;
+    button.click();
+    await win.addFiles([wav(win, "durante.wav", { mtime: 441 })]);
+    release({ ok: true, headers: { get: () => "audio/mpeg" }, arrayBuffer: async () => new ArrayBuffer(0) });
+    await until(() => !button.disabled);
+    check("demo: una pista ajena durante la descarga cancela la importación", ev("state.tracks.length === 1 && state.tracks[0].fileName === 'durante.wav'")
+      && !button.disabled && win.document.getElementById("demo-status").textContent.includes("no se añadieron los ejemplos"));
   });
 
   await scenario("Fallo de red en ejemplos", async ({ win, ev, hostApp }) => {
