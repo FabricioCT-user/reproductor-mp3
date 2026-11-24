@@ -9,7 +9,7 @@ npm start          # app de escritorio (Electron), igual que npm run app
 npm run app        # app de escritorio (Electron 45.4.1 exacto, devDependency)
 npm run dist       # empaqueta en dist/: .pacman, .AppImage y .deb (electron-builder; la configuración está en la clave build de package.json)
 npm run web        # servidor estático (python3 -m http.server) en http://127.0.0.1:8000
-npm test           # 222 pruebas unitarias (node:test, tests/unit/*.test.js); NO debe requerir Electron
+npm test           # 231 pruebas unitarias (node:test, tests/unit/*.test.js); NO debe requerir Electron
 npm run smoke:app  # pruebas de humo dentro de Electron, sin ventana y con --user-data-dir temporal; sale 0/1 (necesita ffmpeg)
 ```
 
@@ -26,7 +26,8 @@ src/app/          la aplicación: core, library, playlists, lyrics-ui, player, e
 tests/unit/       node:test; helpers.js construye MP3/FLAC/Ogg/MP4 sintéticos
 tests/smoke.*     pruebas de humo en el navegador (smoke-app.js: las mismas en Electron)
 electron/         app de escritorio: main.js, preload.js y lib/ (argumentos, enlaces, entregas, escritorio, medios, rango, rutas, servir). Nada de lib/ hace require("electron"); se prueban con node:test
-docs/PLAN-MP4.md  plan de video y de la app de escritorio (estado al día)
+ejemplos/         demo: audios y video (LEEME.md); scripts/generar-ejemplos.js los regenera (requiere FFmpeg)
+docs/             USO.md, ESCRITORIO.md, DESARROLLO.md y PLAN-MP4.md (plan de video y de la app de escritorio, estado al día)
 ```
 
 **App Electron:** protocolo `app://reproductor/` con lista blanca = `FILES` de `sw.js` + `index.html` y la CSP del meta repetida como cabecera; ventana endurecida (contextIsolation, sandbox, sin nodeIntegration, sin ventanas nuevas ni navegación fuera de la app, permisos negados salvo `fullscreen`). Todo manejador IPC comprueba `deLaApp(event)` (una prueba lo vigila). El preload solo expone `window.reproductor` con `contextBridge` (`esApp`, `version`, `onAbrir`, `elegirArchivos`, `leer`, `enlazar`, `olvidar`, `estadoEnlaces`). `electron/lib` no puede hacer `require("electron")`. Archivos del sistema (argv, `second-instance`, diálogo): `lib/rutas.js` valida (archivo regular, `realpath`, extensión del destino) y `lib/entregas.js` da ids de un solo uso; **la interfaz nunca recibe rutas**, pide los bytes por id. **Videos (T2.1):** no se leen ni se copian; `reproductor.enlazar(idEntrega | File)` (el preload saca la ruta de un File con `webUtils.getPathForFile`) los registra en `lib/enlaces.js` (`userData/enlaces.json`, 0600, escritura atómica, ids de 32 hex) y la interfaz usa `LinkedFile` (library.js), cuyo `url` es `__media/<linkId>` y cuyo `slice().arrayBuffer()` pide `Range`. `__media` lo sirve `lib/medios.js` (`ReadableStream` con `pull()` + `FileHandle.read`, cierra en `cancel()`; `lib/rango.js` analiza la cabecera). `olvidar(id)` al quitar la pista. `wireSystemOpen()` (library.js) junta launchQueue y la app.
