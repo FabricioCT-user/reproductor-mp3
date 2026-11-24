@@ -42,7 +42,7 @@
 
 ### Video
 
-<img src="docs/img/video.png" width="260" align="left" alt="Video con subtítulos en el reproductor">
+<img src="docs/img/video.png" width="260" align="right" alt="Video con subtítulos en el reproductor">
 
 - MP4, WebM, MKV y MOV, según los códecs que soporte tu navegador o Electron.
 - **Subtítulos** SRT y WebVTT, que puedes adelantar o retrasar.
