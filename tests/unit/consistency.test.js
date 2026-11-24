@@ -153,14 +153,21 @@ test("Electron: el paquete incluye lo que sirve el protocolo y no las pruebas", 
 
 test("Electron: empaquetado, asociaciones de archivos (fileAssociations ↔ rutas.js ↔ isMedia) y sin --no-sandbox", () => {
   const b = pkg.build;
-  assert.equal(b.productName, "Reproductor");
-  assert.equal(b.appId, "io.github.fabricioct-user.reproductor");
+  assert.equal(pkg.name, "tarareo");
+  assert.equal(pkg.version, "1.1.0");
+  assert.equal(b.productName, "Tarareo");
+  assert.equal(b.appId, "io.github.fabricioct-user.tarareo");
+  assert.equal(pkg.desktopName, "tarareo.desktop");
+  assert.equal(b.linux.executableName, "tarareo");
   assert.equal(b.asar, true);
   assert.equal(b.publish, null, "no debe configurarse auto-actualización");
   assert.ok(fs.existsSync(path.join(ROOT, b.linux.icon)), `falta icono ${b.linux.icon}`);
   assert.ok(b.linux.target.includes("pacman") && b.linux.target.includes("AppImage"), "debe empaquetar pacman y AppImage");
   assert.deepEqual(b.pacman.executableArgs, ["--", "%F"], "pacman debe pasar -- antes de %F");
   assert.deepEqual(b.deb.executableArgs, ["--", "%F"], "deb debe pasar -- antes de %F");
+  for (const destino of [b.pacman, b.deb]) {
+    assert.deepEqual(destino.fpm, ["--replaces", "reproductor-mp3", "--conflicts", "reproductor-mp3", "--provides", "reproductor-mp3"]);
+  }
   assert.ok(Array.isArray(b.appImage.executableArgs), "appImage debe fijar executableArgs para evitar --no-sandbox por defecto");
   assert.doesNotMatch(JSON.stringify(b), /--no-sandbox/, "nunca usar --no-sandbox");
 

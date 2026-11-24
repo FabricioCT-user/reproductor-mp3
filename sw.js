@@ -1,6 +1,6 @@
 // Cachea la aplicación para que funcione sin conexión.
 // Sube VERSION al cambiar la lista de archivos (los archivos en sí se revalidan siempre con la red).
-const VERSION = "v8";
+const VERSION = "v9";
 const FILES = [
   "./",
   "index.html",

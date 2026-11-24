@@ -9,9 +9,10 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const NOMBRE_ESCRITORIO = "reproductor.desktop";
-const NOMBRE_ICONO = "reproductor";
-const NOMBRE_APP = "Reproductor";
+const NOMBRE_ESCRITORIO = "tarareo.desktop";
+const ESCRITORIO_ANTERIOR = "reproductor.desktop";
+const NOMBRE_ICONO = "tarareo";
+const NOMBRE_APP = "Tarareo";
 const CATEGORIAS = "AudioVideo;Audio;Video;Player";
 // Coincide con build.linux.mimeTypes de package.json (electron-builder elimina «build» al empaquetar; una prueba vigila la igualdad).
 const MIME_TYPES = [
@@ -99,8 +100,8 @@ function contenidoDesktop({ rutaEjecutable, nombre, comentario, categorias, mime
   const lineas = [
     "[Desktop Entry]",
     "Type=Application",
-    `Name=${escaparCadena(nombre || "Reproductor")}`,
-    `Comment=${escaparCadena(comentario || "Reproductor de música y video local")}`,
+    `Name=${escaparCadena(nombre || "Tarareo")}`,
+    `Comment=${escaparCadena(comentario || "Tarareo, reproductor de música y video local")}`,
     `Exec=${escaparExec(rutaEjecutable)} -- %F`,
     `Icon=${escaparCadena(icono)}`,
     "Terminal=false",
@@ -145,6 +146,7 @@ async function instalar({ env = process.env, raiz, actualizarBase = true } = {})
   const datos = carpetaDatos(env);
   const dirAplicaciones = path.join(datos, "applications");
   const rutaEscritorio = path.join(dirAplicaciones, NOMBRE_ESCRITORIO);
+  const rutaAnterior = path.join(dirAplicaciones, ESCRITORIO_ANTERIOR);
   const rutaIcono = path.join(datos, "icons", "hicolor", "512x512", "apps", `${NOMBRE_ICONO}.png`);
   const contenido = contenidoDesktop({
     rutaEjecutable: ejecutable,
@@ -155,12 +157,75 @@ async function instalar({ env = process.env, raiz, actualizarBase = true } = {})
   });
   await escribirAtomico(rutaIcono, iconoBytes, 0o644);
   await escribirAtomico(rutaEscritorio, contenido, 0o644);
+  // Migra solo la entrada generada por la versión anterior y que apunta a un AppImage Reproductor.
+  // Una entrada ajena con el mismo nombre se conserva intacta.
+  if (await esEscritorioAnteriorPropio(rutaAnterior)) await fs.promises.unlink(rutaAnterior);
   if (actualizarBase) await actualizarBaseEscritorio(dirAplicaciones);
   return { escritorio: rutaEscritorio, icono: rutaIcono, ejecutable };
 }
 
+async function esEscritorioAnteriorPropio(archivo) {
+  let texto;
+  try {
+    const st = await fs.promises.lstat(archivo);
+    if (!st.isFile() || st.isSymbolicLink()) return false;
+    texto = await fs.promises.readFile(archivo, "utf8");
+  } catch { return false; }
+  const lineas = texto.split("\n");
+  const esperadas = contenidoDesktop({
+    rutaEjecutable: "/Reproductor.AppImage",
+    nombre: "Reproductor",
+    comentario: "Reproductor de música y video local: en el navegador o como app de escritorio (Electron)",
+    categorias: CATEGORIAS,
+    mimeTypes: MIME_TYPES,
+    icono: "reproductor",
+    wmClass: "reproductor",
+  }).split("\n");
+  const exec = /^Exec="([^\n]+)" -- %F$/.exec(lineas[4] || "");
+  if (lineas.length !== esperadas.length || !exec) return false;
+  for (let i = 0; i < esperadas.length; i++) {
+    if (i !== 4 && lineas[i] !== esperadas[i]) return false;
+  }
+  const cadena = desescaparCadenaDesktop(exec[1]);
+  if (cadena === null) return false;
+  const ejecutable = desescaparArgumentoExec(cadena);
+  return ejecutable !== null && /(?:^|\/)Reproductor(?:-[^/]+)?\.AppImage$/.test(ejecutable);
+}
+
+// Desktop Entry codifica primero la cadena completa y luego el argumento de Exec.
+function desescaparCadenaDesktop(valor) {
+  let salida = "";
+  for (let i = 0; i < valor.length; i++) {
+    if (valor[i] !== "\\") { salida += valor[i]; continue; }
+    const c = valor[++i];
+    if (c === "\\") salida += "\\";
+    else if (c === "n") salida += "\n";
+    else if (c === "r") salida += "\r";
+    else if (c === "t") salida += "\t";
+    else return null;
+  }
+  return salida;
+}
+
+function desescaparArgumentoExec(valor) {
+  let salida = "";
+  for (let i = 0; i < valor.length; i++) {
+    const c = valor[i];
+    if (c === "\\") {
+      const siguiente = valor[++i];
+      if (!["\\", '"', "`", "$"].includes(siguiente)) return null;
+      salida += siguiente;
+    } else if (c === "%") {
+      if (valor[++i] !== "%") return null;
+      salida += "%";
+    } else salida += c;
+  }
+  return salida;
+}
+
 module.exports = {
   NOMBRE_ESCRITORIO,
+  ESCRITORIO_ANTERIOR,
   NOMBRE_ICONO,
   NOMBRE_APP,
   CATEGORIAS,
@@ -172,4 +237,5 @@ module.exports = {
   contenidoDesktop,
   escribirAtomico,
   instalar,
+  esEscritorioAnteriorPropio,
 };

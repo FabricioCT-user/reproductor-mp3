@@ -1,7 +1,7 @@
 {
-  "name": "Reproductor",
-  "short_name": "Reproductor",
-  "description": "Reproductor de música local en el navegador",
+  "name": "Tarareo",
+  "short_name": "Tarareo",
+  "description": "Tarareo: reproductor de música local en el navegador",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

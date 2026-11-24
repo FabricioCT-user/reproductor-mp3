@@ -53,7 +53,7 @@ function showMeta(t) {
   els.cover.classList.toggle("has-art", !!t?.coverUrl);
   els.backdrop.style.backgroundImage = t?.coverUrl ? `url(${t.coverUrl})` : "";
   els.backdrop.classList.toggle("on", !!t?.coverUrl);
-  document.title = t ? `${t.title} · Reproductor` : "Reproductor";
+  document.title = t ? `${t.title} · Tarareo` : "Tarareo";
 
   if ("mediaSession" in navigator) {
     navigator.mediaSession.metadata = t

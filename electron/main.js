@@ -7,6 +7,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { analizar } = require("./lib/argumentos");
+const { rutaDatos } = require("./lib/ruta-datos");
 const { Enlaces } = require("./lib/enlaces");
 const { Entregas } = require("./lib/entregas");
 const escritorio = require("./lib/escritorio");
@@ -17,7 +18,7 @@ const servir = require("./lib/servir");
 const RAIZ = path.join(__dirname, "..");
 const args = analizar(process.argv, { empaquetada: app.isPackaged });
 const SMOKE_LIMITE_MS = 10 * 60 * 1000;
-const MENSAJE_SIN_SANDBOX = "El Reproductor no se ejecuta sin sandbox. Usa el paquete .deb/.pacman o habilita los espacios de nombres de usuario.";
+const MENSAJE_SIN_SANDBOX = "Tarareo no se ejecuta sin sandbox. Usa el paquete .deb/.pacman o habilita los espacios de nombres de usuario.";
 
 // Muestra diálogo gráfico solo cuando se lanza desde un entorno de escritorio sin consola
 // (stderr en /dev/null o journald de systemd), nunca en terminal, pipes ni pruebas automáticas.
@@ -39,7 +40,7 @@ if (app.commandLine.hasSwitch("no-sandbox")) {
   console.error(MENSAJE_SIN_SANDBOX);
   if (esLanzamientoGrafico()) {
     app.whenReady().then(() => {
-      dialog.showErrorBox("Reproductor", MENSAJE_SIN_SANDBOX);
+      dialog.showErrorBox("Tarareo", MENSAJE_SIN_SANDBOX);
       app.exit(1);
     }).catch(() => app.exit(1));
   } else {
@@ -62,12 +63,25 @@ if (args.instalarEscritorio) {
   return;
 }
 
+if (args.errorDatos) {
+  console.error(`Error: ${args.errorDatos}`);
+  process.exit(2);
+  return;
+}
+
 // La prueba de humo vacía la base de datos: nunca sobre la carpeta de datos real.
 if (args.smoke && !args.datos) {
   console.error("--smoke exige --user-data-dir=<carpeta temporal> (usa «npm run smoke:app»)");
   process.exit(2);
 }
-if (args.datos) app.setPath("userData", args.datos);
+// Mantiene la carpeta real de Reproductor 1.0.0 tras el cambio de paquete; --user-data-dir prevalece.
+app.setPath("userData", rutaDatos({
+  xdgConfigHome: process.env.XDG_CONFIG_HOME,
+  home: process.env.HOME,
+  userDataDir: args.datos,
+  appData: app.getPath("appData"),
+  cwd: process.cwd(),
+}));
 
 // Una sola instancia por carpeta de datos: si ya hay una abierta, le pasa sus archivos («second-instance») y se cierra.
 const primera = app.requestSingleInstanceLock();
@@ -167,7 +181,11 @@ function enfocar() {
 
 app.on("second-instance", (_e, argv, cwd) => {
   enfocar();
-  registrar(analizar(argv, { empaquetada: app.isPackaged }).archivos, cwd).then(abrirEnLaApp).catch((e) => console.error(e));
+  // Chromium puede reordenar `--user-data-dir` separado; informa el error, pero conserva los posicionales
+  // enviados a la instancia abierta y nunca termina esta instancia por un argumento de la segunda.
+  const argsSegunda = analizar(argv, { empaquetada: app.isPackaged });
+  if (argsSegunda.errorDatos) console.error(`Error en argumentos de la segunda instancia: ${argsSegunda.errorDatos}`);
+  registrar(argsSegunda.archivos, cwd).then(abrirEnLaApp).catch((e) => console.error(e));
 });
 
 // Diálogo nativo. En Linux y Windows no puede elegir a la vez archivos y carpetas: son dos modos. `video` elige un solo

@@ -2,6 +2,7 @@
 // Las canciones se identifican por datos portables (nombre de archivo, tamaño, título, artista),
 // porque los ids internos de la biblioteca no valen en otro navegador.
 const PlaylistIO = (() => {
+  // El identificador del formato exportado sigue siendo el antiguo para importar y exportar listas existentes.
   const FORMAT = "reproductor-mp3-playlists";
 
   // lists: [{ name, refs: [{ file, size, title, artist }] }]

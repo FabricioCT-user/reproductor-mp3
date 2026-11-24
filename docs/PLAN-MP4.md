@@ -1,3 +1,5 @@
+# Nota (2026-11-24): la app y el paquete npm pasan a llamarse «Tarareo» (`tarareo`, v1.1.0). Se conserva la carpeta de datos `reproductor-mp3`, el origen `app://reproductor`, IndexedDB y demás identificadores persistidos para mantener compatibilidad con datos existentes. El repositorio se renombra centralmente al fusionar.
+
 # Plan: reproducción de video MP4 + app de escritorio (Electron)
 
 > Estado (2026-11-24): **implementado**. Hechas la Fase E (TE.0–TE.5) y las tareas no obsoletas de las Fases 0 a 2, 3.1, 4.1, 4.2, 5 y 6 (las tachadas quedaron obsoletas o fuera de alcance). Sin hacer solo las opcionales: T0.8, T3.2 y T4.3. Escrito originalmente tras leer `CLAUDE.md`, `README.md`, `src/`, `src/app/`, `launcher/`, `sw.js`, `index.html` y las pruebas.

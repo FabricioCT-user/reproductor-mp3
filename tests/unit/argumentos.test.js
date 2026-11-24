@@ -7,8 +7,8 @@ const dev = (...a) => analizar(["/ruta/electron", ".", ...a]);
 const pkg = (...a) => analizar(["/opt/Reproductor/reproductor", ...a], { empaquetada: true });
 
 test("sin argumentos", () => {
-  assert.deepEqual(dev(), { smoke: false, instalarEscritorio: false, datos: null, archivos: [] });
-  assert.deepEqual(pkg(), { smoke: false, instalarEscritorio: false, datos: null, archivos: [] });
+  assert.deepEqual(dev(), { smoke: false, instalarEscritorio: false, datos: null, errorDatos: null, archivos: [] });
+  assert.deepEqual(pkg(), { smoke: false, instalarEscritorio: false, datos: null, errorDatos: null, archivos: [] });
 });
 
 test("en desarrollo se salta la carpeta de la app; empaquetada no", () => {
@@ -31,11 +31,16 @@ test("--instalar-escritorio en desarrollo y empaquetada; tras «--» es archivo"
   assert.deepEqual(tras.archivos, ["--instalar-escritorio"]);
 });
 
-test("--user-data-dir solo con ruta absoluta, normalizada", () => {
+test("--user-data-dir exige '=' y resuelve la ruta desde cwd", () => {
   assert.equal(dev("--user-data-dir=/tmp/x/../datos").datos, "/tmp/datos");
-  assert.equal(dev("--user-data-dir=relativa").datos, null);
-  assert.equal(dev("--user-data-dir=").datos, null);
-  assert.equal(dev("--user-data-dir", "/tmp/x").datos, null); // solo la forma con «=»
+  assert.equal(analizar(["e", ".", "--user-data-dir=relativa"], { cwd: "/tmp/cwd" }).datos, "/tmp/cwd/relativa");
+  assert.equal(dev("--user-data-dir=").errorDatos !== null, true);
+  const separada = analizar(["e", ".", "--user-data-dir", "perfil", "cancion.mp3"], { cwd: "/tmp/cwd" });
+  assert.equal(separada.datos, null);
+  assert.deepEqual(separada.archivos, ["perfil", "cancion.mp3"]);
+  assert.match(separada.errorDatos, /--user-data-dir=<ruta>/);
+  assert.match(dev("--user-data-dir").errorDatos, /--user-data-dir=<ruta>/);
+  assert.match(dev("--user-data-dir", "").errorDatos, /--user-data-dir=<ruta>/);
   assert.equal(pkg("--user-data-dir=/tmp/d").datos, "/tmp/d");
 });
 
@@ -63,4 +68,9 @@ test("argv de una segunda instancia (con opciones que añade Chromium y «--») 
   assert.deepEqual(conSeparador.archivos, ["/m/a.mp3", "--raro.mp3", "/m/b c.ogg"]);
   assert.equal(conSeparador.smoke, false);
   assert.equal(conSeparador.instalarEscritorio, false);
+
+  // Chromium antepone flags y desplaza los posicionales; el error no consume la canción.
+  const flagSeparado = pkg("--user-data-dir", "cancion.mp3", "/tmp/perfil");
+  assert.match(flagSeparado.errorDatos, /--user-data-dir=<ruta>/);
+  assert.deepEqual(flagSeparado.archivos, ["cancion.mp3", "/tmp/perfil"]);
 });
