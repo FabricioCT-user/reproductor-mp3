@@ -313,6 +313,7 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     await win.addFiles([wav(win, "previa.wav", { mtime: 442 })]);
     win.confirm = () => true;
     await win.clearLibrary();
+    addFilesCalls = 0;
     const wavResponse = () => ({ ok: true, headers: { get: () => "audio/wav" }, arrayBuffer: async () => wavBytes({ seconds: 1 }) });
     releases.forEach((release) => release(wavResponse()));
     const finished = await until(() => !button.disabled);
