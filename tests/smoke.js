@@ -1637,7 +1637,35 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     const wavTrack = e2("state.tracks.find(t => t.fileName === 'audio-editor.wav')");
     w2.openEditor(wavTrack);
     check("audio sin cambios: WAV tiene botón de descarga oculto (solo MP3/FLAC)", e2("els['edit-download'].hidden === true"));
+    const cancelClosed = new Promise((r) => e2("els['edit-dialog']").addEventListener("close", r, { once: true }));
     e2("els['edit-cancel'].click()");
+    await cancelClosed;
+
+    // 6. Guardar y reabrir de inmediato: el evento «close» atrasado no debe limpiar la sesión nueva ni fugar previewUrl
+    const revokedInReopen = [];
+    const realRevokeReopen = w2.URL.revokeObjectURL.bind(w2.URL);
+    w2.URL.revokeObjectURL = (u) => { revokedInReopen.push(u); return realRevokeReopen(u); };
+    try {
+      w2.openEditor(vTrack);
+      w2.setDraftCover(new w2.Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], { type: "image/png" }));
+      const firstPreviewUrl = e2("editing?.previewUrl");
+      e2("els['edit-title'].value = 'Antes de reabrir'; els['edit-title'].dispatchEvent(new Event('input'))");
+      const lateClose = new Promise((r) => e2("els['edit-dialog']").addEventListener("close", r, { once: true }));
+      e2("els['edit-form'].requestSubmit()");
+      w2.openEditor(vTrack);
+      const secondPreviewUrl = e2("editing?.previewUrl");
+      await lateClose;
+      check("reabrir inmediato: revoca previewUrl anterior y el evento close atrasado mantiene vivo el editor",
+        !!firstPreviewUrl && revokedInReopen.includes(firstPreviewUrl)
+        && !!secondPreviewUrl && !revokedInReopen.includes(secondPreviewUrl)
+        && e2("els['edit-dialog'].open && editing !== null && editing.tracks[0] === state.tracks[0]"));
+      e2("els['edit-title'].value = 'Guardado tras close'; els['edit-title'].dispatchEvent(new Event('input'))");
+      e2("els['edit-form'].requestSubmit()");
+      check("reabrir inmediato: tras pasar el evento close el editor sigue guardando cambios",
+        vTrack.title === "Guardado tras close");
+    } finally {
+      w2.URL.revokeObjectURL = realRevokeReopen;
+    }
   });
 
   /* ---------- Resultado ---------- */

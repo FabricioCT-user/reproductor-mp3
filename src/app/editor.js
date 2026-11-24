@@ -49,6 +49,7 @@ function openEditor(target) {
   if (!batch) loadCover(tracks[0]).then(() => {
     if (editing?.tracks === tracks) paintEditCover();
   });
+  if (editing?.previewUrl) URL.revokeObjectURL(editing.previewUrl);
   editing = { tracks, batch, touched: new Set(), cover: batch ? undefined : tracks[0].edits?.cover, previewUrl: null };
   els["edit-heading"].textContent = batch ? `Editar ${tracks.length} pistas` : "Editar etiquetas";
   els["edit-note"].textContent = batch
@@ -73,7 +74,7 @@ function openEditor(target) {
   Promise.all(tracks.map((t) => canWriteTrack(t))).then((kinds) => {
     if (editing?.tracks === tracks) els["edit-download"].hidden = !kinds.some(Boolean); // solo MP3 y FLAC
   });
-  els["edit-dialog"].showModal();
+  if (!els["edit-dialog"].open) els["edit-dialog"].showModal();
   const first = els[batch ? "edit-artist" : "edit-title"];
   first.focus();
   first.select();
@@ -181,6 +182,7 @@ function wireEditor() {
   els["edit-dialog"].addEventListener("click", (e) => { if (e.target === els["edit-dialog"]) els["edit-dialog"].close(); }); // clic fuera
 
   els["edit-dialog"].addEventListener("close", () => {
+    if (els["edit-dialog"].open) return;
     if (editing?.previewUrl) URL.revokeObjectURL(editing.previewUrl);
     editing = null;
   });
