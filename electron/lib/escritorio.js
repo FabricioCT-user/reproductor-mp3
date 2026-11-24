@@ -9,9 +9,10 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const NOMBRE_ESCRITORIO = "reproductor.desktop";
-const NOMBRE_ICONO = "reproductor";
-const NOMBRE_APP = "Reproductor";
+const NOMBRE_ESCRITORIO = "tarareo.desktop";
+const ESCRITORIO_ANTERIOR = "reproductor.desktop";
+const NOMBRE_ICONO = "tarareo";
+const NOMBRE_APP = "Tarareo";
 const CATEGORIAS = "AudioVideo;Audio;Video;Player";
 // Coincide con build.linux.mimeTypes de package.json (electron-builder elimina «build» al empaquetar; una prueba vigila la igualdad).
 const MIME_TYPES = [
@@ -99,8 +100,8 @@ function contenidoDesktop({ rutaEjecutable, nombre, comentario, categorias, mime
   const lineas = [
     "[Desktop Entry]",
     "Type=Application",
-    `Name=${escaparCadena(nombre || "Reproductor")}`,
-    `Comment=${escaparCadena(comentario || "Reproductor de música y video local")}`,
+    `Name=${escaparCadena(nombre || "Tarareo")}`,
+    `Comment=${escaparCadena(comentario || "Tarareo, reproductor de música y video local")}`,
     `Exec=${escaparExec(rutaEjecutable)} -- %F`,
     `Icon=${escaparCadena(icono)}`,
     "Terminal=false",
@@ -145,6 +146,7 @@ async function instalar({ env = process.env, raiz, actualizarBase = true } = {})
   const datos = carpetaDatos(env);
   const dirAplicaciones = path.join(datos, "applications");
   const rutaEscritorio = path.join(dirAplicaciones, NOMBRE_ESCRITORIO);
+  const rutaAnterior = path.join(dirAplicaciones, ESCRITORIO_ANTERIOR);
   const rutaIcono = path.join(datos, "icons", "hicolor", "512x512", "apps", `${NOMBRE_ICONO}.png`);
   const contenido = contenidoDesktop({
     rutaEjecutable: ejecutable,
@@ -155,12 +157,28 @@ async function instalar({ env = process.env, raiz, actualizarBase = true } = {})
   });
   await escribirAtomico(rutaIcono, iconoBytes, 0o644);
   await escribirAtomico(rutaEscritorio, contenido, 0o644);
+  // Migra solo la entrada generada por la versión anterior y que apunta a un AppImage Reproductor.
+  // Una entrada ajena con el mismo nombre se conserva intacta.
+  if (await esEscritorioAnteriorPropio(rutaAnterior)) await fs.promises.unlink(rutaAnterior);
   if (actualizarBase) await actualizarBaseEscritorio(dirAplicaciones);
   return { escritorio: rutaEscritorio, icono: rutaIcono, ejecutable };
 }
 
+async function esEscritorioAnteriorPropio(archivo) {
+  let texto;
+  try { texto = await fs.promises.readFile(archivo, "utf8"); } catch { return false; }
+  const nombre = /^Name=Reproductor$/m.test(texto);
+  const icono = /^Icon=reproductor$/m.test(texto);
+  const exec = /^Exec="((?:[^"\\]|\\.)+)" -- %F$/m.exec(texto);
+  if (!nombre || !icono || !exec) return false;
+  const ejecutable = exec[1];
+  if (!/(?:^|\/)Reproductor(?:-[^/]+)?\.AppImage$/.test(ejecutable)) return false;
+  try { return (await fs.promises.stat(ejecutable)).isFile(); } catch { return false; }
+}
+
 module.exports = {
   NOMBRE_ESCRITORIO,
+  ESCRITORIO_ANTERIOR,
   NOMBRE_ICONO,
   NOMBRE_APP,
   CATEGORIAS,
@@ -172,4 +190,5 @@ module.exports = {
   contenidoDesktop,
   escribirAtomico,
   instalar,
+  esEscritorioAnteriorPropio,
 };

@@ -1,13 +1,13 @@
 {
-  "name": "reproductor-mp3",
-  "version": "1.0.0",
+  "name": "tarareo",
+  "version": "1.1.0",
   "private": true,
   "description": "Reproductor de música y video local: en el navegador o como app de escritorio (Electron)",
   "author": "FabricioCT-user <fabricioct-user@users.noreply.github.com>",
-  "homepage": "https://github.com/FabricioCT-user/reproductor-mp3",
+  "homepage": "https://github.com/FabricioCT-user/tarareo",
   "license": "MIT",
   "main": "electron/main.js",
-  "desktopName": "reproductor.desktop",
+  "desktopName": "tarareo.desktop",
   "scripts": {
     "start": "electron .",
     "test": "node --test tests/unit/*.test.js",
@@ -21,8 +21,8 @@
     "electron-builder": "26.18.1"
   },
   "build": {
-    "appId": "io.github.fabricioct-user.reproductor",
-    "productName": "Reproductor",
+    "appId": "io.github.fabricioct-user.tarareo",
+    "productName": "Tarareo",
     "publish": null,
     "directories": {
       "output": "dist"
@@ -61,7 +61,7 @@
         "AppImage",
         "deb"
       ],
-      "executableName": "reproductor",
+      "executableName": "tarareo",
       "syncDesktopName": true,
       "maintainer": "FabricioCT-user <fabricioct-user@users.noreply.github.com>",
       "synopsis": "Reproductor de música y video local",
@@ -93,6 +93,7 @@
       }
     },
     "pacman": {
+      "fpm": ["--replaces", "reproductor-mp3", "--conflicts", "reproductor-mp3", "--provides", "reproductor-mp3"],
       "executableArgs": [
         "--",
         "%F"
@@ -107,6 +108,7 @@
       ]
     },
     "deb": {
+      "fpm": ["--replaces", "reproductor-mp3", "--conflicts", "reproductor-mp3", "--provides", "reproductor-mp3"],
       "executableArgs": [
         "--",
         "%F"

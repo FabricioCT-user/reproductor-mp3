@@ -1,6 +1,6 @@
 // Persistencia de la biblioteca en IndexedDB (solo en este navegador).
 //
-// Esquema v2 (base «reproductor-mp3»):
+  // Esquema v2: se conserva la base «reproductor-mp3» para abrir los datos de Reproductor 1.0.0.
 //   tracks: { id, name, type, size, lastModified, kind, source, linkId?, lyrics?, edits?, meta?, subs?, thumb? }
 //           — solo metadatos: leer o guardar una letra nunca toca el archivo.
 //   files:  { id, blob } — el archivo, con la misma clave que su registro de `tracks`; solo para source "blob".

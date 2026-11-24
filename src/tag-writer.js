@@ -123,6 +123,7 @@ const TagWriter = (() => {
 
     // Comentarios Vorbis: se sustituyen solo las claves editadas y se conserva el resto.
     const vi = blocks.findIndex((b) => b.type === 4);
+    // Conserva el vendor histórico de Vorbis para no cambiar la identidad escrita en etiquetas.
     const vorbis = vi >= 0 ? parseVorbis(blocks[vi].data) : { vendor: utf8("reproductor-mp3"), entries: [] };
     for (const [field, key] of [["title", "TITLE"], ["artist", "ARTIST"], ["album", "ALBUM"]]) {
       if (!(field in edits)) continue;

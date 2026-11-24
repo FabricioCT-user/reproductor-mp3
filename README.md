@@ -1,6 +1,6 @@
-# Reproductor
+# Tarareo
 
-[![Pruebas](https://github.com/FabricioCT-user/reproductor-mp3/actions/workflows/test.yml/badge.svg)](https://github.com/FabricioCT-user/reproductor-mp3/actions/workflows/test.yml)
+[![Pruebas](https://github.com/FabricioCT-user/tarareo/actions/workflows/test.yml/badge.svg)](https://github.com/FabricioCT-user/tarareo/actions/workflows/test.yml)
 [![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-blue.svg)](LICENSE)
 
 Reproductor de música y video local: corre en el navegador o como app de escritorio (Electron, Linux x64). **La interfaz no tiene paso de build**: tus archivos nunca salen de tu equipo.
@@ -10,8 +10,8 @@ Reproductor de música y video local: corre en el navegador o como app de escrit
 **Requisitos:** un navegador moderno (probado en Chromium), Node.js y npm. Para servir solo la versión web también puedes usar Python 3.
 
 ```bash
-git clone https://github.com/FabricioCT-user/reproductor-mp3.git
-cd reproductor-mp3
+git clone https://github.com/FabricioCT-user/tarareo.git
+cd tarareo
 npm run web                        # servidor web estático en http://127.0.0.1:8000
 ```
 
@@ -27,7 +27,7 @@ Con `npm install`, `npm start` abre la app de escritorio (Electron).
 
 Además de la versión web hay una app de escritorio con Electron, con la misma interfaz. Abre archivos desde el gestor de archivos, y los **videos se enlazan** en vez de copiarse: la biblioteca guarda solo una referencia.
 
-- **Solo Linux x64**, probada en Arch Linux. El paquete de Arch (`.pacman`) y el AppImage se descargan de [Releases](https://github.com/FabricioCT-user/reproductor-mp3/releases); el `.deb` todavía no se publica porque no está probado en Ubuntu: se genera en tu equipo.
+- **Solo Linux x64**, probada en Arch Linux. El paquete de Arch (`.pacman`) y el AppImage se descargan de [Releases](https://github.com/FabricioCT-user/tarareo/releases); el `.deb` todavía no se publica porque no está probado en Ubuntu: se genera en tu equipo.
 
 Desde el código:
 
@@ -39,9 +39,9 @@ npm run dist    # genera los paquetes en dist/
 
 Paquetes generados en `dist/` (tamaños medidos en la build del 2026-11-23). Si los descargas de Releases, usa los mismos comandos con la ruta de la descarga:
 
-- **Arch Linux** (`.pacman`, 93 MB): `sudo pacman -U dist/reproductor-mp3-*.pacman`
-- **AppImage** (126 MB): `chmod +x dist/Reproductor-*.AppImage` y ejecútalo. Para integrarlo en el menú y en «Abrir con…», mira «Desarrollo».
-- **Debian / Ubuntu** (`.deb`, 101 MB): `sudo apt install ./dist/reproductor-mp3_*.deb`
+- **Arch Linux** (`.pacman`): `sudo pacman -U dist/tarareo-*.pacman`
+- **AppImage**: `chmod +x dist/Tarareo-*.AppImage` y ejecútalo. Para integrarlo en el menú y en «Abrir con…», mira «Desarrollo».
+- **Debian / Ubuntu** (`.deb`): `sudo apt install ./dist/tarareo_*.deb`
 
 Electron necesita el sandbox del sistema: los paquetes lo configuran al instalarse, y el AppImage depende de que el sistema permita espacios de nombres de usuario. La app **nunca** se ejecuta con `--no-sandbox`. En Ubuntu 23.10 o posterior el AppImage puede no arrancar (ver «Límites conocidos»).
 
@@ -107,14 +107,14 @@ Para usar la versión web, arranca el servidor estático (se detiene con Ctrl+C)
 npm run web           # servidor estático en http://127.0.0.1:8000
 ```
 
-y abre <http://127.0.0.1:8000>. Desde Chrome o Edge puedes **instalarla como app** (icono de instalar en la barra de direcciones, o menú ⋮ → «Instalar Reproductor»). Una vez instalada se abre en su propia ventana y también funciona sin el servidor (se sirve desde la copia guardada).
+y abre <http://127.0.0.1:8000>. Desde Chrome o Edge puedes **instalarla como app** (icono de instalar en la barra de direcciones, o menú ⋮ → «Instalar Tarareo»). Una vez instalada se abre en su propia ventana y también funciona sin el servidor (se sirve desde la copia guardada).
 
 ### Abrir un archivo con doble clic («Abrir con…»)
 
 Con la app **instalada** (Chrome o Edge de escritorio), el sistema la ofrece como programa para abrir `.mp3`, `.flac`, `.m4a`, `.ogg`, `.oga`, `.opus`, `.aac`, `.wav`, `.mp4` y `.webm`:
 
 1. Instala la app como se explica arriba.
-2. Clic derecho sobre un archivo de audio o video → **Abrir con** → *Reproductor* (en Windows: «Elegir otra aplicación»; en macOS: «Obtener información» → «Abrir con»). Para que sea el programa por defecto, marca «Usar siempre» o cámbialo en las propiedades del tipo de archivo.
+2. Clic derecho sobre un archivo de audio o video → **Abrir con** → *Tarareo* (en Windows: «Elegir otra aplicación»; en macOS: «Obtener información» → «Abrir con»). Para que sea el programa por defecto, marca «Usar siempre» o cámbialo en las propiedades del tipo de archivo.
 3. El archivo se añade a la biblioteca y empieza a sonar. Si abres varios a la vez, suena el primero y el resto quedan en la cola. Si la app ya está abierta, los archivos van a esa ventana.
 
 La app de escritorio, además, registra `.weba`, `.m4v`, `.mkv` y `.mov`.
@@ -205,16 +205,16 @@ npm run dist         # genera los paquetes Linux en dist/ (.pacman, .AppImage y 
 
 > `electron-builder` genera `.pacman` y `.deb` con `fpm` (Ruby). Si esa herramienta falla por falta de `libcrypt.so.1` (en Arch, el paquete `libxcrypt-compat`), instálala. Si solo quieres el AppImage: `npx electron-builder --linux AppImage`.
 
-- **Arch Linux (`.pacman`):** instala el paquete generado en `dist/` con `sudo pacman -U dist/reproductor-mp3-*.pacman`. Registra el binario `/usr/bin/reproductor`, el icono y el archivo `.desktop` con asociaciones de audio y video («Abrir con… → Reproductor»). Configura el sandbox automáticamente (espacios de nombres de usuario o `chrome-sandbox` SUID si el kernel no los permite; nunca `--no-sandbox`).
-- **AppImage (`.AppImage`):** dale permiso de ejecución (`chmod +x dist/Reproductor-*.AppImage`) y ejecútalo directamente. Como el AppImage no registra asociaciones por sí solo, puedes integrarlo en el menú y en «Abrir con…» con:
+- **Arch Linux (`.pacman`):** instala el paquete generado en `dist/` con `sudo pacman -U dist/tarareo-*.pacman`. Registra el binario `/usr/bin/tarareo`, el icono y el archivo `.desktop` con asociaciones de audio y video («Abrir con… → Tarareo»). Declara que reemplaza, entra en conflicto con y proporciona el paquete `reproductor-mp3`, para actualizar sin dejar ambos instalados. Configura el sandbox automáticamente (espacios de nombres de usuario o `chrome-sandbox` SUID si el kernel no los permite; nunca `--no-sandbox`).
+- **AppImage (`.AppImage`):** dale permiso de ejecución (`chmod +x dist/Tarareo-*.AppImage`) y ejecútalo directamente. Como el AppImage no registra asociaciones por sí solo, puedes integrarlo en el menú y en «Abrir con…» con:
 
   ```bash
-  dist/Reproductor-1.0.0.AppImage --instalar-escritorio
+  dist/Tarareo-1.1.0.AppImage --instalar-escritorio
   ```
 
-  Esto escribe `~/.local/share/applications/reproductor.desktop` y el icono en `~/.local/share/icons/hicolor/512x512/apps/reproductor.png` apuntando a la ruta actual del AppImage (vuelve a ejecutarlo si lo mueves de sitio; para quitarlo basta borrar ambos archivos). Si usas un gestor de AppImages (AppImageLauncher o Gear Lever), también puede integrarlo; no se ha probado con ellos. En sistemas donde los espacios de nombres de usuario sin privilegios están restringidos (p. ej. Ubuntu ≥ 23.10 con AppArmor o kernels con `unprivileged_userns_clone=0`), el lanzador interno del AppImage intenta añadir `--no-sandbox` y **la app se niega a arrancar** (nunca se ejecuta sin sandbox); en esos casos usa el paquete `.deb` o `.pacman`, o habilita los espacios de nombres de usuario.
-- **Debian / Ubuntu (`.deb`):** `sudo apt install ./dist/reproductor-mp3_*.deb`. Registra las mismas asociaciones de audio y video. Su script de post-instalación ajusta el sandbox y, si AppArmor está activo y acepta el perfil incluido (Ubuntu 24 o posterior), instala ese perfil. **No se ha probado en Ubuntu.**
-- **Sandbox en sistemas sin espacios de nombres de usuario (`linux-hardened`, `unprivileged_userns_clone=0`):** el script de post-instalación de `.pacman`/`.deb` comprueba `unshare` como `root` y puede dejar `/opt/Reproductor/chrome-sandbox` con permisos `0755`, haciendo que la app falle cerrada al arrancar. Para resolverlo, habilita el bit SUID a mano (`sudo chmod 4755 /opt/Reproductor/chrome-sandbox`) o habilita los espacios de nombres de usuario. Ojo: habilitarlos cambia una protección de todo el sistema, no solo de la app, así que es una decisión de quien administra la máquina. **Nunca** uses `--no-sandbox` (la app lo rechaza).
+  Esto escribe `~/.local/share/applications/tarareo.desktop` y el icono en `~/.local/share/icons/hicolor/512x512/apps/tarareo.png` apuntando a la ruta actual del AppImage (vuelve a ejecutarlo si lo mueves de sitio; para quitarlo basta borrar ambos archivos). Al migrar desde 1.0.0, si encuentra `reproductor.desktop` apuntando a un AppImage de Reproductor, lo reemplaza; si es de otra app, lo conserva. Las asociaciones por defecto que apuntaban a `reproductor.desktop` hay que volver a elegirlas para Tarareo. Si usas un gestor de AppImages (AppImageLauncher o Gear Lever), también puede integrarlo; no se ha probado con ellos. En sistemas donde los espacios de nombres de usuario sin privilegios están restringidos (p. ej. Ubuntu ≥ 23.10 con AppArmor o kernels con `unprivileged_userns_clone=0`), el lanzador interno del AppImage intenta añadir `--no-sandbox` y **la app se niega a arrancar** (nunca se ejecuta sin sandbox); en esos casos usa el paquete `.deb` o `.pacman`, o habilita los espacios de nombres de usuario.
+- **Debian / Ubuntu (`.deb`):** `sudo apt install ./dist/tarareo_*.deb`. Registra las mismas asociaciones de audio y video y declara que reemplaza, entra en conflicto con y proporciona `reproductor-mp3`. Su script de post-instalación ajusta el sandbox y, si AppArmor está activo y acepta el perfil incluido (Ubuntu 24 o posterior), instala ese perfil. **No se ha probado en Ubuntu.**
+- **Sandbox en sistemas sin espacios de nombres de usuario (`linux-hardened`, `unprivileged_userns_clone=0`):** el script de post-instalación de `.pacman`/`.deb` comprueba `unshare` como `root` y puede dejar `/opt/Tarareo/chrome-sandbox` con permisos `0755`, haciendo que la app falle cerrada al arrancar. Para resolverlo, habilita el bit SUID a mano (`sudo chmod 4755 /opt/Tarareo/chrome-sandbox`) o habilita los espacios de nombres de usuario. Ojo: habilitarlos cambia una protección de todo el sistema, no solo de la app, así que es una decisión de quien administra la máquina. **Nunca** uses `--no-sandbox` (la app lo rechaza).
 - **Sin auto-actualización ni telemetría:** los paquetes no se conectan a ningún servidor ni comprueban actualizaciones.
 
 La app sirve la misma interfaz desde `app://reproductor/`, que solo entrega los archivos de `FILES` de `sw.js` (más `index.html`) y repite la CSP del meta como cabecera. La ventana va endurecida: aislamiento de contexto, sandbox, sin Node en la página, sin ventanas nuevas ni navegación fuera de la app y sin permisos salvo pantalla completa; el paquete lleva los *fuses* de Electron que impiden usarlo como Node (`ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS`, `--inspect`) y solo carga la app del `.asar` (nota: el *fuse* `EnableEmbeddedAsarIntegrityValidation` está activado, pero Electron solo valida la integridad del `.asar` en macOS y Windows, no en Linux; en Linux la integridad depende de los permisos del paquete o del squashfs de solo lectura del AppImage). Dentro de la app no se registra el service worker.
@@ -223,7 +223,7 @@ La app sirve la misma interfaz desde `app://reproductor/`, que solo entrega los 
 
 **Videos en la app: se enlazan, no se copian.** Un video que llega por «Abrir con…», el diálogo, arrastrándolo o con el selector de archivos se registra en `enlaces.json`, dentro de la carpeta de datos de la app (permisos 0600), con un id opaco; la biblioteca (IndexedDB) guarda solo ese id (`source: "link"`) y nunca la ruta. La interfaz lo reproduce desde `app://reproductor/__media/<id>`, que el proceso principal sirve con `Range` propio (`206`, `416`, tipo por extensión) leyendo el archivo por trozos de 512 KB solo cuando el reproductor los pide y cerrándolo en cuanto cancela la petición (al saltar), así que un video de varios GB ni se copia ni se carga en memoria. Las etiquetas se leen también por `Range`. Solo se sirven ids registrados; quitar la pista olvida su enlace. Si el archivo se mueve o se borra, la pista no se pierde: queda marcada «No encontrado» con «Buscar…» (eliges de nuevo el video y conserva letra, subtítulos y ediciones) o «Quitar». El audio se sigue copiando a la biblioteca. En la versión web (sin Electron), los videos de hasta 2 GB se copian a IndexedDB (pidiendo almacenamiento persistente en la primera importación de video) y los de más de 2 GB quedan solo para esa sesión (`source: "session"`) con un aviso que recomienda la app de escritorio. La asociación completa con el gestor de archivos («Abrir con…») se ofrece con la app de escritorio instalada (y en la PWA para los tipos de audio, `video/mp4` y `video/webm`).
 
-**Datos de la app de escritorio.** La biblioteca (IndexedDB), los ajustes (localStorage) y `enlaces.json` están en la carpeta de datos de Electron: en Linux, `$XDG_CONFIG_HOME/reproductor-mp3` (o `~/.config/reproductor-mp3` si no está definida). Con `--user-data-dir=<ruta absoluta>` se usa otra carpeta.
+**Datos de la app de escritorio.** La biblioteca (IndexedDB), los ajustes (localStorage) y `enlaces.json` están en la carpeta de datos de Electron: en Linux, `$XDG_CONFIG_HOME/reproductor-mp3` (o `~/.config/reproductor-mp3` si no está definida). Se conserva deliberadamente el nombre `reproductor-mp3` para que las instalaciones 1.0.0 mantengan sus datos. Con `--user-data-dir=<ruta absoluta>` se usa otra carpeta, que prevalece sobre la ruta por defecto.
 
 **Al publicar una versión nueva**, si cambia la lista de archivos de la aplicación actualiza `FILES` y `VERSION` en `sw.js` (una prueba comprueba que `FILES` coincide con lo que carga la página).
 

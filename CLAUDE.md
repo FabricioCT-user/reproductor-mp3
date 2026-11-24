@@ -1,6 +1,6 @@
-# Reproductor MP3 — guía para Claude
+# Tarareo — guía para Claude
 
-Reproductor de música local que corre en el navegador. **JavaScript clásico, sin dependencias de ejecución ni paso de build.** Electron y electron-builder son dependencias de desarrollo, con versión exacta (sin `^`), solo para la app de escritorio: la interfaz no las necesita y `npm test` tampoco. Repo público: https://github.com/FabricioCT-user/reproductor-mp3. La persona que lo mantiene habla español: interfaz, comentarios, mensajes de commit y README van **en español**.
+Tarareo es un reproductor de música local que corre en el navegador. **JavaScript clásico, sin dependencias de ejecución ni paso de build.** Electron y electron-builder son dependencias de desarrollo, con versión exacta (sin `^`), solo para la app de escritorio: la interfaz no las necesita y `npm test` tampoco. Repo público: https://github.com/FabricioCT-user/tarareo. La persona que lo mantiene habla español: interfaz, comentarios, mensajes de commit y README van **en español**.
 
 ## Comandos
 
@@ -45,7 +45,7 @@ Al **añadir o mover un archivo**: ponlo en `index.html` (el orden importa: `uti
   - `files`: `{ id, blob }`, solo para `source: "blob"`. Se lee perezoso con `Storage.getFile(id)`; `Storage.all()` devuelve solo metadatos y `setField` (letras, ediciones) no toca `files`.
   - Migración v1 → v2 (v1 guardaba `blob` dentro de `tracks`) en `onupgradeneeded`, en la propia transacción: o se migra todo o nada. Si falla (p. ej. sin espacio) la base se abre en v1 y `Storage` la usa en ese formato; se reintenta al siguiente arranque. Registros sin blob válido se dejan como están (el arranque los descarta, salvo `source: "link"`). Pruebas: `tests/unit/storage.test.js` (IndexedDB falsa en `fake-idb.js`) y escenarios «Migración» de la prueba de humo.
   - `localStorage`: `shuffle repeat speed crossfade playlists eq order lastId volume lyrics theme mediaFilter`.
-  - En la app de escritorio, IndexedDB, localStorage y `enlaces.json` (permisos 0600) están en la carpeta de datos de Electron: en Linux, `$XDG_CONFIG_HOME/reproductor-mp3` o `~/.config/reproductor-mp3`. El `package.json` empaquetado no tiene `productName`, así que Electron usa `name` (la carpeta es la misma en `npm run app` y en el paquete).
+  - En la app de escritorio, IndexedDB, localStorage y `enlaces.json` (permisos 0600) están en la carpeta de datos de Electron: en Linux, `$XDG_CONFIG_HOME/reproductor-mp3` o `~/.config/reproductor-mp3`. Se mantiene el nombre anterior para conservar los datos de las versiones 1.0.0; `--user-data-dir=<ruta absoluta>` prevalece sobre esa ruta.
   - Un cambio de esquema exige subir la versión y migrar en `onupgradeneeded`, con pruebas de migración; no rompas los datos existentes.
 - Las ediciones de etiquetas **no modifican el original**: viven en `edits`. Solo «descargar copia» (MP3 y FLAC) escribe etiquetas, siempre en un archivo nuevo, y se verifica releyéndolo.
 - Para reproducir sin clic previo (Abrir con…), `play()` comprueba que el contexto de audio esté activo; no dejes que «suene» en silencio.
