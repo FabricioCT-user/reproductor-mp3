@@ -41,8 +41,8 @@ Con `npm install`, `npm start` abre la app de escritorio (Electron).
 
 **Etiquetas**
 - Lee título, artista, álbum, carátula y letra de **MP3 (ID3v2.2–2.4), FLAC, Ogg Vorbis, Opus y M4A/AAC**.
-- **Edita** título, artista, álbum y carátula de una canción (`✎` o doble clic sobre el título) o de **varias a la vez** (`Seleccionar` o Ctrl/Cmd + clic; solo se cambian los campos que toques). Los cambios se guardan en la app y se pueden restaurar: **tus archivos originales no se modifican**.
-- **Descarga una copia con las etiquetas escritas dentro** (solo MP3 y FLAC). El resto de etiquetas y el audio se conservan byte a byte, y la copia se vuelve a leer para comprobar que coincide antes de descargarla.
+- **Edita** título, artista, álbum y carátula o miniatura de una pista (`✎` o doble clic sobre el título) o de **varias a la vez** (`Seleccionar` o Ctrl/Cmd + clic; solo se cambian los campos que toques; funciona igual para audio y video). Los cambios se guardan en la app y se pueden restaurar: **tus archivos originales no se modifican**.
+- **Descarga una copia con las etiquetas escritas dentro** (solo MP3 y FLAC; oculto para video, y en edición múltiple mezclada los videos se saltan sin cargarlos en memoria). El resto de etiquetas y el audio se conservan byte a byte, y la copia se vuelve a leer para comprobar que coincide antes de descargarla.
 
 **Interfaz**
 - Tema claro, oscuro o automático, adaptable a móvil, instalable como app (PWA) y funciona sin conexión.

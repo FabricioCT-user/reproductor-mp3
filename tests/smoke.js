@@ -1484,6 +1484,162 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     ev("media.pause()");
   });
 
+  await scenario("Editor con video", async ({ frame, win, ev }) => {
+    // 1. Preparar pistas: un video, un MP3 sintético y un WAV
+    const video = await makeWebm(win, "clip-editor.webm", { withVideo: true, seconds: 1.8, mtime: 601 });
+    const mp3 = fakeMp3(win, "audio-editor.mp3", "Título MP3 Original");
+    const audioWav = wav(win, "audio-editor.wav", { mtime: 602 });
+    await win.addFiles([video, mp3, audioWav]);
+
+    // Esperar a que la miniatura del video esté lista
+    await until(() => ev("state.tracks[0]?.thumb instanceof Blob && state.tracks[0].thumb.size > 0"), 8000);
+    const initialThumb = ev("state.tracks[0].thumb");
+
+    // 2. Editar un video individual: botón de descarga oculto, textos adaptados
+    win.openEditor(ev("state.tracks[0]"));
+    check("editor video: botón de descargar copia oculto para video", ev("els['edit-download'].hidden === true"));
+    check("editor video: texto adaptado a «Quitar miniatura»", ev("els['edit-cover-clear'].textContent") === "Quitar miniatura");
+    check("editor video: muestra miniatura en el recuadro", ev("els['edit-cover'].classList.contains('has-art') && els['edit-cover'].style.backgroundImage.includes('blob:')"));
+
+    // Editar título, artista y álbum
+    ev("els['edit-title'].value = 'Video Editado'; els['edit-title'].dispatchEvent(new Event('input'))");
+    ev("els['edit-artist'].value = 'Director Uno'; els['edit-artist'].dispatchEvent(new Event('input'))");
+    ev("els['edit-album'].value = 'Temporada 1'; els['edit-album'].dispatchEvent(new Event('input'))");
+
+    // Quitar miniatura: debe vaciar la carátula sin perder tracks.thumb
+    ev("els['edit-cover-clear'].click()");
+    check("editor video: quitar miniatura quita la imagen de muestra y pone icono de video",
+      !ev("els['edit-cover'].classList.contains('has-art')") && ev("els['edit-cover'].style.backgroundImage") === "" && ev("els['edit-cover'].querySelector('span').textContent") === "▶");
+
+    // Guardar
+    ev("els['edit-form'].requestSubmit()");
+    check("editor video: guardar actualiza título, artista y álbum en state",
+      ev("state.tracks[0].title") === "Video Editado" && ev("state.tracks[0].artist") === "Director Uno" && ev("state.tracks[0].album") === "Temporada 1");
+    check("editor video: quitar miniatura deja coverUrl en null pero conserva tracks.thumb",
+      ev("state.tracks[0].coverUrl") === null && ev("state.tracks[0].thumb") === initialThumb);
+
+    // Lista y reproductor muestran el resultado (sin carátula)
+    win.loadTrack(0, false, "all");
+    check("editor video: reproductor muestra título y carátula vacía tras quitar miniatura",
+      ev("els.title.textContent") === "Video Editado" && !ev("els.cover.classList.contains('has-art')"));
+    const listThumb = ev("els.playlist.querySelectorAll('li:not(.empty)')[0]?.querySelector('.thumb')");
+    check("editor video: lista no muestra imagen de fondo en la miniatura cuando coverUrl es null",
+      listThumb && !listThumb.style.backgroundImage);
+
+    // Cambiar carátula por una imagen nueva
+    win.openEditor(ev("state.tracks[0]"));
+    const customImg = new win.Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], { type: "image/png" });
+    win.setDraftCover(customImg);
+    check("editor video: poner imagen propia activa muestra con has-art",
+      ev("els['edit-cover'].classList.contains('has-art') && els['edit-cover'].style.backgroundImage.includes('blob:')"));
+    ev("els['edit-form'].requestSubmit()");
+
+    check("editor video: carátula personalizada se refleja en reproductor y conserva tracks.thumb original",
+      ev("state.tracks[0].coverUrl !== null && els.cover.classList.contains('has-art')") && ev("state.tracks[0].thumb") === initialThumb);
+
+    // Esperar a que se escriba en IndexedDB antes de recargar
+    await until(async () => {
+      const db = await openDbAsIs();
+      const rec = (await getAll(db, "tracks")).find((r) => r.name === "clip-editor.webm");
+      db.close();
+      return rec?.edits?.title === "Video Editado";
+    }, 4000);
+
+    // Persistencia tras recargar
+    const loaded = new Promise((r) => frame.addEventListener("load", r, { once: true }));
+    frame.contentWindow.location.reload();
+    await loaded;
+    await waitReady(frame.contentWindow);
+    const w2 = frame.contentWindow;
+    const e2 = (c) => w2.eval(c);
+
+    const t0 = e2("state.tracks.find(t => t.fileName === 'clip-editor.webm')");
+    check("editor video: persistencia tras recargar (título, artista, álbum y carátula)",
+      t0?.title === "Video Editado" && t0?.artist === "Director Uno"
+      && t0?.album === "Temporada 1" && !!t0?.coverUrl);
+    check("editor video: tracks.thumb persiste como Blob tras recargar",
+      t0?.thumb instanceof w2.Blob && t0?.thumb.size > 0);
+
+    // Restaurar original devuelve la miniatura capturada
+    w2.openEditor(t0);
+    e2("els['edit-reset'].click()");
+    check("editor video: restaurar original recupera la miniatura generada en el editor",
+      e2("els['edit-cover'].classList.contains('has-art') && els['edit-cover'].style.backgroundImage.includes('blob:')")
+      && e2("els['edit-title'].value") === "clip-editor");
+    e2("els['edit-form'].requestSubmit()");
+    check("editor video: guardar tras restaurar original restablece coverUrl a thumbUrl",
+      t0.coverUrl === t0.thumbUrl && t0.title === "clip-editor");
+
+    // 3. Edición múltiple mezclada (audio MP3 + video)
+    const vTrack = e2("state.tracks.find(t => t.fileName === 'clip-editor.webm')");
+    const mp3Track = e2("state.tracks.find(t => t.fileName === 'audio-editor.mp3')");
+    w2.openEditor([vTrack, mp3Track]);
+    await until(() => !e2("els['edit-download'].hidden"), 3000);
+    check("edición múltiple mezclada: botón de descargar copia visible si hay algún audio MP3/FLAC",
+      e2("els['edit-download'].hidden === false"));
+    check("edición múltiple mezclada: texto «Editar 2 pistas» y «Quitar carátula o miniatura»",
+      e2("els['edit-heading'].textContent") === "Editar 2 pistas" && e2("els['edit-cover-clear'].textContent") === "Quitar carátula o miniatura");
+
+    // Modificar campo en lote
+    e2("els['edit-album'].value = 'Álbum Mixto'; els['edit-album'].dispatchEvent(new Event('input', { bubbles: true }))");
+    const gotMixed = captureDownloads(w2);
+    await e2("downloadCopies(saveEditor())");
+
+    check("edición múltiple mezclada: ambos cambiaron el álbum en lote",
+      vTrack.album === "Álbum Mixto" && mp3Track.album === "Álbum Mixto");
+    check("edición múltiple mezclada: descarga copia del MP3 y salta el video sin error",
+      gotMixed.length === 1 && gotMixed[0].name === "audio-editor (editado).mp3",
+      `descargas=${gotMixed.length} nombres=${gotMixed.map((d) => d.name).join(",")}`);
+    check("edición múltiple mezclada: aviso toast indica copia descargada y video sin formato",
+      e2("els.toast.textContent").includes("copia(s) descargada(s)") && e2("els.toast.textContent").includes("no son MP3/FLAC"),
+      e2("els.toast.textContent"));
+
+    // 4. Video enlazado sin file (y pistas no disponibles)
+    const linkedTrack = await w2.makeUnavailableTrack({
+      id: 9999,
+      name: "enlazado-remoto.mp4",
+      source: "link",
+      linkId: "c".repeat(32),
+      meta: { kind: "video", title: "Enlazado Remoto" },
+      thumb: new w2.Blob([new Uint8Array([1, 2, 3])], { type: "image/jpeg" }),
+    });
+    e2("state.tracks").push(linkedTrack);
+
+    let openedWithoutError = false;
+    try {
+      w2.openEditor(linkedTrack);
+      openedWithoutError = true;
+    } catch {
+      openedWithoutError = false;
+    }
+    check("video enlazado sin file: el editor abre sin error y no lee t.file", openedWithoutError);
+    check("video enlazado sin file: botón de descargar copia oculto", e2("els['edit-download'].hidden === true"));
+    check("video enlazado sin file: botón Quitar miniatura adaptado", e2("els['edit-cover-clear'].textContent") === "Quitar miniatura");
+
+    e2("els['edit-title'].value = 'Enlazado Renombrado'; els['edit-title'].dispatchEvent(new Event('input'))");
+    e2("els['edit-form'].requestSubmit()");
+    check("video enlazado sin file: guarda título sin romper", linkedTrack.title === "Enlazado Renombrado" && linkedTrack.edits?.title === "Enlazado Renombrado");
+
+    const dlLinked = await w2.downloadEditedCopy(linkedTrack);
+    check("video enlazado sin file: downloadEditedCopy devuelve sin-formato sin leer t.file", dlLinked === "sin-formato");
+    e2("state.tracks.pop()"); // limpiar
+
+    // 5. Audio sin cambios
+    // Single MP3: botón visible
+    w2.openEditor(mp3Track);
+    await until(() => !e2("els['edit-download'].hidden"), 3000);
+    check("audio sin cambios: MP3 tiene botón de descarga visible", e2("els['edit-download'].hidden === false"));
+    check("audio sin cambios: texto es «Quitar carátula» e icono «♪»",
+      e2("els['edit-cover-clear'].textContent") === "Quitar carátula" && e2("els['edit-cover'].querySelector('span').textContent") === "♪");
+    e2("els['edit-cancel'].click()");
+
+    // Single WAV: botón oculto
+    const wavTrack = e2("state.tracks.find(t => t.fileName === 'audio-editor.wav')");
+    w2.openEditor(wavTrack);
+    check("audio sin cambios: WAV tiene botón de descarga oculto (solo MP3/FLAC)", e2("els['edit-download'].hidden === true"));
+    e2("els['edit-cancel'].click()");
+  });
+
   /* ---------- Resultado ---------- */
   const fails = results.filter((r) => !r.ok);
   document.getElementById("summary").textContent = fails.length ? `${fails.length} FALLO(S) de ${results.length}` : `Todo correcto: ${results.length} comprobaciones`;
