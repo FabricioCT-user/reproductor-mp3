@@ -2,7 +2,7 @@
   "name": "tarareo",
   "version": "1.1.0",
   "private": true,
-  "description": "Reproductor de música y video local: en el navegador o como app de escritorio (Electron)",
+  "description": "Reproductor de música y video local",
   "author": "FabricioCT-user <fabricioct-user@users.noreply.github.com>",
   "homepage": "https://github.com/FabricioCT-user/tarareo",
   "license": "MIT",

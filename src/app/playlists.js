@@ -175,7 +175,7 @@ function pendingNote(pl) {
 
 function openMenu(anchor, t) {
   showMenu(anchor, t.id == null
-    ? [{ label: "No disponible: el navegador no permite guardar la biblioteca", disabled: true }]
+    ? [{ label: "No disponible: no se puede guardar la biblioteca", disabled: true }]
     : [
         ...state.playlists.map((p) => ({ label: `${p.ids.includes(t.id) ? "✓" : "\u2003"} ${p.name}`, fn: () => togglePlaylistMember(p, t) })),
         { label: "+ Nueva lista…", fn: async () => { const p = await createPlaylist(); if (p) togglePlaylistMember(p, t); } },

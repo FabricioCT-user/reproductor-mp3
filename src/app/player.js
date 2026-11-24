@@ -125,7 +125,7 @@ async function play() {
   if (t?.linkId && !await comprobarEnlaceAntesDeReproducir(t)) return;
   startAnalyser();
   return media.play().then(ensureSound).catch((e) => {
-    if (e?.name === "NotAllowedError") toast("El navegador bloqueó la reproducción automática: pulsa ▶", 5000);
+    if (e?.name === "NotAllowedError") toast("Se bloqueó la reproducción automática: pulsa ▶", 5000);
   });
 }
 
@@ -138,7 +138,7 @@ async function ensureSound() {
   await Promise.race([ctx.resume().catch(() => {}), new Promise((r) => setTimeout(r, 400))]);
   if (ctx.state !== "running") {
     media.pause();
-    toast("El navegador bloqueó el sonido automático: pulsa ▶ para empezar", 5000);
+    toast("Se bloqueó el sonido automático: pulsa ▶ para empezar", 5000);
   }
 }
 
