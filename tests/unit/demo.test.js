@@ -9,7 +9,9 @@ const demo = path.join(root, "ejemplos");
 const context = vm.createContext({ TextDecoder, TextEncoder, Uint8Array, DataView, Blob, atob });
 vm.runInContext(fs.readFileSync(path.join(root, "src/id3.js"), "utf8"), context);
 vm.runInContext(fs.readFileSync(path.join(root, "src/tags.js"), "utf8"), context);
+vm.runInContext(fs.readFileSync(path.join(root, "src/mkv.js"), "utf8"), context);
 const Tags = vm.runInContext("Tags", context);
+const MKV = vm.runInContext("MKV", context);
 
 function asFile(name) {
   const bytes = fs.readFileSync(path.join(demo, name));
@@ -71,6 +73,42 @@ function jpegSize(bytes) {
   return null;
 }
 
+function webmDuration(bytes) {
+  const vint = (offset, keepMarker) => {
+    const first = bytes[offset];
+    let mask = 0x80, length = 1;
+    while (length <= 8 && !(first & mask)) { mask >>= 1; length++; }
+    if (length > 8 || offset + length > bytes.length) return null;
+    let value = keepMarker ? first : first & (mask - 1);
+    for (let i = 1; i < length; i++) value = value * 256 + bytes[offset + i];
+    return { value, length };
+  };
+  const element = (offset) => {
+    const id = vint(offset, true);
+    const size = id && vint(offset + id.length, false);
+    if (!id || !size) return null;
+    return { id: id.value, data: offset + id.length + size.length, end: offset + id.length + size.length + size.value };
+  };
+  const find = (from, to, id) => {
+    for (let offset = from; offset + 2 < to;) {
+      const item = element(offset);
+      if (!item || item.end <= offset || item.end > to) break;
+      if (item.id === id) return item;
+      offset = item.end;
+    }
+    return null;
+  };
+  const segment = find(0, bytes.length, 0x18538067);
+  const info = segment && find(segment.data, Math.min(segment.end, bytes.length), 0x1549a966);
+  if (!info) return null;
+  const scale = find(info.data, info.end, 0x2ad7b1);
+  const duration = find(info.data, info.end, 0x4489);
+  const timecodeScale = scale ? Number(BigInt(`0x${bytes.subarray(scale.data, scale.end).toString("hex")}`)) : 1000000;
+  const ticks = duration?.end - duration?.data === 8
+    ? new DataView(bytes.buffer, bytes.byteOffset + duration.data, 8).getFloat64(0, false) : null;
+  return Number.isFinite(ticks) ? ticks * timecodeScale / 1e9 : null;
+}
+
 test("ejemplos: codecs, duración, frecuencia, tamaño y carátulas leídas por Tags", async () => {
   const names = ["Brisa.mp3", "Brisa.lrc", "Jardín.flac", "Nubes.mp3", "Paseo.webm", "Paseo.vtt"];
   let total = 0;
@@ -95,6 +133,13 @@ test("ejemplos: codecs, duración, frecuencia, tamaño y carátulas leídas por 
     assert.equal(tags.cover.type, "image/jpeg");
     assert.deepEqual(jpegSize(Buffer.from(await tags.cover.arrayBuffer())), { width: 640, height: 640 });
   }
+  const paseo = asFile("Paseo.webm");
+  const paseoInfo = await MKV.probe(paseo);
+  assert.equal(paseoInfo.kind, "video");
+  assert.match(paseoInfo.codecs, /V_VP9/);
+  assert.match(paseoInfo.codecs, /A_OPUS/);
+  assert.ok(paseo.size < 1024 * 1024, `Paseo.webm: ${paseo.size} bytes`);
+  assert.ok(Math.abs(webmDuration(fs.readFileSync(path.join(demo, "Paseo.webm"))) - 24) < 0.1, "Paseo.webm debe durar 24 s");
   const lrc = fs.readFileSync(path.join(demo, "Brisa.lrc"), "utf8");
   assert.equal((lrc.match(/^\[\d{2}:\d{2}\.\d{2}\]/gm) || []).length, 8);
 });

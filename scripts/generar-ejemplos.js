@@ -2,7 +2,8 @@
 // Sintetiza los ejemplos en PCM determinista; FFmpeg solo codifica y mide.
 const fs = require("node:fs");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
+const { once } = require("node:events");
 
 const root = path.resolve(__dirname, "..");
 const dir = path.join(root, "ejemplos");
@@ -17,6 +18,19 @@ function ffmpeg(args) {
   const run = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "info", "-y", ...args], { stdio: "inherit" });
   if (run.error) throw run.error;
   if (run.status !== 0) throw new Error(`ffmpeg terminó con código ${run.status}`);
+}
+
+async function ffmpegVideo(args, frameCount, frameAt) {
+  const child = spawn("ffmpeg", ["-hide_banner", "-loglevel", "warning", "-y", ...args], { stdio: ["pipe", "inherit", "inherit"] });
+  const done = new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg terminó con código ${code}`)));
+  });
+  for (let i = 0; i < frameCount; i++) {
+    if (!child.stdin.write(frameAt(i))) await once(child.stdin, "drain");
+  }
+  child.stdin.end();
+  await done;
 }
 
 function rng(seed) {
@@ -207,10 +221,7 @@ for (const track of tracks) {
 }
 
 // Paseo: paisaje animado sintético con varias capas, parallax y sol desplazándose.
-const videoPath = path.join(temp, "Paseo.ppm");
 const videoPcm = path.join(temp, "Paseo.f32le");
-const videoPpm = cover("Paseo", [[39,54,91],[110,133,174],[195,171,151],[245,210,143],[79,100,142],[55,78,128],[35,56,101]], 72);
-fs.writeFileSync(videoPath, videoPpm);
 const vcount = 48000 * 24;
 const vraw = Buffer.alloc(vcount * 8);
 const videoProgression = [[0, 3, 7], [5, 8, 12], [3, 7, 10], [4, 7, 11]];
@@ -232,11 +243,46 @@ for (let n = 0; n < vcount; n++) {
   vraw.writeFloatLE(value, n * 8); vraw.writeFloatLE(value, n * 8 + 4);
 }
 fs.writeFileSync(videoPcm, vraw);
-const movingFilter = "format=rgb24,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)',drawbox=x='60+180*t':y=120:w=100:h=100:color=#f5d28f@0.75:t=fill,drawbox=x='-50+35*sin(t/3)':y=390:w=1450:h=340:color=#415f89@0.88:t=fill,drawbox=x='-80+55*sin(t/4)':y=510:w=1450:h=260:color=#294b74@0.92:t=fill,drawbox=x='0+25*sin(t/5)':y=610:w=1450:h=180:color=#193858@0.95:t=fill,format=yuv420p";
-ffmpeg(["-f", "f32le", "-ar", "48000", "-ac", "2", "-i", videoPcm, "-loop", "1", "-framerate", "24", "-i", videoPath,
-  "-filter_complex", `[1:v]${movingFilter}[v]`, "-map", "[v]", "-map", "0:a", "-t", "24", "-s", "1280x720", "-r", "24",
+const vw = 320, vh = 180;
+const skyTop = [39,54,91], skyLow = [137,151,183];
+const hills = [[79,100,142],[55,78,128],[35,56,101]];
+const videoNoise = rng(720);
+const frameAt = (frame) => {
+  const t = frame / 24;
+  const frameData = Buffer.allocUnsafe(vw * vh * 3);
+  const sunX = 48 + 220 * frame / 575;
+  const sunY = 43 + Math.sin(t / 8) * 5;
+  const ridges = new Array(vw);
+  for (let x = 0; x < vw; x++) {
+    ridges[x] = [
+      105 + Math.sin((x + t * 2.2) * 0.023) * 11 + Math.sin((x + t * 2.2) * 0.052) * 4,
+      130 + Math.sin((x + t * 1.3) * 0.019 + 1.4) * 13 + Math.sin((x + t * 1.3) * 0.043) * 5,
+      153 + Math.sin((x + t * 0.6) * 0.027 + 2.6) * 7,
+    ];
+  }
+  for (let y = 0; y < vh; y++) for (let x = 0; x < vw; x++) {
+    const o = (y * vw + x) * 3;
+    const f = Math.min(1, y / 112);
+    let color = skyTop.map((v, k) => Math.round(v + (skyLow[k] - v) * f));
+    const distance = Math.hypot(x - sunX, y - sunY);
+    if (distance < 19) color = [249, 218, 157];
+    if (distance >= 19 && distance < 21) color = [239, 205, 148];
+    if (y >= ridges[x][0]) color = hills[0];
+    if (y >= ridges[x][1]) color = hills[1];
+    if (y >= ridges[x][2]) color = hills[2];
+    const grain = videoNoise() * 2.4;
+    frameData[o] = Math.max(0, Math.min(255, color[0] + grain));
+    frameData[o + 1] = Math.max(0, Math.min(255, color[1] + grain));
+    frameData[o + 2] = Math.max(0, Math.min(255, color[2] + grain));
+  }
+  return frameData;
+};
+void ffmpegVideo(["-f", "f32le", "-ar", "48000", "-ac", "2", "-i", videoPcm,
+  "-f", "rawvideo", "-pixel_format", "rgb24", "-video_size", `${vw}x${vh}`, "-framerate", "24", "-i", "pipe:0",
+  "-map", "1:v", "-map", "0:a", "-t", "24", "-vf", "scale=1280:720:flags=lanczos,format=yuv420p", "-r", "24",
   "-c:v", "libvpx-vp9", "-deadline", "good", "-cpu-used", "4", "-b:v", "180k", "-c:a", "libopus", "-b:a", "64k",
-  "-metadata", "title=Paseo", "-metadata", "artist=Tarareo (ejemplo)", "-metadata", "album=Pequeños paisajes", path.join(dir, "Paseo.webm")]);
+  "-metadata", "title=Paseo", "-metadata", "artist=Tarareo (ejemplo)", "-metadata", "album=Pequeños paisajes", path.join(dir, "Paseo.webm")], 576, frameAt)
+  .catch((error) => { console.error(error); process.exitCode = 1; });
 
 fs.writeFileSync(path.join(dir, "Brisa.lrc"), "[ti:Brisa]\n[ar:Tarareo (ejemplo)]\n[00:02.00]La tarde se inclina al mar\n[00:05.00]la cuerda despierta al sol\n[00:08.00]un paso comienza a andar\n[00:11.00]y el viento responde en do\n[00:14.00]las hojas giran al pasar\n[00:17.00]la luz se posa en la piel\n[00:20.00]la noche nos ve llegar\n[00:24.00]y el aire nos mece otra vez\n", "utf8");
 fs.writeFileSync(path.join(dir, "Paseo.vtt"), "WEBVTT\n\n00:00:01.000 --> 00:00:06.000\nEl sol acompaña el paseo.\n\n00:00:07.000 --> 00:00:13.000\nLas colinas cambian con cada paso.\n\n00:00:14.000 --> 00:00:20.000\nLa tarde descansa sobre el agua.\n\n00:00:21.000 --> 00:00:24.000\nVolvemos despacio.\n", "utf8");
