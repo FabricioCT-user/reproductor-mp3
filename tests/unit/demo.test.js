@@ -33,6 +33,18 @@ test("demo: el HTML, el importador y la CSP son mismo origen y fuera del paquete
   assert.ok(!pkg.build.files.some((f) => f.startsWith("ejemplos/")));
 });
 
+test("smoke: comprueba visibilidad, doble clic, error de red y asociación de acompañantes", () => {
+  const smoke = read("tests/smoke.js");
+  for (const text of [
+    "demo web: botón visible con biblioteca vacía",
+    "demo: doble clic lanza una sola descarga por archivo",
+    "demo error: mensaje claro y botón recuperado",
+    "demo error: no deja pistas a medias",
+    "demo: letra LRC emparejada",
+    "demo: subtítulos VTT emparejados",
+  ]) assert.ok(smoke.includes(text), `falta comprobación de humo: ${text}`);
+});
+
 test("service worker solo limpia cachés propias y recupera desde VERSION", async () => {
   const sw = read("sw.js");
   const handlers = {};
