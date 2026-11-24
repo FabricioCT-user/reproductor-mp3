@@ -218,7 +218,15 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
   await scenario("Ejemplos de demo", async ({ win, ev, hostApp }) => {
     const button = win.document.getElementById("demo-examples");
     if (hostApp) {
-      check("demo: el smoke de Electron no accede a ejemplos fuera de su lista blanca", !!button);
+      ev("delete window.reproductor; libraryReady = true; render()");
+      const originalAddFiles = win.addFiles;
+      let imported = 0;
+      win.fetch = async () => ({ ok: true, headers: { get: () => "application/octet-stream" }, arrayBuffer: async () => new ArrayBuffer(0) });
+      win.addFiles = async (files, isCurrent) => { imported = files.length; check("demo app: la importación mantiene vigente su generación", isCurrent()); };
+      button.click();
+      await until(() => !button.disabled);
+      check("demo app: la demo se ejerce con fetch simulado sin ampliar app://", !!button && imported === 6);
+      win.addFiles = originalAddFiles;
       return;
     }
     check("demo web: botón visible con biblioteca vacía", !!button && !button.hidden
@@ -242,14 +250,14 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     await until(() => ev("state.tracks.length") === 4 && !button.disabled, 15000);
     win.fetch = realFetch;
     check("demo: se importan las tres pistas y el vídeo", ev("state.tracks.length") === 4, titles(ev));
-    check("demo: pistas con artista y álbum de ejemplo", ev("state.tracks.every(t => t.meta.artist === 'Tarareo (ejemplo)' && t.meta.album === 'Pequeños paisajes')"));
+    check("demo: las pistas de audio tienen artista y álbum de ejemplo", ev("state.tracks.filter(t => t.meta.kind === 'audio').length === 3 && state.tracks.filter(t => t.meta.kind === 'audio').every(t => t.meta.artist === 'Tarareo (ejemplo)' && t.meta.album === 'Pequeños paisajes')"));
     check("demo: las tres pistas de audio tienen carátula", ev("state.tracks.filter(t => t.meta.kind === 'audio').length === 3 && state.tracks.filter(t => t.meta.kind === 'audio').every(t => t.meta.hasCover)"));
     check("demo: doble clic lanza una sola descarga por archivo", calls === 6, `fetch=${calls}`);
-    check("demo: letra LRC emparejada", ev("state.tracks.find(t => t.fileName === 'Brisa.mp3')?.userLyrics?.includes('La tarde baja')"));
+    check("demo: letra LRC emparejada", ev("state.tracks.find(t => t.fileName === 'Brisa.mp3')?.userLyrics?.includes('La tarde se inclina al mar')"));
     check("demo: subtítulos VTT emparejados", ev("state.tracks.find(t => t.fileName === 'Paseo.webm')?.subs?.length") > 0);
     check("demo: no comienza la reproducción", ev("media.paused") && ev("state.index") === 0);
-    check("demo: botón desaparece tras la importación", button.hidden && win.getComputedStyle(button).display === "none");
-    ev("els.clear.click()");
+    check("demo: botón desaparece tras la importación", button.hidden && (!button.isConnected || win.getComputedStyle(button).display === "none"));
+    await win.clearLibrary();
     check("demo: al vaciar se limpia el estado de importación", win.document.getElementById("demo-status").hidden
       && !win.document.getElementById("demo-status").textContent.includes("Ejemplos añadidos"));
   });
@@ -286,6 +294,41 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     await until(() => !button.disabled);
     check("demo: una pista ajena durante la descarga cancela la importación", ev("state.tracks.length === 1 && state.tracks[0].fileName === 'durante.wav'")
       && !button.disabled && win.document.getElementById("demo-status").textContent.includes("no se añadieron los ejemplos"));
+  });
+
+  await scenario("Vaciar durante la descarga de ejemplos", async ({ win, ev }) => {
+    const button = win.document.getElementById("demo-examples");
+    let release;
+    win.fetch = () => new Promise((resolve) => { release = resolve; });
+    button.click();
+    await win.addFiles([wav(win, "previa.wav", { mtime: 442 })]);
+    win.confirm = () => true;
+    await win.clearLibrary();
+    release({ ok: true, headers: { get: () => "audio/mpeg" }, arrayBuffer: async () => new ArrayBuffer(0) });
+    await until(() => !button.disabled);
+    check("demo: vaciar durante la descarga invalida los ejemplos", ev("state.tracks.length === 0") && win.document.getElementById("demo-status").hidden);
+  });
+
+  await scenario("Vaciar durante la importación de ejemplos", async ({ win, ev }) => {
+    const button = win.document.getElementById("demo-examples");
+    const originalMakeTrack = win.makeTrack;
+    let release;
+    let calls = 0;
+    win.makeTrack = async (...args) => {
+      calls++;
+      if (calls === 2) await new Promise((resolve) => { release = resolve; });
+      return originalMakeTrack(...args);
+    };
+    const response = async (name) => ({ ok: true, headers: { get: () => name.endsWith(".mp3") ? "audio/mpeg" : name.endsWith(".flac") ? "audio/flac" : name.endsWith(".webm") ? "video/webm" : "text/plain" }, arrayBuffer: async () => new ArrayBuffer(0) });
+    win.fetch = (url) => response(String(url));
+    button.click();
+    await until(() => !!release);
+    win.confirm = () => true;
+    await win.clearLibrary();
+    release();
+    await until(() => !button.disabled);
+    win.makeTrack = originalMakeTrack;
+    check("demo: vaciar durante addFiles cancela las pistas pendientes", ev("state.tracks.length === 0") && win.document.getElementById("demo-status").hidden);
   });
 
   await scenario("Fallo de red en ejemplos", async ({ win, ev, hostApp }) => {
