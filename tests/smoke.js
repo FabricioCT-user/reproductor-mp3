@@ -303,6 +303,9 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     const button = win.document.getElementById("demo-examples");
     ev("delete window.reproductor");
     const releases = [];
+    const originalAddFiles = win.addFiles;
+    let addFilesCalls = 0;
+    win.addFiles = (...args) => { addFilesCalls++; return originalAddFiles(...args); };
     win.fetch = () => new Promise((resolve) => { releases.push(resolve); });
     button.click();
     const started = await until(() => releases.length === 6);
@@ -314,7 +317,9 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     releases.forEach((release) => release(wavResponse()));
     const finished = await until(() => !button.disabled);
     check("demo: descarga cancelada termina", finished);
-    check("demo: vaciar durante la descarga invalida los ejemplos", ev("state.tracks.length === 0") && win.document.getElementById("demo-status").hidden);
+    win.addFiles = originalAddFiles;
+    check("demo: vaciar durante la descarga invalida los ejemplos", addFilesCalls === 0
+      && ev("state.tracks.length === 0") && win.document.getElementById("demo-status").hidden, `addFiles=${addFilesCalls}`);
   });
 
   await scenario("Vaciar durante la importación de ejemplos", async ({ win, ev }) => {
