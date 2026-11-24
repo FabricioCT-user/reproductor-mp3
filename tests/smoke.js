@@ -203,6 +203,11 @@ function captureDownloads(win) {
   return got;
 }
 
+// Firefox puede devolver una cadena vacía de estilo calculado para nodos ya retirados.
+function demoButtonHidden(button, win) {
+  return !button?.isConnected || button.hidden || win.getComputedStyle(button).display === "none";
+}
+
 // Salta cerca del final de la pista actual (espera a conocer la duración).
 async function seekNearEnd(ev, secondsLeft) {
   await until(() => Number.isFinite(ev("media.duration")) && ev("media.duration") > 0);
@@ -229,15 +234,14 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
       win.addFiles = originalAddFiles;
       return;
     }
-    check("demo web: botón visible con biblioteca vacía", !!button && !button.hidden
-      && win.getComputedStyle(button).display !== "none");
+    check("demo web: botón visible con biblioteca vacía", !!button && !demoButtonHidden(button, win));
     ev("window.reproductor = {}; render()");
-    check("demo: botón oculto en app de escritorio", button.hidden);
+    check("demo: botón oculto en app de escritorio", demoButtonHidden(button, win));
     ev("delete window.reproductor; render()");
     ev("state.filter = els.filter.value = 'sin resultados'; render()");
-    check("demo: botón oculto con un filtro", button.hidden && win.getComputedStyle(button).display === "none");
+    check("demo: botón oculto con un filtro", demoButtonHidden(button, win));
     ev("state.filter = els.filter.value = ''; state.playlists.push({ id: 'demo-vacia', name: 'Vacía', ids: [] }); state.view = 'demo-vacia'; render()");
-    check("demo: botón oculto en una lista vacía", button.hidden && win.getComputedStyle(button).display === "none");
+    check("demo: botón oculto en una lista vacía", demoButtonHidden(button, win));
     ev("state.playlists.pop(); state.view = 'all'; render()");
 
     const realFetch = win.fetch.bind(win);
@@ -256,7 +260,7 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     check("demo: letra LRC emparejada", ev("state.tracks.find(t => t.fileName === 'Brisa.mp3')?.userLyrics?.includes('La tarde se inclina al mar')"));
     check("demo: subtítulos VTT emparejados", ev("state.tracks.find(t => t.fileName === 'Paseo.webm')?.subs?.length") > 0);
     check("demo: no comienza la reproducción", ev("media.paused") && ev("state.index") === 0);
-    check("demo: botón desaparece tras la importación", button.hidden && (!button.isConnected || win.getComputedStyle(button).display === "none"));
+    check("demo: botón desaparece tras la importación", demoButtonHidden(button, win));
     await win.clearLibrary();
     check("demo: al vaciar se limpia el estado de importación", win.document.getElementById("demo-status").hidden
       && !win.document.getElementById("demo-status").textContent.includes("Ejemplos añadidos"));
@@ -264,12 +268,11 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
 
   await scenario("Botón de demo espera la biblioteca guardada", async ({ win, ev }) => {
     const button = win.document.getElementById("demo-examples");
-    check("demo: botón oculto mientras se lee una biblioteca guardada", button.hidden
-      && win.getComputedStyle(button).display === "none" && !ev("libraryReady"));
+    check("demo: botón oculto mientras se lee una biblioteca guardada", demoButtonHidden(button, win) && !ev("libraryReady"));
     ev("__releaseStorageAll()");
     await win.eval("appReady");
     check("demo: biblioteca guardada cargada impide ofrecer demo", ev("libraryReady && state.tracks.length === 1")
-      && button.hidden && win.getComputedStyle(button).display === "none");
+      && demoButtonHidden(button, win));
   }, async () => {
     const db = await openDb();
     const file = new File([wavBytes({ seconds: 1 })], "guardada.wav", { type: "audio/wav" });
@@ -298,19 +301,25 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
 
   await scenario("Vaciar durante la descarga de ejemplos", async ({ win, ev }) => {
     const button = win.document.getElementById("demo-examples");
-    let release;
-    win.fetch = () => new Promise((resolve) => { release = resolve; });
+    if (window.reproductor) ev("delete window.reproductor");
+    const releases = [];
+    win.fetch = () => new Promise((resolve) => { releases.push(resolve); });
     button.click();
+    const started = await until(() => releases.length === 6);
+    check("demo: empiezan las seis descargas", started, `fetch=${releases.length}`);
     await win.addFiles([wav(win, "previa.wav", { mtime: 442 })]);
     win.confirm = () => true;
     await win.clearLibrary();
-    release({ ok: true, headers: { get: () => "audio/mpeg" }, arrayBuffer: async () => new ArrayBuffer(0) });
-    await until(() => !button.disabled);
+    const wavResponse = () => ({ ok: true, headers: { get: () => "audio/wav" }, arrayBuffer: async () => wavBytes({ seconds: 1 }) });
+    releases.forEach((release) => release(wavResponse()));
+    const finished = await until(() => !button.disabled);
+    check("demo: descarga cancelada termina", finished);
     check("demo: vaciar durante la descarga invalida los ejemplos", ev("state.tracks.length === 0") && win.document.getElementById("demo-status").hidden);
   });
 
   await scenario("Vaciar durante la importación de ejemplos", async ({ win, ev }) => {
     const button = win.document.getElementById("demo-examples");
+    if (window.reproductor) ev("delete window.reproductor");
     const originalMakeTrack = win.makeTrack;
     let release;
     let calls = 0;
@@ -319,16 +328,24 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
       if (calls === 2) await new Promise((resolve) => { release = resolve; });
       return originalMakeTrack(...args);
     };
-    const response = async (name) => ({ ok: true, headers: { get: () => name.endsWith(".mp3") ? "audio/mpeg" : name.endsWith(".flac") ? "audio/flac" : name.endsWith(".webm") ? "video/webm" : "text/plain" }, arrayBuffer: async () => new ArrayBuffer(0) });
+    const response = async () => ({ ok: true, headers: { get: () => "audio/wav" }, arrayBuffer: async () => wavBytes({ seconds: 1 }) });
     win.fetch = (url) => response(String(url));
     button.click();
-    await until(() => !!release);
+    const secondStarted = await until(() => !!release);
+    check("demo: la segunda pista queda detenida en makeTrack", secondStarted);
+    const firstEntered = await until(() => ev("state.tracks.length === 1"));
+    check("demo: la primera pista entra antes de vaciar", firstEntered, `tracks=${ev("state.tracks.length")}`);
     win.confirm = () => true;
     await win.clearLibrary();
     release();
-    await until(() => !button.disabled);
+    const finished = await until(() => !button.disabled);
+    check("demo: importación cancelada termina", finished);
     win.makeTrack = originalMakeTrack;
-    check("demo: vaciar durante addFiles cancela las pistas pendientes", ev("state.tracks.length === 0") && win.document.getElementById("demo-status").hidden);
+    const db = await openDbAsIs();
+    const emptyDb = (await getAll(db, "tracks")).length === 0;
+    db.close();
+    check("demo: vaciar durante addFiles cancela las pistas pendientes", ev("state.tracks.length === 0") && win.document.getElementById("demo-status").hidden && emptyDb,
+      `state=${ev("state.tracks.length")} dbEmpty=${emptyDb}`);
   });
 
   await scenario("Fallo de red en ejemplos", async ({ win, ev, hostApp }) => {
@@ -341,7 +358,7 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     win.fetch = async () => { throw new TypeError("offline"); };
     button.click();
     await until(() => !button.disabled, 3000);
-    check("demo error: mensaje claro y botón recuperado", !button.disabled && !button.hidden
+    check("demo error: mensaje claro y botón recuperado", !button.disabled && !demoButtonHidden(button, win)
       && win.document.getElementById("demo-status").textContent.includes("Comprueba la conexión"));
     check("demo error: no deja pistas a medias", ev("state.tracks.length") === 0);
     win.fetch = old;
