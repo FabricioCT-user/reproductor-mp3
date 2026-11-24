@@ -61,6 +61,12 @@
         ],
         "audio/wav": [
           ".wav"
+        ],
+        "video/mp4": [
+          ".mp4"
+        ],
+        "video/webm": [
+          ".webm"
         ]
       }
     }

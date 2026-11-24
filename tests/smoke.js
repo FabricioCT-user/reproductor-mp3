@@ -1484,6 +1484,112 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     ev("media.pause()");
   });
 
+  await scenario("Versión web: tope de 2 GB, persist() y avisos", async ({ win, ev }) => {
+    delete win.reproductor;
+    check("web 2 GB: window.reproductor está ausente", !("reproductor" in win));
+
+    let persistCalls = 0;
+    let persistImpl = () => Promise.resolve(true);
+    if (!win.navigator.storage) {
+      Object.defineProperty(win.navigator, "storage", { configurable: true, value: {} });
+    }
+    Object.defineProperty(win.navigator.storage, "persist", {
+      configurable: true,
+      value: () => { persistCalls++; return persistImpl(); },
+    });
+
+    const TWO_GB = 2 * 1024 * 1024 * 1024;
+    const baseVideo = await makeWebm(win, "base-2gb.webm", { withVideo: true, seconds: 1.8, mtime: 600 });
+    const fakeSizeVideo = (name, size, mtime, type = "video/webm") => {
+      const f = new win.File([baseVideo], name, { type, lastModified: mtime });
+      Object.defineProperty(f, "size", { configurable: true, get: () => size });
+      return f;
+    };
+
+    // 1. Importar solo audio no pide navigator.storage.persist().
+    await win.addFiles([wav(win, "solo-audio-web.wav", { seconds: 2, mtime: 601 })]);
+    check("web 2 GB: importar audio no pide navigator.storage.persist()",
+      persistCalls === 0 && ev("state.tracks.length === 1 && state.tracks[0].source === 'blob'"),
+      `persistCalls=${persistCalls}`);
+
+    // 2. Video de 2 GB exactos: pide persist() en la primera importación de video y se copia a IndexedDB.
+    const exact2Gb = fakeSizeVideo("exacto-2gb.webm", TWO_GB, 602);
+    await win.addFiles([exact2Gb]);
+    check("web 2 GB: primera importación de video pide navigator.storage.persist()",
+      persistCalls === 1,
+      `persistCalls=${persistCalls}`);
+
+    const db1 = await openDbAsIs();
+    const [tracks1, files1] = [await getAll(db1, "tracks"), await getAll(db1, "files")];
+    db1.close();
+    const recExact = tracks1.find((r) => r.name === "exacto-2gb.webm");
+    const fileExact = files1.find((f) => f.id === recExact?.id);
+    check("web 2 GB: video de 2 GB exactos se copia a IndexedDB (source «blob»)",
+      recExact?.source === "blob" && recExact?.size === TWO_GB && recExact?.kind === "video"
+      && fileExact?.blob instanceof Blob
+      && ev("state.tracks.find(t => t.fileName === 'exacto-2gb.webm')?.source === 'blob' && state.tracks.find(t => t.fileName === 'exacto-2gb.webm')?.id != null"),
+      JSON.stringify({ recExact, hasFile: !!fileExact }));
+
+    // 3. Video de 2 GB + 1 byte: no se copia a IndexedDB, queda de sesión con aviso que recomienda la app de escritorio,
+    // no vuelve a pedir persist(), y se reproduce igual en la sesión.
+    const over2Gb = fakeSizeVideo("mayor-2gb.webm", TWO_GB + 1, 603);
+    await win.addFiles([over2Gb]);
+    const toastOver = ev("els.toast.textContent");
+    const db2 = await openDbAsIs();
+    const [tracks2, files2] = [await getAll(db2, "tracks"), await getAll(db2, "files")];
+    db2.close();
+    const trackOver = ev("(() => { const t = state.tracks.find(x => x.fileName === 'mayor-2gb.webm'); return t ? { id: t.id, source: t.source, size: t.size, kind: t.meta?.kind } : null; })()");
+    check("web 2 GB: video de 2 GB + 1 byte no se copia a IndexedDB y queda con source «session»",
+      !tracks2.some((r) => r.name === "mayor-2gb.webm") && files2.length === files1.length
+      && trackOver?.id === null && trackOver?.source === "session" && trackOver?.size === TWO_GB + 1 && trackOver?.kind === "video",
+      JSON.stringify({ inDb: tracks2.map((r) => r.name), filesCount: files2.length, trackOver }));
+    check("web 2 GB: muestra aviso visible que recomienda la app de escritorio",
+      !ev("els.toast.hidden") && /2 GB/i.test(toastOver) && /solo para esta sesión/i.test(toastOver) && /app de escritorio/i.test(toastOver),
+      toastOver);
+
+    // Un segundo video ≤ 2 GB tampoco vuelve a pedir persist().
+    await win.addFiles([fakeSizeVideo("segundo-video.webm", 1024, 604)]);
+    check("web 2 GB: navigator.storage.persist() se pide una sola vez",
+      persistCalls === 1,
+      `persistCalls=${persistCalls}`);
+
+    // El video de > 2 GB se reproduce normalmente en la sesión.
+    const overIdx = ev("state.tracks.findIndex(t => t.fileName === 'mayor-2gb.webm')");
+    win.loadTrack(overIdx, true, "all");
+    check("web 2 GB: el video de más de 2 GB se reproduce en la sesión",
+      await until(() => ev("!media.paused && media.videoWidth > 0 && media.currentTime > 0.2"), 4000),
+      `paused=${ev("media.paused")} width=${ev("media.videoWidth")} t=${ev("media.currentTime")}`);
+    ev("media.pause()");
+
+    // 4. Mantiene el aviso de cuota (QuotaExceededError) y el resumen de importación cuenta bien ambos casos.
+    const realAdd = ev("Storage.add");
+    ev("Storage.add = () => Promise.reject(new DOMException('sin espacio', 'QuotaExceededError'))");
+    await win.addFiles([
+      wav(win, "sin-cuota.wav", { seconds: 1, mtime: 605 }),
+      fakeSizeVideo("otro-mayor-2gb.webm", TWO_GB + 50, 606),
+    ]);
+    const toastBoth = ev("els.toast.textContent");
+    win.__realStorageAdd = realAdd;
+    ev("Storage.add = window.__realStorageAdd; delete window.__realStorageAdd");
+    check("web 2 GB: el resumen de importación cuenta por separado > 2 GB y QuotaExceededError",
+      !ev("els.toast.hidden")
+      && /2 pista\(s\) añadida\(s\)/.test(toastBoth)
+      && /1 video de más de 2 GB solo para esta sesión: usa la app de escritorio/.test(toastBoth)
+      && /1 pista solo para esta sesión: no hay espacio/.test(toastBoth),
+      toastBoth);
+
+    // 5. launchQueue (consumeLaunch) acepta video/mp4 y video/webm.
+    const handle = (f) => ({ getFile: async () => f });
+    const launchWebm = fakeSizeVideo("launch.webm", baseVideo.size, 607, "video/webm");
+    const launchMp4 = fakeSizeVideo("launch.mp4", baseVideo.size, 608, "video/mp4");
+    await win.consumeLaunch({ files: [handle(launchWebm), handle(launchMp4)] });
+    check("web 2 GB: launchQueue acepta video/webm y video/mp4, reproduce el primero y encola el segundo",
+      (await until(() => ev("!media.paused && state.tracks[state.index]?.fileName === 'launch.webm' && media.currentTime > 0.2"), 4000))
+      && ev("state.tracks.some(t => t.fileName === 'launch.mp4') && state.queue.some(t => t.fileName === 'launch.mp4')"),
+      ev("state.tracks.map(t => t.fileName).join(',')"));
+    ev("media.pause()");
+  });
+
   /* ---------- Resultado ---------- */
   const fails = results.filter((r) => !r.ok);
   document.getElementById("summary").textContent = fails.length ? `${fails.length} FALLO(S) de ${results.length}` : `Todo correcto: ${results.length} comprobaciones`;

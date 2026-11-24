@@ -1,6 +1,15 @@
 // Biblioteca: canciones (con sus ediciones), importación, lista en pantalla, reordenar y selección múltiple.
 
 const META_VERSION = 2;
+const MAX_WEB_VIDEO_BYTES = 2 * 1024 * 1024 * 1024;
+let videoPersistRequested = false;
+
+async function ensureVideoPersist() {
+  if (videoPersistRequested || window.reproductor) return;
+  videoPersistRequested = true;
+  try { await navigator.storage?.persist?.(); } catch { /* si no existe la API o falla, la importación sigue igual */ }
+}
+
 const trackMeta = (m, file) => ({
   title: m.title || "", artist: m.artist || "", album: m.album || "", lyrics: m.lyrics || "",
   hasCover: !!(m.hasCover ?? m.cover), duration: m.duration ?? null, kind: m.kind || (file.type.startsWith("video/") ? "video" : "audio"),
@@ -219,6 +228,7 @@ async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = n
     thumb,
     thumbUrl,
     url: file instanceof LinkedFile ? file.url : URL.createObjectURL(file),
+    source: file instanceof LinkedFile ? "link" : (id != null ? "blob" : "session"),
     linkId: file instanceof LinkedFile ? file.linkId : null,
     // Datos del archivo; lo que se muestra (title, artist, album, coverUrl) sale de aplicar las ediciones encima.
     orig: { title: savedMeta.title || fallback, artist: savedMeta.artist, album: savedMeta.album, coverUrl: null },
@@ -244,6 +254,7 @@ async function makeUnavailableTrack(rec) {
     dir: "", embeddedLyrics: null, userLyrics: rec.lyrics || "", subs, subIndex: subs.length ? 0 : -1, _lastSubIndex: 0,
     thumb, thumbUrl,
     url: null, unavailable: true, unavailableReason: rec.source === "link" ? "link" : "storage",
+    source: rec.source || "blob",
     linkId: rec.source === "link" ? rec.linkId : null,
     orig: { title: meta.title || fallback, artist: meta.artist || "", album: meta.album || "", coverUrl: null },
     edits: rec.edits || null,
@@ -479,6 +490,7 @@ async function addFiles(fileList) {
   let added = 0;
   let dupes = 0;
   let failed = 0;
+  let tooLarge = 0;
   let noSpace = 0;
   let storeErr = 0;
   let compatWarned = 0;
@@ -497,9 +509,22 @@ async function addFiles(fileList) {
       link = await linkVideo(file);
       const src = link || file;
       const track = await makeTrack(null, src);
-      const extra = link ? { source: "link", linkId: link.linkId, kind: track.meta.kind } : {};
-      try { id = await Storage.add(src, { meta: track.meta, metaVersion: META_VERSION, ...extra }); track.id = id; }
-      catch (e) { storeFail = e?.name === "QuotaExceededError" ? "quota" : "other"; }
+      const isWebVideo = !window.reproductor && !link && track.meta.kind === "video";
+      if (isWebVideo && src.size > MAX_WEB_VIDEO_BYTES) {
+        track.source = "session";
+        tooLarge++;
+      } else {
+        if (isWebVideo) await ensureVideoPersist();
+        const extra = link ? { source: "link", linkId: link.linkId, kind: track.meta.kind } : { kind: track.meta.kind };
+        try {
+          id = await Storage.add(src, { meta: track.meta, metaVersion: META_VERSION, ...extra });
+          track.id = id;
+          track.source = link ? "link" : "blob";
+        } catch (e) {
+          track.source = "session";
+          storeFail = e?.name === "QuotaExceededError" ? "quota" : "other";
+        }
+      }
       state.tracks.push(track);
       queueThumb(track);
       if (link?.companionSubs?.length) linkedSubs.push({ track, items: link.companionSubs });
@@ -540,9 +565,10 @@ async function addFiles(fileList) {
   if (added) msg.push(`${added} pista(s) añadida(s)`);
   if (dupes) msg.push(`${dupes} ya estaba(n) en la biblioteca`);
   if (failed) msg.push(`${failed} no se pudieron leer`);
+  if (tooLarge) msg.push(`${tooLarge} ${tooLarge === 1 ? "video" : "videos"} de más de 2 GB solo para esta sesión: usa la app de escritorio`);
   if (noSpace) msg.push(`${noSpace} ${noSpace === 1 ? "pista" : "pistas"} solo para esta sesión: no hay espacio`);
   if (storeErr) msg.push(`${storeErr} ${storeErr === 1 ? "pista" : "pistas"} solo para esta sesión: no se pudo guardar`);
-  if (compatWarned === 1 && added === 1 && !dupes && !failed && !noSpace && !storeErr) {
+  if (compatWarned === 1 && added === 1 && !dupes && !failed && !tooLarge && !noSpace && !storeErr) {
     msg.length = 0;
     msg.push(`Puede no reproducirse: ${lastCompatReason}`);
   } else if (compatWarned) {
@@ -562,12 +588,12 @@ async function addFiles(fileList) {
   } else if (all.length && !files.length && !companionFiles.length && !listFiles.length) {
     msg.push("No se encontró ningún archivo multimedia");
   }
-  const warnImportant = noSpace > 0 || storeErr > 0 || compatWarned > 0 || unsupportedVideos.length > 0;
+  const warnImportant = tooLarge > 0 || noSpace > 0 || storeErr > 0 || compatWarned > 0 || unsupportedVideos.length > 0;
   if (msg.length && (warnImportant || !(added === 1 && all.length === 1 && !autoSubs))) toast(msg.join(" · "), warnImportant ? 6000 : undefined);
   else els.toast.hidden = true;
 }
 
-// Archivos que el sistema entrega a la app instalada («Abrir con…» o doble clic en un archivo de audio):
+// Archivos que el sistema entrega a la app instalada («Abrir con…» o doble clic en un archivo de audio o video):
 // se añaden a la biblioteca, suena el primero y los demás quedan en la cola.
 // Los .lrc/.srt/.vtt que llegan junto al medio se asocian por nombre.
 async function openFromSystem(files) {

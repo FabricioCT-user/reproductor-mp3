@@ -93,24 +93,31 @@ test("los botones que solo tienen icono tienen nombre accesible", () => {
   }
 });
 
-test("manifest: la app se ofrece como manejadora de archivos de audio (Abrir con…)", () => {
+test("manifest: la app se ofrece como manejadora de archivos de audio y video (Abrir con…)", () => {
   const manifest = JSON.parse(read("manifest.webmanifest"));
   const handlers = manifest.file_handlers;
   assert.ok(Array.isArray(handlers) && handlers.length > 0, "falta file_handlers");
-  const isAudio = require("./helpers").load("util.js")("isAudio");
+  const util = require("./helpers").load("util.js");
+  const isAudio = util("isAudio");
+  const isVideo = util("isVideo");
+  const isMedia = util("isMedia");
   for (const h of handlers) {
     assert.ok(h.action.startsWith("./") || h.action.startsWith("/"), "la acción debe estar dentro del alcance de la app");
     for (const [mime, exts] of Object.entries(h.accept)) {
-      assert.match(mime, /^audio\//);
+      assert.match(mime, /^(audio|video)\//);
+      const checkKind = mime.startsWith("video/") ? isVideo : isAudio;
       for (const ext of exts) {
         assert.match(ext, /^\.[a-z0-9]+$/, `extensión mal escrita: ${ext}`);
-        assert.ok(isAudio({ name: `x${ext}`, type: "" }), `la app no reconoce ${ext} como audio`);
+        assert.ok(checkKind({ name: `x${ext}`, type: "" }), `la app no reconoce ${ext} para ${mime}`);
+        assert.ok(isMedia({ name: `x${ext}`, type: mime }), `isMedia no reconoce ${ext} (${mime})`);
       }
     }
   }
+  const allMimes = handlers.flatMap((h) => Object.keys(h.accept));
+  for (const mustMime of ["video/mp4", "video/webm"]) assert.ok(allMimes.includes(mustMime), `falta ${mustMime}`);
   const all = handlers.flatMap((h) => Object.values(h.accept).flat());
   assert.equal(new Set(all).size, all.length, "una extensión aparece en dos tipos distintos");
-  for (const must of [".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wav"]) assert.ok(all.includes(must), `falta ${must}`);
+  for (const must of [".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wav", ".mp4", ".webm"]) assert.ok(all.includes(must), `falta ${must}`);
   assert.ok(manifest.launch_handler, "falta launch_handler (reutilizar la ventana abierta)");
 });
 
