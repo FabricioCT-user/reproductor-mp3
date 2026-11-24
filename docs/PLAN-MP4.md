@@ -1,6 +1,6 @@
 # Plan: reproducción de video MP4 + app de escritorio (Electron)
 
-> Estado (2026-11-24): **implementado**. Hechas la Fase E (TE.0–TE.5) y las tareas de las Fases 0 a 2, 3.1, 4.1, 4.2, 5 y 6; cada sección indica su estado. Sin hacer solo las opcionales: T0.8, T3.2 y T4.3. Escrito originalmente tras leer `CLAUDE.md`, `README.md`, `src/`, `src/app/`, `launcher/`, `sw.js`, `index.html` y las pruebas.
+> Estado (2026-11-24): **implementado**. Hechas la Fase E (TE.0–TE.5) y las tareas no obsoletas de las Fases 0 a 2, 3.1, 4.1, 4.2, 5 y 6 (las tachadas quedaron obsoletas o fuera de alcance). Sin hacer solo las opcionales: T0.8, T3.2 y T4.3. Escrito originalmente tras leer `CLAUDE.md`, `README.md`, `src/`, `src/app/`, `launcher/`, `sw.js`, `index.html` y las pruebas.
 > **Revisión 2 (2026-11-23):** la persona decidió convertir el reproductor en **app de escritorio con Electron**. Se añade la **Fase E** (migración), se rehace la **Fase 2** (videos enlazados por ruta, no copiados), el lanzador Python se sustituye por la asociación de archivos de la app, y lo que deja de aplicar queda marcado **~~tachado~~ (obsoleto)** con el motivo, para que se vea qué cambió.
 > Cada tarea = **una rama y un PR** (`video/<id>-<nombre>` o `app/<id>-<nombre>` para la Fase E), con pruebas, README al día y commit en español con el trailer `Co-Authored-By`.
 
