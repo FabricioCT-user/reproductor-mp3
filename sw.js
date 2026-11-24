@@ -1,6 +1,6 @@
 // Cachea la aplicación para que funcione sin conexión.
 // Sube VERSION al cambiar la lista de archivos (los archivos en sí se revalidan siempre con la red).
-const VERSION = "v9";
+const VERSION = "v10";
 const FILES = [
   "./",
   "index.html",
@@ -43,7 +43,7 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => /^v\d+$/.test(k) && k !== VERSION).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -62,6 +62,6 @@ self.addEventListener("fetch", (e) => {
         }
         return res;
       })
-      .catch(async () => (await caches.match(e.request, { ignoreSearch: true })) || (e.request.mode === "navigate" ? caches.match("./") : undefined))
+      .catch(async () => (await caches.open(VERSION).then((c) => c.match(e.request, { ignoreSearch: true }))) || (e.request.mode === "navigate" ? caches.open(VERSION).then((c) => c.match("./")) : undefined))
   );
 });

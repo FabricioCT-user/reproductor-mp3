@@ -3,6 +3,8 @@
 const META_VERSION = 2;
 const MAX_WEB_VIDEO_BYTES = 2 * 1024 * 1024 * 1024;
 let videoPersistRequested = false;
+let libraryReady = false;
+let demoImportGeneration = 0;
 
 function ensureVideoPersist() {
   if (videoPersistRequested || window.reproductor) return;
@@ -478,7 +480,7 @@ function dequeueThumb(t) {
   if (t) t._thumbQueued = false;
 }
 
-async function addFiles(fileList) {
+async function addFiles(fileList, isCurrent = null) {
   const all = [...fileList];
   // Con carpetas, ordena por ruta para que los álbumes queden en orden (01, 02, … 10).
   if (all.some((f) => pathOf(f).includes("/"))) all.sort(byPath);
@@ -498,6 +500,7 @@ async function addFiles(fileList) {
   const linkedSubs = [];
   const keys = new Set(state.tracks.map((t) => t.key));
   for (const [i, file] of files.entries()) {
+    if (isCurrent && !isCurrent()) break;
     const key = fileKey(file);
     if (keys.has(key)) { dupes++; continue; }
     keys.add(key);
@@ -507,8 +510,10 @@ async function addFiles(fileList) {
     let link = null;
     try {
       link = await linkVideo(file);
+      if (isCurrent && !isCurrent()) { if (link) window.reproductor?.olvidar?.(link.linkId).catch(() => {}); break; }
       const src = link || file;
       const track = await makeTrack(null, src);
+      if (isCurrent && !isCurrent()) { URL.revokeObjectURL(track.url); revokeCovers(track); if (link) window.reproductor?.olvidar?.(link.linkId).catch(() => {}); break; }
       const isWebVideo = !window.reproductor && !link && (track.meta.kind === "video" || (isVideo(src) && track.meta.kind !== "audio"));
       if (isWebVideo && src.size > MAX_WEB_VIDEO_BYTES) {
         track.source = "session";
@@ -522,6 +527,12 @@ async function addFiles(fileList) {
             : {};
         try {
           id = await Storage.add(src, { meta: track.meta, metaVersion: META_VERSION, ...extra });
+          if (isCurrent && !isCurrent()) {
+            if (id != null) await Storage.remove(id).catch(() => {});
+            URL.revokeObjectURL(track.url); revokeCovers(track);
+            if (link) window.reproductor?.olvidar?.(link.linkId).catch(() => {});
+            break;
+          }
           track.id = id;
           track.source = link ? "link" : "blob";
         } catch (e) {
@@ -724,6 +735,7 @@ function removeTrack(i) {
 
 async function clearLibrary() {
   if (!state.tracks.length || !confirm("¿Vaciar toda la biblioteca?")) return;
+  demoImportGeneration++;
   endCrossfade();
   media.pause();
   media.removeAttribute("src");
@@ -734,11 +746,18 @@ async function clearLibrary() {
   savePlaylists();
   state.index = -1;
   await Storage.clear().catch(() => {});
+  if (els["demo-status"]) { els["demo-status"].hidden = true; els["demo-status"].textContent = ""; }
   showTrack(null);
   render();
 }
 
 function render() {
+  const demoButton = els["demo-examples"];
+  if (demoButton) {
+    const eligible = libraryReady && !window.reproductor && state.tracks.length === 0
+      && state.view === "all" && !state.filter && state.mediaFilter === "all";
+    demoButton.hidden = !eligible;
+  }
   if (state.selecting) {
     for (const t of state.selected) if (!state.tracks.includes(t)) state.selected.delete(t);
     updateSelectBar();
@@ -758,6 +777,7 @@ function render() {
     li.textContent = tracks.length && (q || kind !== "all") ? "Sin resultados."
       : pl ? "Esta lista está vacía. Usa el botón ♫ de una pista para añadirla."
       : "Tu biblioteca está vacía. Arrastra archivos o carpetas aquí, o usa «+ Añadir» / «+ Carpeta».";
+    if (demoButton && !demoButton.hidden && !pl) li.appendChild(demoButton);
     els.playlist.replaceChildren(li, ...pendingNote(pl));
     return;
   }
@@ -962,6 +982,42 @@ function toggleSelect(t, shown, range) {
 
 // Importar (selector, carpetas, arrastrar), vaciar y filtrar.
 function wireLibrary() {
+  els["demo-examples"].addEventListener("click", async () => {
+    const button = els["demo-examples"];
+    const status = els["demo-status"];
+    if (button.disabled || !libraryReady || window.reproductor || state.tracks.length) return;
+    const generation = ++demoImportGeneration;
+    const current = () => generation === demoImportGeneration;
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    status.hidden = false;
+    status.textContent = "Descargando ejemplos…";
+    try {
+      const base = new URL("ejemplos/", document.baseURI);
+      const names = ["Brisa.mp3", "Brisa.lrc", "Jardín.flac", "Nubes.mp3", "Paseo.webm", "Paseo.vtt"];
+      const files = await Promise.all(names.map(async (name) => {
+        const response = await fetch(new URL(name, base));
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return new File([await response.arrayBuffer()], name, { type: response.headers.get("content-type") || "", lastModified: 0 });
+      }));
+      if (!current()) return;
+      // Si se añadieron pistas durante la descarga, no importar nada del demo.
+      if (window.reproductor || state.tracks.length) {
+        status.textContent = "La biblioteca ya tiene pistas; no se añadieron los ejemplos.";
+        return;
+      }
+      await addFiles(files, current);
+      if (!current()) return;
+      status.textContent = state.tracks.length ? "Ejemplos añadidos a la biblioteca." : "No se pudieron importar los ejemplos.";
+    } catch {
+      if (!current()) return;
+      status.textContent = "No se pudieron descargar los ejemplos. Comprueba la conexión e inténtalo de nuevo.";
+    } finally {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+      render();
+    }
+  });
   els["file-input"].addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });
 
   els["folder-input"].addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });

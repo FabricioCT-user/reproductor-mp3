@@ -33,7 +33,7 @@ const els = Object.fromEntries(
    "eq-toggle", "eq-panel", "eq-preset", "eq-on", "eq-reset", "eq-bands",
    "lyrics", "lyrics-body", "lyrics-toggle", "lyrics-clear", "lrc-input", "sub-input", "toast", "folder-input",
    "speed-btn", "sleep-btn", "pip-btn", "theme-btn", "xfade-btn",
-   "select-btn", "select-bar", "select-count", "select-all", "select-none", "select-edit", "select-done",
+   "select-btn", "select-bar", "select-count", "select-all", "select-none", "select-edit", "select-done", "demo-examples", "demo-status",
    "edit-heading", "edit-note", "edit-dialog", "edit-form", "edit-cover", "edit-cover-input", "edit-cover-clear", "edit-title", "edit-artist", "edit-album", "edit-reset", "edit-cancel", "edit-download",
    "prompt-dialog", "prompt-form", "prompt-title", "prompt-input", "prompt-cancel"]
     .map((id) => [id, $(id)])
