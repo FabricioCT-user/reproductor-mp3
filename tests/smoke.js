@@ -301,7 +301,7 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
 
   await scenario("Vaciar durante la descarga de ejemplos", async ({ win, ev }) => {
     const button = win.document.getElementById("demo-examples");
-    if (window.reproductor) ev("delete window.reproductor");
+    ev("delete window.reproductor");
     const releases = [];
     win.fetch = () => new Promise((resolve) => { releases.push(resolve); });
     button.click();
@@ -319,7 +319,7 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
 
   await scenario("Vaciar durante la importación de ejemplos", async ({ win, ev }) => {
     const button = win.document.getElementById("demo-examples");
-    if (window.reproductor) ev("delete window.reproductor");
+    ev("delete window.reproductor");
     const originalMakeTrack = win.makeTrack;
     let release;
     let calls = 0;
