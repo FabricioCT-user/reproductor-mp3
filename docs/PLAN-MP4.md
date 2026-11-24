@@ -1,6 +1,6 @@
 # Plan: reproducción de video MP4 + app de escritorio (Electron)
 
-> Estado: **borrador para revisar**, nada implementado. Escrito tras leer `CLAUDE.md`, `README.md`, `src/`, `src/app/`, `launcher/`, `sw.js`, `index.html` y las pruebas.
+> Estado (2026-11-24): **implementado**. Hechas la Fase E (TE.0–TE.5) y las tareas no obsoletas de las Fases 0 a 2, 3.1, 4.1, 4.2, 5 y 6 (las tachadas quedaron obsoletas o fuera de alcance). Sin hacer solo las opcionales: T0.8, T3.2 y T4.3. Escrito originalmente tras leer `CLAUDE.md`, `README.md`, `src/`, `src/app/`, `launcher/`, `sw.js`, `index.html` y las pruebas.
 > **Revisión 2 (2026-11-23):** la persona decidió convertir el reproductor en **app de escritorio con Electron**. Se añade la **Fase E** (migración), se rehace la **Fase 2** (videos enlazados por ruta, no copiados), el lanzador Python se sustituye por la asociación de archivos de la app, y lo que deja de aplicar queda marcado **~~tachado~~ (obsoleto)** con el motivo, para que se vea qué cambió.
 > Cada tarea = **una rama y un PR** (`video/<id>-<nombre>` o `app/<id>-<nombre>` para la Fase E), con pruebas, README al día y commit en español con el trailer `Co-Authored-By`.
 
@@ -223,9 +223,10 @@ Los 7 puntos pasan, incluido el riesgo n.º 1 (Web Audio con video del mismo ori
 - Añadir `launcher/__pycache__/` a `.gitignore` mientras exista la carpeta.
 - Revisión: Gemini.
 
-### TE.5 — Documentación y reglas · **Haiku** (con cada PR de la Fase E; repaso final al terminar TE.4)
+### TE.5 — Documentación y reglas · **Haiku** (con cada PR de la Fase E; repaso final al terminar TE.4) · **Hecha**
+> Hecho (2026-11-24): README, `CLAUDE.md` y este plan contrastados con el código (222 pruebas en verde; tamaños y nombres de los paquetes, según `dist/`). Correcciones: la carpeta de datos es `~/.config/reproductor-mp3` (el paquete no tiene `productName`), no `~/.config/Reproductor`.
 - README: instalación (paquetes, AppImage), «Abrir con…», versión web como alternativa, requisitos, tamaño.
-- `CLAUDE.md`: comandos (`npm run app`, `npm run dist`, `npm run smoke:app`, `npm run web`), estructura con `electron/`, la regla «sin dependencias» matizada («ninguna en tiempo de ejecución de la interfaz; Electron y electron-builder solo como desarrollo»), reglas de seguridad de Electron (las de §1), «Datos guardados» (IndexedDB en `~/.config/Reproductor`, registro de enlaces), y sustituir las trampas del lanzador (`REPRODUCTOR_NO_ABRIR`) por las de Electron (`--user-data-dir` temporal en pruebas; nunca abrir la app real de la persona con sus datos).
+- `CLAUDE.md`: comandos (`npm run app`, `npm run dist`, `npm run smoke:app`, `npm run web`), estructura con `electron/`, la regla «sin dependencias» matizada («ninguna en tiempo de ejecución de la interfaz; Electron y electron-builder solo como desarrollo»), reglas de seguridad de Electron (las de §1), «Datos guardados» (IndexedDB y localStorage en la carpeta de datos de Electron, `~/.config/reproductor-mp3`; registro de enlaces `enlaces.json`), y sustituir las trampas del lanzador (`REPRODUCTOR_NO_ABRIR`) por las de Electron (`--user-data-dir` temporal en pruebas; nunca abrir la app real de la persona con sus datos).
 - Revisión: Codex.
 
 ---
@@ -257,7 +258,7 @@ Los 7 puntos pasan, incluido el riesgo n.º 1 (Web Audio con video del mismo ori
 
 ## 4. Archivos de video: enlazar, no copiar (Fase 2) — **rehecha**
 
-~~Contexto de cuotas (Chromium ~60 %, Firefox «best effort», Safari 7 días)~~ — **obsoleto en la app**: Electron guarda los datos en `~/.config/Reproductor` sin desalojo, y los videos ni siquiera ocupan espacio ahí. Solo afecta a la versión web (T2.3).
+~~Contexto de cuotas (Chromium ~60 %, Firefox «best effort», Safari 7 días)~~ — **obsoleto en la app**: Electron guarda los datos en `~/.config/reproductor-mp3` sin desalojo, y los videos ni siquiera ocupan espacio ahí. Solo afecta a la versión web (T2.3).
 
 ### ~~T2.1 — Persistencia y uso de espacio (`persist()`, `estimate()`)~~ · **Obsoleta** → lo poco que sigue aplicando (web) pasa a T2.3.
 ### ~~T2.2 — Enlazar sin copiar (File System Access, solo Chromium)~~ · **Obsoleta** → sustituida por T2.1 nueva (rutas reales vía Electron, sin diálogos de permiso).
