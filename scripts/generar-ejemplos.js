@@ -1,57 +1,242 @@
 #!/usr/bin/node
-// Genera los medios de demo desde osciladores y formas geométricas propios. Requiere ffmpeg.
+// Sintetiza los ejemplos en PCM determinista; FFmpeg solo codifica y mide.
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
 const dir = path.join(root, "ejemplos");
+const temp = path.join(root, ".tmp");
 fs.mkdirSync(dir, { recursive: true });
+fs.mkdirSync(temp, { recursive: true });
+const RATE = 44100;
+const DURATION = 28;
+const TAU = Math.PI * 2;
 
 function ffmpeg(args) {
-  const run = spawnSync("timeout", ["60", "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", ...args], {
-    stdio: ["ignore", "inherit", "inherit"],
-  });
+  const run = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "info", "-y", ...args], { stdio: "inherit" });
   if (run.error) throw run.error;
   if (run.status !== 0) throw new Error(`ffmpeg terminó con código ${run.status}`);
 }
 
-const covers = [
-  ["Brisa", "#154c55", "#8fd9c7", "#f3d58a"],
-  ["Jardín", "#31513a", "#b9cf87", "#e9a86f"],
-  ["Nubes", "#59415e", "#d2a9c2", "#eac779"],
-  ["Paseo", "#373d69", "#a4a9e8", "#f2bf89"],
-];
-for (const [name, bg, a, b] of covers) {
-  ffmpeg(["-f", "lavfi", "-i", `color=c=${bg}:s=320x320:d=1`, "-vf",
-    `drawbox=x=36:y=36:w=248:h=248:color=${a}@0.92:t=fill,drawbox=x=82:y=82:w=156:h=156:color=${b}@0.95:t=fill,drawbox=x=116:y=116:w=88:h=88:color=${bg}@0.9:t=fill`,
-    "-frames:v", "1", path.join(dir, `${name}-portada.png`)]);
+function rng(seed) {
+  let x = seed >>> 0;
+  return () => ((x = (Math.imul(x, 1664525) + 1013904223) >>> 0) / 0x100000000) * 2 - 1;
+}
+const hz = (midi) => 440 * 2 ** ((midi - 69) / 12);
+const smooth = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+function envelope(t, duration, attack = 0.018, release = 0.16) {
+  return smooth(t / attack) * smooth((duration - t) / release);
+}
+function adsr(t, duration, attack, decay, sustain, release) {
+  if (t < 0 || t >= duration) return 0;
+  const a = smooth(t / attack);
+  const d = smooth((t - attack) / decay);
+  const r = smooth((duration - t) / release);
+  return Math.min(a, 1) * (1 - (1 - sustain) * d) * r;
 }
 
-const audio = "sine=frequency=220:sample_rate=44100:duration=24";
-const chords = "[0:a]volume=0.22[a0];sine=frequency=277.18:sample_rate=44100:duration=24,volume=0.12[a1];sine=frequency=329.63:sample_rate=44100:duration=24,volume=0.10[a2];[a0][a1][a2]amix=inputs=3:normalize=0,afade=t=in:st=0:d=2,afade=t=out:st=21:d=3[a]";
-ffmpeg(["-f", "lavfi", "-i", audio, "-i", path.join(dir, "Brisa-portada.png"), "-filter_complex", chords,
-  "-map", "[a]", "-map", "1:v", "-c:a", "libmp3lame", "-b:a", "96k", "-c:v", "mjpeg", "-id3v2_version", "3",
-  "-metadata", "title=Brisa", "-metadata", "artist=Tarareo (ejemplo)", "-metadata", "album=Pequeños paisajes",
-  "-metadata:s:v", "title=Portada", "-metadata:s:v", "comment=Cover (front)", path.join(dir, "Brisa.mp3")]);
+const scales = {
+  major: [0, 2, 4, 5, 7, 9, 11],
+  minor: [0, 2, 3, 5, 7, 9, 10],
+};
+function phrase(bpm, bars, progression, scale, rootMidi, melodySteps) {
+  const beat = 60 / bpm;
+  const bar = beat * 4;
+  return {
+    beat, bar, progression: progression.map((ch) => ch.map((n) => rootMidi + scales[scale][(n % 7 + 7) % 7] + 12 * Math.floor(n / 7))),
+    bars, melody: melodySteps.map(([step, len, note]) => [step * beat / 2, len * beat / 2, rootMidi + scales[scale][note % 7] + 12 * Math.floor(note / 7)]),
+  };
+}
 
-const flac = "[0:a]volume=0.16[a0];sine=frequency=261.63:sample_rate=44100:duration=24,volume=0.10[a1];sine=frequency=392:sample_rate=44100:duration=24,volume=0.08[a2];[a0][a1][a2]amix=inputs=3:normalize=0,afade=t=in:st=0:d=2,afade=t=out:st=21:d=3[a]";
-ffmpeg(["-f", "lavfi", "-i", audio, "-i", path.join(dir, "Jardín-portada.png"), "-filter_complex", flac,
-  "-map", "[a]", "-map", "1:v", "-c:a", "flac", "-c:v", "mjpeg", "-disposition:v", "attached_pic",
-  "-metadata", "title=Jardín", "-metadata", "artist=Tarareo (ejemplo)", "-metadata", "album=Pequeños paisajes",
-  "-metadata:s:v", "title=Portada", path.join(dir, "Jardín.flac")]);
+function synth(track) {
+  const count = RATE * DURATION;
+  const L = new Float32Array(count);
+  const R = new Float32Array(count);
+  const random = rng(track.seed);
+  const bars = Math.floor(DURATION / (60 / track.bpm * 4));
+  const p = phrase(track.bpm, bars, track.chords, track.scale, track.root, track.melody);
+  const chordAt = (time) => p.progression[Math.floor(time / p.bar) % p.progression.length];
+  const voices = [];
 
-const third = "[0:a]volume=0.16[a0];sine=frequency=293.66:sample_rate=44100:duration=24,volume=0.10[a1];sine=frequency=440:sample_rate=44100:duration=24,volume=0.08[a2];[a0][a1][a2]amix=inputs=3:normalize=0,afade=t=in:st=0:d=2,afade=t=out:st=21:d=3[a]";
-ffmpeg(["-f", "lavfi", "-i", audio, "-i", path.join(dir, "Nubes-portada.png"), "-filter_complex", third,
-  "-map", "[a]", "-map", "1:v", "-c:a", "libmp3lame", "-b:a", "96k", "-c:v", "mjpeg", "-id3v2_version", "3",
-  "-metadata", "title=Nubes", "-metadata", "artist=Tarareo (ejemplo)", "-metadata", "album=Pequeños paisajes",
-  "-metadata:s:v", "title=Portada", "-metadata:s:v", "comment=Cover (front)", path.join(dir, "Nubes.mp3")]);
+  // Bajo cálido y pulsos por negra en las tres piezas.
+  for (let step = 0; step < bars * 4; step++) {
+    const start = step * p.beat;
+    const dur = p.beat * 0.78;
+    const note = chordAt(start)[0] - 24;
+    voices.push({ start, dur, note, kind: "bass", pan: (step % 2 ? 0.12 : -0.12) });
+  }
+  // Melodía con descansos y respuesta; las notas pertenecen a la tonalidad.
+  for (let repeat = 0; repeat < bars / 4; repeat++) {
+    for (const [at, len, note] of p.melody) voices.push({ start: at + p.bar * 0.5 + repeat * p.bar * 4, dur: len * 0.88, note, kind: track.voice, pan: 0.1 });
+  }
+  // Acordes sostenidos, una nueva inversión cada compás.
+  for (let bar = 0; bar < bars; bar++) {
+    const chord = p.progression[bar % p.progression.length];
+    chord.slice(0, 3).forEach((note, i) => voices.push({ start: bar * p.bar, dur: p.bar * 0.94, note: note + 12, kind: track.pad, pan: (i - 1) * 0.3, index: i }));
+  }
 
-const video = "color=c=#24324a:s=320x180:r=12:d=24,drawbox=x='40+90*sin(t/3)':y=40:w=70:h=70:color=#f2bf89@0.8:t=fill,drawbox=x='190-60*sin(t/4)':y=100:w=50:h=50:color=#a4a9e8@0.9:t=fill";
-ffmpeg(["-f", "lavfi", "-i", video, "-f", "lavfi", "-i", "sine=frequency=196:sample_rate=48000:duration=24",
-  "-vf", "format=yuv420p", "-c:v", "libvpx-vp9", "-deadline", "good", "-cpu-used", "3", "-b:v", "180k",
-  "-c:a", "libopus", "-b:a", "48k", "-metadata", "title=Paseo", "-metadata", "artist=Tarareo (ejemplo)",
-  "-metadata", "album=Pequeños paisajes", path.join(dir, "Paseo.webm")]);
+  const sampleVoice = (v, t) => {
+    const local = t - v.start;
+    if (local < 0 || local >= v.dur) return 0;
+    const f = hz(v.note);
+    const e = v.kind === "pad" ? adsr(local, v.dur, 0.55, 0.4, 0.58, 0.9) : envelope(local, v.dur, 0.012, 0.18);
+    if (v.kind === "bass") return (Math.sin(TAU * f * local) * 0.76 + Math.sin(TAU * f * 2 * local) * 0.16) * e * 0.22;
+    if (v.kind === "pad") return (Math.sin(TAU * f * local) * 0.72 + Math.sin(TAU * f * 2 * local) * 0.16) * e * 0.052;
+    if (v.kind === "pluck") {
+      // Karplus–Strong: cuerda aleatoria filtrada en bucle, semilla fija por voz.
+      if (!v.ks) {
+        const r = rng(track.seed + Math.round(v.start * 100) + v.note);
+        const size = Math.max(2, Math.round(RATE / f));
+        v.ks = Float32Array.from({ length: size }, () => r());
+        v.ksAt = 0;
+      }
+      const at = v.ksAt++ % v.ks.length;
+      const out = v.ks[at];
+      v.ks[at] = (out + v.ks[(at + 1) % v.ks.length]) * 0.497;
+      return out * e * 0.19;
+    }
+    if (v.kind === "ep") {
+      const tremolo = 0.82 + 0.18 * Math.sin(TAU * 4.8 * local);
+      return (Math.sin(TAU * f * local) * 0.63 + Math.sin(TAU * f * 2 * local) * 0.22 + Math.sin(TAU * f * 3.01 * local) * 0.08) * e * tremolo * 0.13;
+    }
+    // Campanas de parciales inarmónicos para Jardín.
+    return (Math.sin(TAU * f * local) * 0.68 + Math.sin(TAU * f * 2.71 * local) * 0.18 + Math.sin(TAU * f * 5.08 * local) * 0.08) * e * 0.14;
+  };
 
-fs.writeFileSync(path.join(dir, "Brisa.lrc"), "[ti:Brisa]\n[ar:Tarareo (ejemplo)]\n[00:02.00]La tarde baja despacio\n[00:08.00]y el aire aprende a cantar\n[00:14.00]cada ventana es un faro\n[00:19.00]que invita a descansar\n", "utf8");
-fs.writeFileSync(path.join(dir, "Paseo.vtt"), "WEBVTT\n\n00:00:02.000 --> 00:00:08.000\nPasos tranquilos, luz de abril.\n\n00:00:10.000 --> 00:00:17.000\nLa ciudad respira en calma.\n\n00:00:18.000 --> 00:00:23.000\nSeguimos un poco más.\n", "utf8");
+  // Percusión corta, nunca abrupta, y acentos cada negra.
+  const hits = [];
+  for (let beat = 0; beat < bars * 4; beat++) {
+    if (track.rhythm === "none") continue;
+    if (track.rhythm === "light" && beat % 2 === 1) continue;
+    hits.push({ start: beat * p.beat, dur: track.rhythm === "light" ? 0.12 : 0.07, type: beat % 4 === 0 ? "kick" : "tap" });
+  }
+  // Bounces de reverberación hechos aquí en PCM, con colas decrecientes.
+  const dry = new Float32Array(count);
+  for (const v of voices) {
+    const from = Math.max(0, Math.floor(v.start * RATE));
+    const to = Math.min(count, Math.ceil((v.start + v.dur) * RATE));
+    for (let n = from; n < to; n++) dry[n] += sampleVoice(v, n / RATE);
+  }
+  for (const hit of hits) {
+    const from = Math.floor(hit.start * RATE);
+    const len = Math.ceil(hit.dur * RATE);
+    let z = 0;
+    for (let k = 0; k < len && from + k < count; k++) {
+      const t = k / RATE;
+      const e = envelope(t, hit.dur, 0.002, hit.dur * 0.65);
+      const noise = random();
+      const kick = Math.sin(TAU * (75 - 35 * t / hit.dur) * t);
+      dry[from + k] += (hit.type === "kick" ? kick * 0.12 : noise * 0.035) * e;
+      z = z * 0.86 + noise * 0.14;
+    }
+  }
+  const delayA = Math.round(RATE * track.delay);
+  const delayB = Math.round(RATE * track.delay * 1.47);
+  let peak = 0;
+  for (let n = 0; n < count; n++) {
+    const t = n / RATE;
+    const fade = smooth(t / 1.1) * smooth((DURATION - t) / 2.2);
+    const a = dry[n] + (n >= delayA ? dry[n - delayA] * 0.22 : 0) + (n >= delayB ? dry[n - delayB] * 0.12 : 0);
+    const pan = track.stereo ? Math.sin(TAU * t / 11) * 0.18 : 0;
+    L[n] = a * fade * (0.92 - pan);
+    R[n] = a * fade * (0.92 + pan);
+    peak = Math.max(peak, Math.abs(L[n]), Math.abs(R[n]));
+  }
+  const gain = Math.min(track.gain, 0.89 / peak);
+  const pcm = Buffer.allocUnsafe(count * 8);
+  for (let n = 0; n < count; n++) { pcm.writeFloatLE(L[n] * gain, n * 8); pcm.writeFloatLE(R[n] * gain, n * 8 + 4); }
+  return pcm;
+}
+
+function cover(name, colors, seed) {
+  const size = 640;
+  const data = Buffer.alloc(size * size * 3);
+  const top = colors[0], middle = colors[1], bottom = colors[2];
+  const rand = rng(seed);
+  const noise = new Float32Array(size * size);
+  for (let i = 0; i < noise.length; i++) noise[i] = rand() * 5;
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const ridge = (x, phase, amp, base) => base + Math.sin(x * 0.009 + phase) * amp + Math.sin(x * 0.022 + phase * 1.8) * amp * 0.35;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const i = (y * size + x) * 3;
+    let c;
+    const f = y / 430;
+    if (y < 430) c = top.map((v, k) => lerp(v, middle[k], f));
+    else c = middle.map((v, k) => lerp(v, bottom[k], (y - 430) / 210));
+    const sunX = 430 + Math.sin(seed) * 65;
+    const sunY = 190;
+    const radius = 82;
+    if ((x - sunX) ** 2 + (y - sunY) ** 2 < radius ** 2) c = colors[3];
+    const h1 = ridge(x, seed, 48, 445);
+    const h2 = ridge(x, seed * 1.3, 63, 520);
+    const h3 = ridge(x, seed * 0.67, 40, 585);
+    if (y > h1) c = colors[4];
+    if (y > h2) c = colors[5];
+    if (y > h3) c = colors[6];
+    const grain = noise[y * size + x];
+    for (let k = 0; k < 3; k++) data[i + k] = Math.max(0, Math.min(255, Math.round(c[k] + grain)));
+  }
+  return Buffer.concat([Buffer.from(`P6\n${size} ${size}\n255\n`), data]);
+}
+
+const tracks = [
+  { name: "Brisa", bpm: 90, root: 57, scale: "major", seed: 371, voice: "pluck", pad: "pad", rhythm: "sparse", delay: 0.28, stereo: true, gain: 1.43,
+    chords: [[0, 2, 4], [5, 0, 2], [3, 5, 0], [4, 6, 1]], melody: [[0,2,4],[3,1,5],[6,2,4],[10,2,2],[14,2,1],[18,2,2],[22,2,4],[26,2,5],[32,2,4],[36,2,5],[40,2,7],[44,2,5],[48,2,4],[52,2,2],[56,2,1],[60,4,0]],
+    colors: [[19,54,65],[91,156,142],[235,190,119],[247,218,151],[54,111,105],[37,87,88],[20,58,65]] },
+  { name: "Jardín", bpm: 110, root: 60, scale: "major", seed: 813, voice: "bell", pad: "pad", rhythm: "light", delay: 0.19, stereo: true, gain: 1.25,
+    chords: [[0,2,4],[3,5,0],[4,6,1],[0,2,4]], melody: [[0,2,7],[2,1,5],[4,2,4],[7,1,5],[8,2,7],[12,2,9],[16,2,7],[20,2,5],[24,2,4],[28,2,7],[32,2,9],[36,2,11],[40,2,9],[44,2,7],[48,2,5],[52,2,4],[56,4,0]],
+    colors: [[54,84,66],[152,177,110],[221,178,111],[247,209,129],[96,135,91],[57,101,72],[37,77,60]] },
+  { name: "Nubes", bpm: 72, root: 53, scale: "minor", seed: 1229, voice: "ep", pad: "pad", rhythm: "none", delay: 0.54, stereo: true, gain: 1.38,
+    chords: [[0,2,4],[5,0,2],[3,5,0],[4,6,1]], melody: [[0,4,4],[8,4,2],[16,4,1],[24,4,2],[32,4,4],[40,4,5],[48,4,4],[56,8,2]],
+    colors: [[49,59,93],[123,139,174],[190,170,174],[238,211,154],[87,100,139],[66,80,123],[44,59,101]] },
+];
+
+for (const track of tracks) {
+  const pcmPath = path.join(temp, `${track.name}.f32le`);
+  const coverPath = path.join(temp, `${track.name}.ppm`);
+  fs.writeFileSync(pcmPath, synth(track));
+  fs.writeFileSync(coverPath, cover(track.name, track.colors, track.seed));
+  const output = path.join(dir, track.name === "Jardín" ? "Jardín.flac" : `${track.name}.mp3`);
+  const args = ["-f", "f32le", "-ar", String(RATE), "-ac", "2", "-i", pcmPath, "-i", coverPath, "-map", "0:a", "-map", "1:v",
+    "-metadata", `title=${track.name}`, "-metadata", "artist=Tarareo (ejemplo)", "-metadata", "album=Pequeños paisajes", "-metadata:s:v", "title=Portada", "-metadata:s:v", "comment=Cover (front)"];
+  if (track.name === "Jardín") args.push("-sample_fmt", "s16", "-c:a", "flac", "-c:v", "mjpeg", "-disposition:v", "attached_pic");
+  else args.push("-c:a", "libmp3lame", "-b:a", "160k", "-id3v2_version", "4", "-c:v", "mjpeg", "-disposition:v", "attached_pic");
+  args.push("-af", "ebur128=peak=true:framelog=quiet", output);
+  ffmpeg(args);
+}
+
+// Paseo: paisaje animado sintético con varias capas, parallax y sol desplazándose.
+const videoPath = path.join(temp, "Paseo.ppm");
+const videoPcm = path.join(temp, "Paseo.f32le");
+const videoPpm = cover("Paseo", [[39,54,91],[110,133,174],[195,171,151],[245,210,143],[79,100,142],[55,78,128],[35,56,101]], 72);
+fs.writeFileSync(videoPath, videoPpm);
+const vcount = 48000 * 24;
+const vraw = Buffer.alloc(vcount * 8);
+const videoProgression = [[0, 3, 7], [5, 8, 12], [3, 7, 10], [4, 7, 11]];
+for (let n = 0; n < vcount; n++) {
+  const t = n / 48000;
+  const beat = t * 72 / 60;
+  const beatNo = Math.floor(beat);
+  const chordIndex = Math.floor(beat / 4) % 4;
+  const chord = videoProgression[chordIndex];
+  const root = hz(38 + chord[0]);
+  const third = hz(50 + chord[1]);
+  const fifth = hz(50 + chord[2]);
+  const melody = hz(62 + [0, 3, 5, 7, 10, 7, 5, 3][Math.floor(beat * 2) % 8]);
+  const fade = smooth(t / 1.2) * smooth((24 - t) / 1.8);
+  const bass = Math.sin(TAU * root * t) * (0.075 + (beatNo % 4 === 0 ? 0.025 : 0));
+  const harmony = Math.sin(TAU * third * t) * 0.035 + Math.sin(TAU * fifth * t) * 0.025;
+  const pluck = Math.sin(TAU * melody * t) * Math.exp(-((beat * 2) % 1) * 3) * 0.035;
+  const value = (bass + harmony + pluck) * fade;
+  vraw.writeFloatLE(value, n * 8); vraw.writeFloatLE(value, n * 8 + 4);
+}
+fs.writeFileSync(videoPcm, vraw);
+const movingFilter = "format=rgb24,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)',drawbox=x='60+180*t':y=120:w=100:h=100:color=#f5d28f@0.75:t=fill,drawbox=x='-50+35*sin(t/3)':y=390:w=1450:h=340:color=#415f89@0.88:t=fill,drawbox=x='-80+55*sin(t/4)':y=510:w=1450:h=260:color=#294b74@0.92:t=fill,drawbox=x='0+25*sin(t/5)':y=610:w=1450:h=180:color=#193858@0.95:t=fill,format=yuv420p";
+ffmpeg(["-f", "f32le", "-ar", "48000", "-ac", "2", "-i", videoPcm, "-loop", "1", "-framerate", "24", "-i", videoPath,
+  "-filter_complex", `[1:v]${movingFilter}[v]`, "-map", "[v]", "-map", "0:a", "-t", "24", "-s", "1280x720", "-r", "24",
+  "-c:v", "libvpx-vp9", "-deadline", "good", "-cpu-used", "4", "-b:v", "180k", "-c:a", "libopus", "-b:a", "64k",
+  "-metadata", "title=Paseo", "-metadata", "artist=Tarareo (ejemplo)", "-metadata", "album=Pequeños paisajes", path.join(dir, "Paseo.webm")]);
+
+fs.writeFileSync(path.join(dir, "Brisa.lrc"), "[ti:Brisa]\n[ar:Tarareo (ejemplo)]\n[00:02.00]La tarde se inclina al mar\n[00:05.00]la cuerda despierta al sol\n[00:08.00]un paso comienza a andar\n[00:11.00]y el viento responde en do\n[00:14.00]las hojas giran al pasar\n[00:17.00]la luz se posa en la piel\n[00:20.00]la noche nos ve llegar\n[00:24.00]y el aire nos mece otra vez\n", "utf8");
+fs.writeFileSync(path.join(dir, "Paseo.vtt"), "WEBVTT\n\n00:00:01.000 --> 00:00:06.000\nEl sol acompaña el paseo.\n\n00:00:07.000 --> 00:00:13.000\nLas colinas cambian con cada paso.\n\n00:00:14.000 --> 00:00:20.000\nLa tarde descansa sobre el agua.\n\n00:00:21.000 --> 00:00:24.000\nVolvemos despacio.\n", "utf8");
