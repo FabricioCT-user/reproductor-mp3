@@ -181,7 +181,11 @@ function enfocar() {
 
 app.on("second-instance", (_e, argv, cwd) => {
   enfocar();
-  registrar(analizar(argv, { empaquetada: app.isPackaged }).archivos, cwd).then(abrirEnLaApp).catch((e) => console.error(e));
+  // Chromium puede reordenar `--user-data-dir` separado; informa el error, pero conserva los posicionales
+  // enviados a la instancia abierta y nunca termina esta instancia por un argumento de la segunda.
+  const argsSegunda = analizar(argv, { empaquetada: app.isPackaged });
+  if (argsSegunda.errorDatos) console.error(`Error en argumentos de la segunda instancia: ${argsSegunda.errorDatos}`);
+  registrar(argsSegunda.archivos, cwd).then(abrirEnLaApp).catch((e) => console.error(e));
 });
 
 // Diálogo nativo. En Linux y Windows no puede elegir a la vez archivos y carpetas: son dos modos. `video` elige un solo

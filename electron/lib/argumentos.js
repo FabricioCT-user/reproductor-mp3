@@ -7,7 +7,7 @@ const path = require("node:path");
 // - En desarrollo (`electron . …`) argv[1] es la carpeta de la app; empaquetada, argv[1] ya es un argumento.
 // - --smoke: carga la prueba de humo (solo en desarrollo: el paquete no lleva tests/).
 // - --instalar-escritorio: instala el archivo .desktop y el icono para el AppImage en ~/.local/share y sale.
-// - --user-data-dir <ruta> o --user-data-dir=<ruta>: carpeta absoluta o relativa al cwd.
+// - --user-data-dir=<ruta>: carpeta absoluta o relativa al cwd. Chromium no admite valor separado.
 //   La usa smoke:app con una temporal explícita.
 // - El resto de opciones (--algo, incluidas las de Chromium) se ignoran; lo que no empieza por - son archivos (TE.2).
 //   Tras «--» todo son archivos.
@@ -23,14 +23,7 @@ function analizar(argv, { empaquetada = false, cwd = process.cwd() } = {}) {
     if (a === "--smoke") { if (!empaquetada) res.smoke = true; continue; }
     if (a === "--instalar-escritorio") { res.instalarEscritorio = true; continue; }
     if (a === "--user-data-dir") {
-      const valor = argumentos[i + 1];
-      if (typeof valor !== "string" || valor.length === 0 || valor.startsWith("-")) {
-        res.errorDatos = "--user-data-dir requiere una ruta no vacía (usa --user-data-dir=<ruta>)";
-      } else {
-        res.datos = path.resolve(cwd, valor);
-        // Evita que el valor separado por espacio se agregue también como archivo de audio.
-        i++;
-      }
+      res.errorDatos = "--user-data-dir requiere el formato --user-data-dir=<ruta>";
       continue;
     }
     if (a.startsWith("--user-data-dir=")) {

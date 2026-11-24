@@ -16,9 +16,11 @@ test("ruta de datos: XDG_CONFIG_HOME relativo o vacío usa appData absoluto", ()
 
 test("ruta de datos: HOME vacío, relativo o ausente nunca produce ruta relativa", () => {
   for (const home of ["", "relativo", undefined]) {
-    const ruta = rutaDatos({ home, appData: "/tmp/electron-config" });
+    const ruta = rutaDatos({ home });
     assert.equal(path.isAbsolute(ruta), true);
-    assert.equal(ruta, "/tmp/electron-config/reproductor-mp3");
+    assert.equal(ruta, path.join(require("node:os").tmpdir(), "reproductor-mp3"));
+    const conAppDataRelativo = rutaDatos({ home, appData: "config-relativa" });
+    assert.equal(conAppDataRelativo, ruta);
   }
 });
 
@@ -43,5 +45,12 @@ test("Electron fija userData incondicionalmente antes de pedir instancia única"
     "app.setPath no debe quedar condicionado a args.datos");
   assert.match(main, /appData:\s*app\.getPath\("appData"\)/);
   assert.match(main, /if\s*\(args\.smoke\s*&&\s*!args\.datos\)/, "--smoke exige ruta temporal explícita");
+});
+
+test("second-instance conserva archivos si Chromium reordena un user-data-dir inválido", () => {
+  const main = fs.readFileSync(path.join(__dirname, "../../electron/main.js"), "utf8");
+  assert.match(main, /if\s*\(argsSegunda\.errorDatos\)\s*console\.error/);
+  assert.match(main, /registrar\(argsSegunda\.archivos,\s*cwd\)/);
+  assert.doesNotMatch(main, /if\s*\(argsSegunda\.errorDatos\)[^\n]*\b(?:return|app\.quit|process\.exit)/);
 });
 

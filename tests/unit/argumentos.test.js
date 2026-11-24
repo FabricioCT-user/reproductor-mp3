@@ -31,15 +31,16 @@ test("--instalar-escritorio en desarrollo y empaquetada; tras «--» es archivo"
   assert.deepEqual(tras.archivos, ["--instalar-escritorio"]);
 });
 
-test("--user-data-dir resuelve rutas relativas desde cwd y rechaza valores vacíos", () => {
+test("--user-data-dir exige '=' y resuelve la ruta desde cwd", () => {
   assert.equal(dev("--user-data-dir=/tmp/x/../datos").datos, "/tmp/datos");
   assert.equal(analizar(["e", ".", "--user-data-dir=relativa"], { cwd: "/tmp/cwd" }).datos, "/tmp/cwd/relativa");
   assert.equal(dev("--user-data-dir=").errorDatos !== null, true);
   const separada = analizar(["e", ".", "--user-data-dir", "perfil", "cancion.mp3"], { cwd: "/tmp/cwd" });
-  assert.equal(separada.datos, "/tmp/cwd/perfil");
-  assert.deepEqual(separada.archivos, ["cancion.mp3"]);
-  assert.match(dev("--user-data-dir").errorDatos, /ruta no vacía/);
-  assert.match(dev("--user-data-dir", "").errorDatos, /ruta no vacía/);
+  assert.equal(separada.datos, null);
+  assert.deepEqual(separada.archivos, ["perfil", "cancion.mp3"]);
+  assert.match(separada.errorDatos, /--user-data-dir=<ruta>/);
+  assert.match(dev("--user-data-dir").errorDatos, /--user-data-dir=<ruta>/);
+  assert.match(dev("--user-data-dir", "").errorDatos, /--user-data-dir=<ruta>/);
   assert.equal(pkg("--user-data-dir=/tmp/d").datos, "/tmp/d");
 });
 
@@ -67,4 +68,9 @@ test("argv de una segunda instancia (con opciones que añade Chromium y «--») 
   assert.deepEqual(conSeparador.archivos, ["/m/a.mp3", "--raro.mp3", "/m/b c.ogg"]);
   assert.equal(conSeparador.smoke, false);
   assert.equal(conSeparador.instalarEscritorio, false);
+
+  // Chromium antepone flags y desplaza los posicionales; el error no consume la canción.
+  const flagSeparado = pkg("--user-data-dir", "cancion.mp3", "/tmp/perfil");
+  assert.match(flagSeparado.errorDatos, /--user-data-dir=<ruta>/);
+  assert.deepEqual(flagSeparado.archivos, ["cancion.mp3", "/tmp/perfil"]);
 });
