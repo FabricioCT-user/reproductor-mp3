@@ -4,15 +4,15 @@ const META_VERSION = 2;
 const MAX_WEB_VIDEO_BYTES = 2 * 1024 * 1024 * 1024;
 let videoPersistRequested = false;
 
-async function ensureVideoPersist() {
+function ensureVideoPersist() {
   if (videoPersistRequested || window.reproductor) return;
   videoPersistRequested = true;
-  try { await navigator.storage?.persist?.(); } catch { /* si no existe la API o falla, la importación sigue igual */ }
+  try { Promise.resolve(navigator.storage?.persist?.()).catch(() => {}); } catch { /* si no existe la API o falla, la importación sigue igual */ }
 }
 
 const trackMeta = (m, file) => ({
   title: m.title || "", artist: m.artist || "", album: m.album || "", lyrics: m.lyrics || "",
-  hasCover: !!(m.hasCover ?? m.cover), duration: m.duration ?? null, kind: m.kind || (file.type.startsWith("video/") ? "video" : "audio"),
+  hasCover: !!(m.hasCover ?? m.cover), duration: m.duration ?? null, kind: m.kind || (isVideo(file) ? "video" : "audio"),
   width: m.width ?? null, height: m.height ?? null, codecs: m.codecs ?? null,
   year: m.year || "", genre: m.genre || "", description: m.description || "", show: m.show || "",
   season: m.season ?? null, episode: m.episode ?? null, rotation: m.rotation ?? 0, chapters: m.chapters || [],
@@ -172,7 +172,7 @@ const isMp4File = (f) => /\.(mp4|m4v|m4a|mov)$/i.test(f.name)
   || /^video\/(mp4|quicktime|x-m4v)$/i.test(f.type || "")
   || /^audio\/(mp4|x-m4a)$/i.test(f.type || "");
 
-const isMkvFile = (f) => /\.(webm|mkv)$/i.test(f.name)
+const isMkvFile = (f) => /\.(webm|weba|mkv)$/i.test(f.name)
   || /^(video|audio)\/(webm|x-matroska)$/i.test(f.type || "");
 
 function assessTrackCompat(t) {
@@ -189,22 +189,24 @@ function assessTrackCompat(t) {
 async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = null, savedSubs = [], savedThumb = null) {
   const meta = cachedMeta || await Tags.read(file);
   let probedCached = false;
+  let detectedKind = null;
   if (isMp4File(file) && (!cachedMeta || cachedMeta.codecs == null)) {
     try {
       const info = await MP4.probe(file);
-      if (info.kind) meta.kind = info.kind;
+      if (info.kind) detectedKind = meta.kind = info.kind;
       meta.codecs = info.codecs;
       probedCached = !!cachedMeta;
     } catch { /* tipo MIME como alternativa */ }
   } else if (isMkvFile(file) && (!cachedMeta || cachedMeta.codecs == null)) {
     try {
       const info = await MKV.probe(file);
-      if (info.kind) meta.kind = info.kind;
+      if (info.kind) detectedKind = meta.kind = info.kind;
       meta.codecs = info.codecs;
       probedCached = !!cachedMeta;
     } catch { /* tipo MIME como alternativa */ }
   }
-  if (!meta.kind && isVideo(file)) meta.kind = "video";
+  if (!detectedKind && (!cachedMeta || cachedMeta.codecs == null) && isVideo(file)) meta.kind = "video";
+  else if (!meta.kind && isVideo(file)) meta.kind = "video";
   const savedMeta = trackMeta(meta, file);
   if (probedCached && id != null) Storage.setMeta(id, savedMeta, META_VERSION).catch(() => {});
   const fallback = file.name.replace(/\.[^.]+$/, "");
@@ -509,13 +511,17 @@ async function addFiles(fileList) {
       link = await linkVideo(file);
       const src = link || file;
       const track = await makeTrack(null, src);
-      const isWebVideo = !window.reproductor && !link && track.meta.kind === "video";
+      const isWebVideo = !window.reproductor && !link && (track.meta.kind === "video" || (isVideo(src) && track.meta.kind !== "audio"));
       if (isWebVideo && src.size > MAX_WEB_VIDEO_BYTES) {
         track.source = "session";
         tooLarge++;
       } else {
-        if (isWebVideo) await ensureVideoPersist();
-        const extra = link ? { source: "link", linkId: link.linkId, kind: track.meta.kind } : { kind: track.meta.kind };
+        if (isWebVideo) ensureVideoPersist();
+        const extra = link
+          ? { source: "link", linkId: link.linkId, kind: track.meta.kind }
+          : isWebVideo
+            ? { kind: "video" }
+            : {};
         try {
           id = await Storage.add(src, { meta: track.meta, metaVersion: META_VERSION, ...extra });
           track.id = id;
