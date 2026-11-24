@@ -165,7 +165,7 @@ async function openApp(prepare, reset = true) {
   const win = frame.contentWindow;
   const ready = await waitReady(win);
   win.confirm = () => true;
-  return { frame, win, ready, ev: (code) => win.eval(code) };
+  return { frame, win, ready, hostApp: !!window.reproductor, ev: (code) => win.eval(code) };
 }
 
 async function responderDialogo(win, valor) {
@@ -212,6 +212,51 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
 /* ---------- Escenarios ---------- */
 
 (async function run() {
+  await scenario("Ejemplos de demo", async ({ win, ev, hostApp }) => {
+    const button = win.document.getElementById("demo-examples");
+    if (hostApp) {
+      check("demo: el smoke de Electron no accede a ejemplos fuera de su lista blanca", !!button);
+      return;
+    }
+    check("demo web: botón visible con biblioteca vacía", !!button && !button.hidden);
+    ev("window.reproductor = {}; render()");
+    check("demo: botón oculto en app de escritorio", button.hidden);
+    ev("delete window.reproductor; render()");
+
+    const realFetch = win.fetch.bind(win);
+    let calls = 0;
+    win.fetch = (...args) => { calls++; return realFetch(...args); };
+    button.click();
+    button.click();
+    check("demo: doble clic bloquea la segunda importación", button.disabled);
+    check("demo: estado de carga accesible", button.getAttribute("aria-busy") === "true" && !win.document.getElementById("demo-status").hidden);
+    await until(() => ev("state.tracks.length") === 4 && !button.disabled, 15000);
+    win.fetch = realFetch;
+    check("demo: se importan las tres pistas y el vídeo", ev("state.tracks.length") === 4, titles(ev));
+    check("demo: pistas con artista y álbum de ejemplo", ev("state.tracks.every(t => t.meta.artist === 'Tarareo (ejemplo)' && t.meta.album === 'Pequeños paisajes')"));
+    check("demo: doble clic lanza una sola descarga por archivo", calls === 6, `fetch=${calls}`);
+    check("demo: letra LRC emparejada", ev("state.tracks.find(t => t.fileName === 'Brisa.mp3')?.userLyrics?.includes('La tarde baja')"));
+    check("demo: subtítulos VTT emparejados", ev("state.tracks.find(t => t.fileName === 'Paseo.webm')?.subs?.length") > 0);
+    check("demo: no comienza la reproducción", ev("media.paused") && ev("state.index") === 0);
+    check("demo: botón desaparece tras la importación", button.hidden);
+  });
+
+  await scenario("Fallo de red en ejemplos", async ({ win, ev, hostApp }) => {
+    const button = win.document.getElementById("demo-examples");
+    if (hostApp) {
+      check("demo app: no afecta a la biblioteca del smoke", !!button && ev("state.tracks.length") === 0);
+      return;
+    }
+    const old = win.fetch;
+    win.fetch = async () => { throw new TypeError("offline"); };
+    button.click();
+    await until(() => !button.disabled, 3000);
+    check("demo error: mensaje claro y botón recuperado", !button.disabled && !button.hidden
+      && win.document.getElementById("demo-status").textContent.includes("Comprueba la conexión"));
+    check("demo error: no deja pistas a medias", ev("state.tracks.length") === 0);
+    win.fetch = old;
+  });
+
   await scenario("Importar", async ({ win, ev }) => {
     const files = [wav(win, "a.wav", { mtime: 1 }), wav(win, "b.wav", { freq: 550, mtime: 2 }), wav(win, "c.wav", { freq: 660, mtime: 3 })];
     const lrc = new win.File(["[00:00.50]Hola\n"], "a.lrc");
