@@ -27,7 +27,7 @@ Con `npm install`, `npm start` abre la app de escritorio (Electron).
 
 Además de la versión web hay una app de escritorio con Electron, con la misma interfaz. Abre archivos desde el gestor de archivos, y los **videos se enlazan** en vez de copiarse: la biblioteca guarda solo una referencia.
 
-- **Solo Linux x64**, probada en Arch Linux. Todavía **no hay ninguna release publicada**: los paquetes se generan en tu equipo.
+- **Solo Linux x64**, probada en Arch Linux. El paquete de Arch (`.pacman`) y el AppImage se descargan de [Releases](https://github.com/FabricioCT-user/reproductor-mp3/releases); el `.deb` todavía no se publica porque no está probado en Ubuntu: se genera en tu equipo.
 
 Desde el código:
 
@@ -37,7 +37,7 @@ npm start       # abre la app
 npm run dist    # genera los paquetes en dist/
 ```
 
-Paquetes (tamaños medidos en la build del 2026-11-23):
+Paquetes generados en `dist/` (tamaños medidos en la build del 2026-11-23). Si los descargas de Releases, usa los mismos comandos con la ruta de la descarga:
 
 - **Arch Linux** (`.pacman`, 93 MB): `sudo pacman -U dist/reproductor-mp3-*.pacman`
 - **AppImage** (126 MB): `chmod +x dist/Reproductor-*.AppImage` y ejecútalo. Para integrarlo en el menú y en «Abrir con…», mira «Desarrollo».
