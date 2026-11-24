@@ -1484,6 +1484,250 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     ev("media.pause()");
   });
 
+  await scenario("Versión web: tope de 2 GB, persist() y avisos", async ({ frame, win, ev }) => {
+    delete win.reproductor;
+    check("web 2 GB: window.reproductor está ausente", !("reproductor" in win));
+
+    if (!win.navigator.storage) {
+      Object.defineProperty(win.navigator, "storage", { configurable: true, value: {} });
+    }
+
+    const TWO_GB = 2 * 1024 * 1024 * 1024;
+    const baseVideo = await makeWebm(win, "base-2gb.webm", { withVideo: true, seconds: 1.8, mtime: 600 });
+    const fakeSizeVideo = (name, size, mtime, type = "video/webm", content = baseVideo) => {
+      const f = new win.File([content], name, { type, lastModified: mtime });
+      Object.defineProperty(f, "size", { configurable: true, get: () => size });
+      f.__fullReads = 0;
+      f.__slicedBytes = 0;
+      const realSlice = f.slice.bind(f);
+      f.slice = (start = 0, end = size, ct = "") => {
+        const a = start < 0 ? Math.max(size + start, 0) : Math.min(start, size);
+        const b = end < 0 ? Math.max(size + end, 0) : Math.min(end, size);
+        f.__slicedBytes += Math.max(0, b - a);
+        return realSlice(start, end, ct);
+      };
+      if (size > TWO_GB) {
+        f.arrayBuffer = () => {
+          f.__fullReads++;
+          return win.Promise.reject(new win.Error("no debe leerse el archivo entero de > 2 GB"));
+        };
+      }
+      return f;
+    };
+
+    // 1. persist() ausente, que lanza síncronamente, que rechaza asíncronamente y que queda pendiente (sin bloquear).
+    let persistCalls = 0;
+    let persistImpl = () => win.Promise.resolve(true);
+    const installPersist = () => {
+      Object.defineProperty(win.navigator.storage, "persist", {
+        configurable: true,
+        value: () => { persistCalls++; return persistImpl(); },
+      });
+    };
+
+    // 1a. Importar solo audio no pide navigator.storage.persist().
+    installPersist();
+    await win.addFiles([wav(win, "solo-audio-web.wav", { seconds: 2, mtime: 601 })]);
+    check("web 2 GB: importar audio no pide navigator.storage.persist()",
+      persistCalls === 0 && ev("state.tracks.length === 1 && state.tracks[0].source === 'blob'"),
+      `persistCalls=${persistCalls}`);
+
+    // 1b. persist() ausente: la importación de video sigue igual.
+    Object.defineProperty(win.navigator.storage, "persist", { configurable: true, value: undefined });
+    ev("videoPersistRequested = false");
+    await win.addFiles([fakeSizeVideo("sin-persist.webm", 1024, 602)]);
+    check("web 2 GB: si navigator.storage.persist() no existe, la importación de video sigue igual",
+      ev("videoPersistRequested === true && state.tracks.find(t => t.fileName === 'sin-persist.webm')?.source === 'blob'"),
+      ev("state.tracks.find(t => t.fileName === 'sin-persist.webm')?.source"));
+
+    // 1c. persist() que lanza síncronamente: se captura y no interrumpe la importación.
+    installPersist();
+    persistImpl = () => { throw new win.Error("fallo síncrono en persist"); };
+    ev("videoPersistRequested = false");
+    await win.addFiles([fakeSizeVideo("persist-lanza.webm", 1025, 603)]);
+    check("web 2 GB: si navigator.storage.persist() lanza síncronamente, se captura y el video se guarda",
+      persistCalls === 1 && ev("state.tracks.find(t => t.fileName === 'persist-lanza.webm')?.source === 'blob'"),
+      `persistCalls=${persistCalls}`);
+
+    // 1d. persist() que rechaza asíncronamente: se captura sin unhandledrejection y no interrumpe la importación.
+    let unhandledRejections = 0;
+    const onUnhandled = () => { unhandledRejections++; };
+    win.addEventListener("unhandledrejection", onUnhandled);
+    persistImpl = () => win.Promise.reject(new win.Error("permiso persist denegado"));
+    ev("videoPersistRequested = false");
+    await win.addFiles([fakeSizeVideo("persist-rechaza.webm", 1026, 604)]);
+    win.removeEventListener("unhandledrejection", onUnhandled);
+    check("web 2 GB: si navigator.storage.persist() rechaza, se captura sin unhandledrejection y el video se guarda",
+      persistCalls === 2 && unhandledRejections === 0
+      && ev("state.tracks.find(t => t.fileName === 'persist-rechaza.webm')?.source === 'blob'"),
+      `persistCalls=${persistCalls} unhandled=${unhandledRejections}`);
+
+    // 2. Video de 2 GB exactos con persist() que queda pendiente (nunca resuelve): no bloquea la importación,
+    // se pide una sola vez y el video se copia a IndexedDB.
+    persistCalls = 0;
+    persistImpl = () => new win.Promise(() => {});
+    ev("videoPersistRequested = false");
+    const exact2Gb = fakeSizeVideo("exacto-2gb.webm", TWO_GB, 605);
+    await win.addFiles([exact2Gb]);
+    check("web 2 GB: una promesa pendiente de navigator.storage.persist() no bloquea la importación",
+      persistCalls === 1 && ev("state.tracks.some(t => t.fileName === 'exacto-2gb.webm')"),
+      `persistCalls=${persistCalls}`);
+
+    const db1 = await openDbAsIs();
+    const [tracks1, files1] = [await getAll(db1, "tracks"), await getAll(db1, "files")];
+    db1.close();
+    const recExact = tracks1.find((r) => r.name === "exacto-2gb.webm");
+    const fileExact = files1.find((f) => f.id === recExact?.id);
+    check("web 2 GB: video de 2 GB exactos se copia a IndexedDB (source «blob»)",
+      recExact?.source === "blob" && recExact?.size === TWO_GB && recExact?.kind === "video"
+      && fileExact?.blob instanceof Blob
+      && ev("state.tracks.find(t => t.fileName === 'exacto-2gb.webm')?.source === 'blob' && state.tracks.find(t => t.fileName === 'exacto-2gb.webm')?.id != null"),
+      JSON.stringify({ recExact, hasFile: !!fileExact }));
+
+    // 3. Video de 2 GB + 1 byte: no lee el archivo entero, no se copia a IndexedDB, queda de sesión con aviso
+    // que recomienda la app de escritorio, no vuelve a pedir persist(), y se reproduce igual en la sesión.
+    const over2Gb = fakeSizeVideo("mayor-2gb.webm", TWO_GB + 1, 606);
+    await win.addFiles([over2Gb]);
+    const toastOver = ev("els.toast.textContent");
+    const db2 = await openDbAsIs();
+    const [tracks2, files2] = [await getAll(db2, "tracks"), await getAll(db2, "files")];
+    db2.close();
+    const trackOver = ev("(() => { const t = state.tracks.find(x => x.fileName === 'mayor-2gb.webm'); return t ? { id: t.id, source: t.source, size: t.size, kind: t.meta?.kind } : null; })()");
+    check("web 2 GB: video de 2 GB + 1 byte no se copia a IndexedDB y queda con source «session»",
+      !tracks2.some((r) => r.name === "mayor-2gb.webm") && files2.length === files1.length
+      && trackOver?.id === null && trackOver?.source === "session" && trackOver?.size === TWO_GB + 1 && trackOver?.kind === "video",
+      JSON.stringify({ inDb: tracks2.map((r) => r.name), filesCount: files2.length, trackOver }));
+    check("web 2 GB: video de más de 2 GB no lee el archivo entero (solo cabeceras acotadas)",
+      over2Gb.__fullReads === 0 && over2Gb.__slicedBytes > 0 && over2Gb.__slicedBytes <= 256 * 1024 + 64,
+      `fullReads=${over2Gb.__fullReads} slicedBytes=${over2Gb.__slicedBytes}`);
+    check("web 2 GB: muestra aviso visible que recomienda la app de escritorio",
+      !ev("els.toast.hidden") && /2 GB/i.test(toastOver) && /solo para esta sesión/i.test(toastOver) && /app de escritorio/i.test(toastOver),
+      toastOver);
+
+    // Un segundo video ≤ 2 GB tampoco vuelve a pedir persist().
+    await win.addFiles([fakeSizeVideo("segundo-video.webm", 1024, 607)]);
+    check("web 2 GB: navigator.storage.persist() se pide una sola vez",
+      persistCalls === 1,
+      `persistCalls=${persistCalls}`);
+
+    // El video de > 2 GB se reproduce normalmente en la sesión.
+    const overIdx = ev("state.tracks.findIndex(t => t.fileName === 'mayor-2gb.webm')");
+    win.loadTrack(overIdx, true, "all");
+    check("web 2 GB: el video de más de 2 GB se reproduce en la sesión",
+      await until(() => ev("!media.paused && media.videoWidth > 0 && media.currentTime > 0.2"), 4000),
+      `paused=${ev("media.paused")} width=${ev("media.videoWidth")} t=${ev("media.currentTime")}`);
+    ev("media.pause()");
+
+    // 4. Archivos de > 2 GB que parecen video por extensión o por MIME aunque la detección por contenido falle
+    // tampoco se copian a IndexedDB; un archivo que la detección confirma como solo audio sigue como audio.
+    const corruptBytes = new Uint8Array(64).fill(0x55);
+    const overFailedExt = fakeSizeVideo("fallo-ext-2gb.mp4", TWO_GB + 10, 608, "", corruptBytes);
+    const overFailedMime = fakeSizeVideo("fallo-mime-2gb.bin", TWO_GB + 20, 609, "video/mp4", corruptBytes);
+    const overFailedSlice = fakeSizeVideo("fallo-lectura-2gb.mkv", TWO_GB + 30, 610, "application/octet-stream", corruptBytes);
+    overFailedSlice.slice = () => ({ arrayBuffer: () => win.Promise.reject(new win.Error("cabecera ilegible")) });
+    const confirmedAudioWebm = await makeWebm(win, "confirmado-solo-audio.webm", { withVideo: false, seconds: 1.2, mtime: 611 });
+
+    const dbBeforeFailed = await openDbAsIs();
+    const filesCountBeforeFailed = (await getAll(dbBeforeFailed, "files")).length;
+    dbBeforeFailed.close();
+
+    await win.addFiles([overFailedExt, overFailedMime, overFailedSlice, confirmedAudioWebm]);
+    const toastFailed = ev("els.toast.textContent");
+    const dbAfterFailed = await openDbAsIs();
+    const [tracksAfterFailed, filesAfterFailed] = [await getAll(dbAfterFailed, "tracks"), await getAll(dbAfterFailed, "files")];
+    dbAfterFailed.close();
+    const failedNames = ["fallo-ext-2gb.mp4", "fallo-mime-2gb.bin", "fallo-lectura-2gb.mkv"];
+    const failedState = ev(`JSON.stringify(["fallo-ext-2gb.mp4", "fallo-mime-2gb.bin", "fallo-lectura-2gb.mkv"].map(n => {
+      const t = state.tracks.find(x => x.fileName === n);
+      return t ? { name: t.fileName, id: t.id, source: t.source, kind: t.meta?.kind } : null;
+    }))`);
+    const parsedFailedState = JSON.parse(failedState);
+    check("web 2 GB: archivos > 2 GB que parecen video por MIME o extensión con detección fallida no se copian a IndexedDB",
+      parsedFailedState.every((t) => t && t.id === null && t.source === "session" && t.kind === "video")
+      && !tracksAfterFailed.some((r) => failedNames.includes(r.name))
+      && filesAfterFailed.length === filesCountBeforeFailed + 1
+      && overFailedExt.__fullReads === 0 && overFailedMime.__fullReads === 0 && overFailedSlice.__fullReads === 0
+      && /3 videos de más de 2 GB solo para esta sesión: usa la app de escritorio/.test(toastFailed),
+      `${failedState} | toast=${toastFailed}`);
+    check("web 2 GB: un archivo cuya detección por contenido confirma que es solo audio sigue como audio y se guarda",
+      ev("state.tracks.find(t => t.fileName === 'confirmado-solo-audio.webm')?.meta?.kind === 'audio' && state.tracks.find(t => t.fileName === 'confirmado-solo-audio.webm')?.source === 'blob'")
+      && tracksAfterFailed.some((r) => r.name === "confirmado-solo-audio.webm" && r.kind === "audio" && r.source === "blob"),
+      JSON.stringify(tracksAfterFailed.find((r) => r.name === "confirmado-solo-audio.webm")));
+
+    // 5. Mantiene el aviso de cuota (QuotaExceededError) y el resumen de importación cuenta bien ambos casos.
+    const realAdd = ev("Storage.add");
+    ev("Storage.add = () => Promise.reject(new DOMException('sin espacio', 'QuotaExceededError'))");
+    await win.addFiles([
+      wav(win, "sin-cuota.wav", { seconds: 1, mtime: 612 }),
+      fakeSizeVideo("otro-mayor-2gb.webm", TWO_GB + 50, 613),
+    ]);
+    const toastBoth = ev("els.toast.textContent");
+    win.__realStorageAdd = realAdd;
+    ev("Storage.add = window.__realStorageAdd; delete window.__realStorageAdd");
+    check("web 2 GB: el resumen de importación cuenta por separado > 2 GB y QuotaExceededError",
+      !ev("els.toast.hidden")
+      && /2 pista\(s\) añadida\(s\)/.test(toastBoth)
+      && /1 video de más de 2 GB solo para esta sesión: usa la app de escritorio/.test(toastBoth)
+      && /1 pista solo para esta sesión: no hay espacio/.test(toastBoth),
+      toastBoth);
+
+    // 6. launchQueue (consumeLaunch) acepta video/mp4 y video/webm.
+    const handle = (f) => ({ getFile: async () => f });
+    const launchWebm = fakeSizeVideo("launch.webm", baseVideo.size, 614, "video/webm");
+    const launchMp4 = fakeSizeVideo("launch.mp4", baseVideo.size, 615, "video/mp4");
+    await win.consumeLaunch({ files: [handle(launchWebm), handle(launchMp4)] });
+    check("web 2 GB: launchQueue acepta video/webm y video/mp4, reproduce el primero y encola el segundo",
+      (await until(() => ev("!media.paused && state.tracks[state.index]?.fileName === 'launch.webm' && media.currentTime > 0.2"), 4000))
+      && ev("state.tracks.some(t => t.fileName === 'launch.mp4') && state.queue.some(t => t.fileName === 'launch.mp4')"),
+      ev("state.tracks.map(t => t.fileName).join(',')"));
+    ev("media.pause()");
+
+    // 7. Registro en caché con meta.kind "audio" y codecs null, nombre .mp4 y detección no concluyente:
+    // tras recargar conserva "audio" y lo guardado en IndexedDB no cambia.
+    const cachedAudioMeta = {
+      title: "Grabación", artist: "Autor", album: "", lyrics: "", hasCover: false,
+      duration: 12, kind: "audio", width: null, height: null, codecs: null,
+      year: "", genre: "", description: "", show: "", season: null, episode: null,
+      rotation: 0, chapters: [],
+    };
+    const dbSeed = await openDb();
+    await new Promise((res, rej) => {
+      const tx = dbSeed.transaction(["tracks", "files"], "readwrite");
+      const req = tx.objectStore("tracks").add({
+        name: "grabacion.mp4", type: "video/mp4", size: corruptBytes.byteLength, lastModified: 616,
+        kind: "audio", source: "blob", metaVersion: 2, meta: cachedAudioMeta,
+      });
+      req.onsuccess = (e) => {
+        tx.objectStore("files").put({
+          id: e.target.result,
+          blob: new File([corruptBytes], "grabacion.mp4", { type: "video/mp4", lastModified: 616 }),
+        });
+      };
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+    dbSeed.close();
+
+    const loaded = new Promise((r) => frame.addEventListener("load", () => {
+      frame.contentWindow.eval('const __realMp4Probe = MP4.probe; MP4.probe = async (f) => (f?.name === "grabacion.mp4" ? { kind: undefined, codecs: null } : __realMp4Probe(f));');
+      r();
+    }, { once: true }));
+    frame.contentWindow.location.reload();
+    await loaded;
+    await waitReady(frame.contentWindow);
+    await sleep(150);
+    const e2 = (c) => frame.contentWindow.eval(c);
+    const dbAfterReload = await openDbAsIs();
+    const recAfterReload = (await getAll(dbAfterReload, "tracks")).find((r) => r.name === "grabacion.mp4");
+    dbAfterReload.close();
+    check("web 2 GB: registro con meta.kind «audio» y codecs null (.mp4 con detección no concluyente) sigue «audio» tras recargar y lo guardado no cambia",
+      e2("state.tracks.find(t => t.fileName === 'grabacion.mp4')?.meta?.kind === 'audio'")
+      && recAfterReload?.kind === "audio"
+      && recAfterReload?.meta?.kind === "audio"
+      && recAfterReload?.meta?.codecs === null,
+      JSON.stringify({ memKind: e2("state.tracks.find(t => t.fileName === 'grabacion.mp4')?.meta?.kind"), recMeta: recAfterReload?.meta }));
+  });
+
   await scenario("Editor con video", async ({ frame, win, ev }) => {
     // 1. Preparar pistas: un video, un MP3 sintético y un WAV
     const video = await makeWebm(win, "clip-editor.webm", { withVideo: true, seconds: 1.8, mtime: 601 });

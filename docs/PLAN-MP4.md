@@ -280,7 +280,8 @@ Los 7 puntos pasan, incluido el riesgo n.º 1 (Web Audio con video del mismo ori
 - Humo en Electron: renombrar el archivo enlazado entre reinicios → «no encontrado»; volver a enlazar → recupera sus datos.
 - Revisión: Codex.
 
-### T2.3 — Versión web: tope de 2 GB y avisos · **Sonnet** (tras T0.2, T0.3)
+### T2.3 — Versión web: tope de 2 GB y avisos · **Sonnet** (tras T0.2, T0.3) · **Hecha**
+> Hecho: sin `window.reproductor`, `addFiles` copia a IndexedDB los videos de hasta 2 GB inclusive (`2 * 1024 ** 3` bytes) pidiendo `navigator.storage.persist()` una sola vez en la primera importación de video, y deja los de más de 2 GB solo en memoria (`source: "session"`, `id: null`) con un aviso visible que recomienda la app de escritorio, manteniendo los avisos de cuota de T0.2 y el conteo separado en el resumen de importación. `manifest.webmanifest` añade `video/mp4` (`.mp4`) y `video/webm` (`.webm`) a `file_handlers`.
 - Sin `window.reproductor`: videos ≤ 2 GB se copian a IndexedDB (con `navigator.storage.persist()` pedido en la primera importación de video); > 2 GB → «solo esta sesión» con aviso que recomienda la app de escritorio.
 - `manifest.webmanifest`: `file_handlers` para `video/mp4` y `video/webm` (Chromium instalado como PWA).
 - Prueba de humo (navegador): archivo simulado de 2 GB + 1 byte → no se copia, queda de sesión, aviso visible.

@@ -46,7 +46,7 @@ Con `npm install`, `npm start` abre la app de escritorio (Electron).
 
 **Interfaz**
 - Tema claro, oscuro o automático, adaptable a móvil, instalable como app (PWA) y funciona sin conexión.
-- Una vez instalada, se ofrece en «Abrir con…» para los archivos de audio del sistema.
+- Una vez instalada, se ofrece en «Abrir con…» para los archivos de audio y video del sistema.
 
 ## Atajos
 
@@ -79,10 +79,10 @@ y abre <http://127.0.0.1:8000>. Desde Chrome o Edge puedes **instalarla como app
 
 ### Abrir un archivo con doble clic («Abrir con…»)
 
-Con la app **instalada** (Chrome o Edge de escritorio), el sistema la ofrece como programa para abrir `.mp3`, `.flac`, `.m4a`, `.ogg`, `.oga`, `.opus`, `.aac` y `.wav`:
+Con la app **instalada** (Chrome o Edge de escritorio), el sistema la ofrece como programa para abrir `.mp3`, `.flac`, `.m4a`, `.ogg`, `.oga`, `.opus`, `.aac`, `.wav`, `.mp4` y `.webm`:
 
 1. Instala la app como se explica arriba.
-2. Clic derecho sobre un archivo de audio → **Abrir con** → *Reproductor* (en Windows: «Elegir otra aplicación»; en macOS: «Obtener información» → «Abrir con»). Para que sea el programa por defecto, marca «Usar siempre» o cámbialo en las propiedades del tipo de archivo.
+2. Clic derecho sobre un archivo de audio o video → **Abrir con** → *Reproductor* (en Windows: «Elegir otra aplicación»; en macOS: «Obtener información» → «Abrir con»). Para que sea el programa por defecto, marca «Usar siempre» o cámbialo en las propiedades del tipo de archivo.
 3. El archivo se añade a la biblioteca y empieza a sonar. Si abres varios a la vez, suena el primero y el resto quedan en la cola. Si la app ya está abierta, los archivos van a esa ventana.
 
 Si el navegador no permite que algo suene sin que hayas tocado la página, la app lo pausa y avisa («pulsa ▶») en vez de reproducir en silencio.
@@ -97,7 +97,7 @@ Firefox de escritorio no permite instalar aplicaciones web ni registrarlas en «
 
 Consejo: fija la pestaña (clic derecho → *Fijar pestaña*) para tener el reproductor siempre a mano. Firefox no se ha probado todavía con esta aplicación.
 
-> Tu biblioteca, tus listas y tus ajustes se guardan en el navegador y **ligados a la dirección exacta** (`127.0.0.1:8000` no comparte datos con `localhost:8000`). Si borras los datos del sitio se pierden; exporta tus listas antes si te importa conservarlas. Los archivos de música se copian dentro del almacenamiento del navegador.
+> Tu biblioteca, tus listas y tus ajustes se guardan en el navegador y **ligados a la dirección exacta** (`127.0.0.1:8000` no comparte datos con `localhost:8000`). Si borras los datos del sitio se pierden; exporta tus listas antes si te importa conservarlas. Los archivos de música y los videos de hasta 2 GB se copian dentro del almacenamiento del navegador (en la primera importación de video se solicita almacenamiento persistente); los videos de más de 2 GB se reproducen solo en esa sesión y la app recomienda usar la versión de escritorio.
 
 ## Formatos y compatibilidad
 
@@ -186,7 +186,7 @@ La app sirve la misma interfaz desde `app://reproductor/`, que solo entrega los 
 
 **Abrir archivos en la app:** `npm run app -- ~/Música/cancion.mp3 "$HOME/Música/otra canción.flac"` (rutas absolutas: npm ejecuta desde la carpeta del proyecto; también valen URLs `file://`) los añade a la biblioteca, suena el primero y los demás quedan en la cola. Con la app ya abierta, abrir más archivos (otra vez el mismo comando o, cuando exista el paquete, «Abrir con…») no abre otra ventana: los entrega a la abierta y la pone al frente. En la app, «+ Añadir» y «+ Carpeta» usan el diálogo del sistema. El proceso principal solo acepta archivos regulares (resuelve enlaces simbólicos y mira la extensión del destino) de audio, video, `.lrc`, `.srt` o `.vtt`, y la interfaz nunca ve rutas: recibe un id de un solo uso y pide con él los bytes, que se copian a la biblioteca como cualquier otro archivo. Los subtítulos aún no se abren.
 
-**Videos en la app: se enlazan, no se copian.** Un video que llega por «Abrir con…», el diálogo, arrastrándolo o con el selector de archivos se registra en `enlaces.json`, dentro de la carpeta de datos de la app (permisos 0600), con un id opaco; la biblioteca (IndexedDB) guarda solo ese id (`source: "link"`) y nunca la ruta. La interfaz lo reproduce desde `app://reproductor/__media/<id>`, que el proceso principal sirve con `Range` propio (`206`, `416`, tipo por extensión) leyendo el archivo por trozos de 512 KB solo cuando el reproductor los pide y cerrándolo en cuanto cancela la petición (al saltar), así que un video de varios GB ni se copia ni se carga en memoria. Las etiquetas se leen también por `Range`. Solo se sirven ids registrados; quitar la pista olvida su enlace. Si el archivo se mueve o se borra, la pista no se pierde (avisar «no encontrado» y volver a enlazarlo llegará después). El audio se sigue copiando a la biblioteca, y la versión web no cambia: allí los videos se copian como cualquier archivo. La asociación con el gestor de archivos («Abrir con…») se ofrece con la app de escritorio instalada.
+**Videos en la app: se enlazan, no se copian.** Un video que llega por «Abrir con…», el diálogo, arrastrándolo o con el selector de archivos se registra en `enlaces.json`, dentro de la carpeta de datos de la app (permisos 0600), con un id opaco; la biblioteca (IndexedDB) guarda solo ese id (`source: "link"`) y nunca la ruta. La interfaz lo reproduce desde `app://reproductor/__media/<id>`, que el proceso principal sirve con `Range` propio (`206`, `416`, tipo por extensión) leyendo el archivo por trozos de 512 KB solo cuando el reproductor los pide y cerrándolo en cuanto cancela la petición (al saltar), así que un video de varios GB ni se copia ni se carga en memoria. Las etiquetas se leen también por `Range`. Solo se sirven ids registrados; quitar la pista olvida su enlace. Si el archivo se mueve o se borra, la pista no se pierde (avisar «no encontrado» y volver a enlazarlo llegará después). El audio se sigue copiando a la biblioteca. En la versión web (sin Electron), los videos de hasta 2 GB se copian a IndexedDB (pidiendo almacenamiento persistente en la primera importación de video) y los de más de 2 GB quedan solo para esa sesión (`source: "session"`) con un aviso que recomienda la app de escritorio. La asociación completa con el gestor de archivos («Abrir con…») se ofrece con la app de escritorio instalada (y en la PWA para los tipos de audio, `video/mp4` y `video/webm`).
 
 **Al publicar una versión nueva**, si cambia la lista de archivos de la aplicación actualiza `FILES` y `VERSION` en `sw.js` (una prueba comprueba que `FILES` coincide con lo que carga la página).
 
