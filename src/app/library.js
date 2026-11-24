@@ -189,24 +189,22 @@ function assessTrackCompat(t) {
 async function makeTrack(id, file, userLyrics = "", edits = null, cachedMeta = null, savedSubs = [], savedThumb = null) {
   const meta = cachedMeta || await Tags.read(file);
   let probedCached = false;
-  let detectedKind = null;
   if (isMp4File(file) && (!cachedMeta || cachedMeta.codecs == null)) {
     try {
       const info = await MP4.probe(file);
-      if (info.kind) detectedKind = meta.kind = info.kind;
+      if (info.kind) meta.kind = info.kind;
       meta.codecs = info.codecs;
       probedCached = !!cachedMeta;
     } catch { /* tipo MIME como alternativa */ }
   } else if (isMkvFile(file) && (!cachedMeta || cachedMeta.codecs == null)) {
     try {
       const info = await MKV.probe(file);
-      if (info.kind) detectedKind = meta.kind = info.kind;
+      if (info.kind) meta.kind = info.kind;
       meta.codecs = info.codecs;
       probedCached = !!cachedMeta;
     } catch { /* tipo MIME como alternativa */ }
   }
-  if (!detectedKind && (!cachedMeta || cachedMeta.codecs == null) && isVideo(file)) meta.kind = "video";
-  else if (!meta.kind && isVideo(file)) meta.kind = "video";
+  if (!meta.kind && isVideo(file)) meta.kind = "video";
   const savedMeta = trackMeta(meta, file);
   if (probedCached && id != null) Storage.setMeta(id, savedMeta, META_VERSION).catch(() => {});
   const fallback = file.name.replace(/\.[^.]+$/, "");

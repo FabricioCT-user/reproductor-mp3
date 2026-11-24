@@ -1484,7 +1484,7 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
     ev("media.pause()");
   });
 
-  await scenario("Versión web: tope de 2 GB, persist() y avisos", async ({ win, ev }) => {
+  await scenario("Versión web: tope de 2 GB, persist() y avisos", async ({ frame, win, ev }) => {
     delete win.reproductor;
     check("web 2 GB: window.reproductor está ausente", !("reproductor" in win));
 
@@ -1681,6 +1681,51 @@ const titles = (ev, expr = "state.tracks") => ev(`${expr}.map(t => t.title).join
       && ev("state.tracks.some(t => t.fileName === 'launch.mp4') && state.queue.some(t => t.fileName === 'launch.mp4')"),
       ev("state.tracks.map(t => t.fileName).join(',')"));
     ev("media.pause()");
+
+    // 7. Registro en caché con meta.kind "audio" y codecs null, nombre .mp4 y detección no concluyente:
+    // tras recargar conserva "audio" y lo guardado en IndexedDB no cambia.
+    const cachedAudioMeta = {
+      title: "Grabación", artist: "Autor", album: "", lyrics: "", hasCover: false,
+      duration: 12, kind: "audio", width: null, height: null, codecs: null,
+      year: "", genre: "", description: "", show: "", season: null, episode: null,
+      rotation: 0, chapters: [],
+    };
+    const dbSeed = await openDb();
+    await new Promise((res, rej) => {
+      const tx = dbSeed.transaction(["tracks", "files"], "readwrite");
+      const req = tx.objectStore("tracks").add({
+        name: "grabacion.mp4", type: "video/mp4", size: corruptBytes.byteLength, lastModified: 616,
+        kind: "audio", source: "blob", metaVersion: 2, meta: cachedAudioMeta,
+      });
+      req.onsuccess = (e) => {
+        tx.objectStore("files").put({
+          id: e.target.result,
+          blob: new File([corruptBytes], "grabacion.mp4", { type: "video/mp4", lastModified: 616 }),
+        });
+      };
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+    dbSeed.close();
+
+    const loaded = new Promise((r) => frame.addEventListener("load", () => {
+      frame.contentWindow.eval('const __realMp4Probe = MP4.probe; MP4.probe = async (f) => (f?.name === "grabacion.mp4" ? { kind: undefined, codecs: null } : __realMp4Probe(f));');
+      r();
+    }, { once: true }));
+    frame.contentWindow.location.reload();
+    await loaded;
+    await waitReady(frame.contentWindow);
+    await sleep(150);
+    const e2 = (c) => frame.contentWindow.eval(c);
+    const dbAfterReload = await openDbAsIs();
+    const recAfterReload = (await getAll(dbAfterReload, "tracks")).find((r) => r.name === "grabacion.mp4");
+    dbAfterReload.close();
+    check("web 2 GB: registro con meta.kind «audio» y codecs null (.mp4 con detección no concluyente) sigue «audio» tras recargar y lo guardado no cambia",
+      e2("state.tracks.find(t => t.fileName === 'grabacion.mp4')?.meta?.kind === 'audio'")
+      && recAfterReload?.kind === "audio"
+      && recAfterReload?.meta?.kind === "audio"
+      && recAfterReload?.meta?.codecs === null,
+      JSON.stringify({ memKind: e2("state.tracks.find(t => t.fileName === 'grabacion.mp4')?.meta?.kind"), recMeta: recAfterReload?.meta }));
   });
 
   /* ---------- Resultado ---------- */
