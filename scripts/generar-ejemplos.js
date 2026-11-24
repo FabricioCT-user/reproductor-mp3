@@ -59,7 +59,7 @@ function phrase(bpm, bars, progression, scale, rootMidi, melodySteps) {
   const bar = beat * 4;
   return {
     beat, bar, progression: progression.map((ch) => ch.map((n) => rootMidi + scales[scale][(n % 7 + 7) % 7] + 12 * Math.floor(n / 7))),
-    bars, melody: melodySteps.map(([step, len, note]) => [step * beat / 2, len * beat / 2, rootMidi + scales[scale][note % 7] + 12 * Math.floor(note / 7)]),
+    bars, melody: melodySteps.map(([step, len, note]) => [step * beat / 2, len * beat / 2, rootMidi + scales[scale][note % 7] + 12 * Math.floor(note / 7), step]),
   };
 }
 
@@ -70,7 +70,14 @@ function synth(track) {
   const random = rng(track.seed);
   const bars = Math.floor(DURATION / (60 / track.bpm * 4));
   const p = phrase(track.bpm, bars, track.chords, track.scale, track.root, track.melody);
-  const chordAt = (time) => p.progression[Math.floor(time / p.bar) % p.progression.length];
+  const dominant = [4, 6, 1].map((n) => track.root + scales[track.scale][n % 7] + 12 * Math.floor(n / 7));
+  const tonic = p.progression[0];
+  const chordAt = (time) => {
+    const bar = Math.min(bars - 1, Math.floor(time / p.bar));
+    if (bar >= bars - 1) return tonic;
+    if (bar === bars - 2) return dominant;
+    return p.progression[bar % p.progression.length];
+  };
   const voices = [];
 
   // Bajo cálido y pulsos por negra en las tres piezas.
@@ -81,13 +88,23 @@ function synth(track) {
     voices.push({ start, dur, note, kind: "bass", pan: (step % 2 ? 0.12 : -0.12) });
   }
   // Melodía con descansos y respuesta; las notas pertenecen a la tonalidad.
-  for (let repeat = 0; repeat < bars / 4; repeat++) {
-    for (const [at, len, note] of p.melody) voices.push({ start: at + p.bar * 0.5 + repeat * p.bar * 4, dur: len * 0.88, note, kind: track.voice, pan: 0.1 });
+  const phraseBars = Math.ceil(Math.max(...track.melody.map(([step, len]) => step + len)) / 8);
+  for (let repeat = 0; repeat * phraseBars * p.bar < bars * p.bar; repeat++) {
+    const offset = repeat * phraseBars * p.bar + p.bar * 0.5;
+    for (const [at, len, note, step] of p.melody) {
+      const start = at + offset;
+      if (start + len * 0.88 > DURATION - 0.03) continue;
+      const chord = chordAt(start);
+      const chordNotes = chord.flatMap((n) => [n - 12, n, n + 12]);
+      const pitch = step % 2 === 0 ? chordNotes.reduce((best, n) => Math.abs(n - note) < Math.abs(best - note) ? n : best) : note;
+      if (step % 2 === 0 && !chordNotes.includes(pitch)) throw new Error(`${track.name}: nota fuerte fuera del acorde`);
+      voices.push({ start, dur: len * 0.88, note: pitch, kind: track.voice, pan: 0.1 });
+    }
   }
   // Acordes sostenidos, una nueva inversión cada compás.
   for (let bar = 0; bar < bars; bar++) {
-    const chord = p.progression[bar % p.progression.length];
-    chord.slice(0, 3).forEach((note, i) => voices.push({ start: bar * p.bar, dur: p.bar * 0.94, note: note + 12, kind: track.pad, pan: (i - 1) * 0.3, index: i }));
+    const chord = chordAt(bar * p.bar);
+    chord.slice(0, 3).forEach((note, i) => voices.push({ start: bar * p.bar, dur: Math.min(p.bar * 0.94, DURATION - bar * p.bar), note: note + 12, kind: track.pad, pan: (i - 1) * 0.3, index: i }));
   }
 
   const sampleVoice = (v, t) => {
@@ -141,7 +158,7 @@ function synth(track) {
       const e = envelope(t, hit.dur, 0.002, hit.dur * 0.65);
       const noise = random();
       const kick = Math.sin(TAU * (75 - 35 * t / hit.dur) * t);
-      dry[from + k] += (hit.type === "kick" ? kick * 0.12 : noise * 0.035) * e;
+      dry[from + k] += (hit.type === "kick" ? kick * 0.2 : noise * 0.1) * e;
       z = z * 0.86 + noise * 0.14;
     }
   }
@@ -150,7 +167,7 @@ function synth(track) {
   let peak = 0;
   for (let n = 0; n < count; n++) {
     const t = n / RATE;
-    const fade = smooth(t / 1.1) * smooth((DURATION - t) / 2.2);
+    const fade = smooth(t / 1.1) * smooth((DURATION - t) / 0.55);
     const a = dry[n] + (n >= delayA ? dry[n - delayA] * 0.22 : 0) + (n >= delayB ? dry[n - delayB] * 0.12 : 0);
     const pan = track.stereo ? Math.sin(TAU * t / 11) * 0.18 : 0;
     L[n] = a * fade * (0.92 - pan);
@@ -216,7 +233,7 @@ for (const track of tracks) {
     "-metadata", `title=${track.name}`, "-metadata", "artist=Tarareo (ejemplo)", "-metadata", "album=Pequeños paisajes", "-metadata:s:v", "title=Portada", "-metadata:s:v", "comment=Cover (front)"];
   if (track.name === "Jardín") args.push("-sample_fmt", "s16", "-c:a", "flac", "-c:v", "mjpeg", "-disposition:v", "attached_pic");
   else args.push("-c:a", "libmp3lame", "-b:a", "160k", "-id3v2_version", "4", "-c:v", "mjpeg", "-disposition:v", "attached_pic");
-  args.push("-af", "ebur128=peak=true:framelog=quiet", output);
+  args.push("-af", "loudnorm=I=-16:TP=-1.5:LRA=11,ebur128=peak=true:framelog=quiet", "-ar", String(RATE), output);
   ffmpeg(args);
 }
 
@@ -229,8 +246,8 @@ for (let n = 0; n < vcount; n++) {
   const t = n / 48000;
   const beat = t * 72 / 60;
   const beatNo = Math.floor(beat);
-  const chordIndex = Math.floor(beat / 4) % 4;
-  const chord = videoProgression[chordIndex];
+  const barIndex = Math.floor(beat / 4);
+  const chord = barIndex >= 7 ? videoProgression[0] : barIndex >= 6 ? videoProgression[3] : videoProgression[barIndex % 4];
   const root = hz(38 + chord[0]);
   const third = hz(50 + chord[1]);
   const fifth = hz(50 + chord[2]);
@@ -243,10 +260,9 @@ for (let n = 0; n < vcount; n++) {
   vraw.writeFloatLE(value, n * 8); vraw.writeFloatLE(value, n * 8 + 4);
 }
 fs.writeFileSync(videoPcm, vraw);
-const vw = 320, vh = 180;
+const vw = 1280, vh = 720;
 const skyTop = [39,54,91], skyLow = [137,151,183];
 const hills = [[79,100,142],[55,78,128],[35,56,101]];
-const videoNoise = rng(720);
 const frameAt = (frame) => {
   const t = frame / 24;
   const frameData = Buffer.allocUnsafe(vw * vh * 3);
@@ -255,33 +271,42 @@ const frameAt = (frame) => {
   const ridges = new Array(vw);
   for (let x = 0; x < vw; x++) {
     ridges[x] = [
-      105 + Math.sin((x + t * 2.2) * 0.023) * 11 + Math.sin((x + t * 2.2) * 0.052) * 4,
-      130 + Math.sin((x + t * 1.3) * 0.019 + 1.4) * 13 + Math.sin((x + t * 1.3) * 0.043) * 5,
-      153 + Math.sin((x + t * 0.6) * 0.027 + 2.6) * 7,
+      420 + Math.sin((x + t * 8.8) * 0.023) * 44 + Math.sin((x + t * 8.8) * 0.052) * 16,
+      520 + Math.sin((x + t * 5.2) * 0.019 + 1.4) * 52 + Math.sin((x + t * 5.2) * 0.043) * 20,
+      612 + Math.sin((x + t * 2.4) * 0.027 + 2.6) * 28,
     ];
   }
   for (let y = 0; y < vh; y++) for (let x = 0; x < vw; x++) {
     const o = (y * vw + x) * 3;
-    const f = Math.min(1, y / 112);
-    let color = skyTop.map((v, k) => Math.round(v + (skyLow[k] - v) * f));
-    const distance = Math.hypot(x - sunX, y - sunY);
-    if (distance < 19) color = [249, 218, 157];
-    if (distance >= 19 && distance < 21) color = [239, 205, 148];
-    if (y >= ridges[x][0]) color = hills[0];
-    if (y >= ridges[x][1]) color = hills[1];
-    if (y >= ridges[x][2]) color = hills[2];
-    const grain = videoNoise() * 2.4;
-    frameData[o] = Math.max(0, Math.min(255, color[0] + grain));
-    frameData[o + 1] = Math.max(0, Math.min(255, color[1] + grain));
-    frameData[o + 2] = Math.max(0, Math.min(255, color[2] + grain));
+    const f = Math.min(1, y / 448);
+    let red = skyTop[0] + (skyLow[0] - skyTop[0]) * f;
+    let green = skyTop[1] + (skyLow[1] - skyTop[1]) * f;
+    let blue = skyTop[2] + (skyLow[2] - skyTop[2]) * f;
+    const dx = x - sunX * 4, dy = y - sunY * 4;
+    const d2 = dx * dx + dy * dy;
+    let sun = 0;
+    if (d2 < 85 * 85) sun = d2 < 83 * 83 ? 1 : smooth((84.8 - Math.sqrt(d2)) / 1.6);
+    if (sun) { red += (249 - red) * sun; green += (218 - green) * sun; blue += (157 - blue) * sun; }
+    for (let layer = 0; layer < 3; layer++) {
+      const distance = y - ridges[x][layer];
+      if (distance > -0.8) {
+        const edge = distance >= 0.8 ? 1 : smooth((distance + 0.8) / 1.6);
+        red += (hills[layer][0] - red) * edge;
+        green += (hills[layer][1] - green) * edge;
+        blue += (hills[layer][2] - blue) * edge;
+      }
+    }
+    frameData[o] = Math.round(red);
+    frameData[o + 1] = Math.round(green);
+    frameData[o + 2] = Math.round(blue);
   }
   return frameData;
 };
 void ffmpegVideo(["-f", "f32le", "-ar", "48000", "-ac", "2", "-i", videoPcm,
   "-f", "rawvideo", "-pixel_format", "rgb24", "-video_size", `${vw}x${vh}`, "-framerate", "24", "-i", "pipe:0",
-  "-map", "1:v", "-map", "0:a", "-t", "24", "-vf", "scale=1280:720:flags=lanczos,format=yuv420p", "-r", "24",
-  "-c:v", "libvpx-vp9", "-deadline", "good", "-cpu-used", "4", "-b:v", "180k", "-c:a", "libopus", "-b:a", "64k",
-  "-metadata", "title=Paseo", "-metadata", "artist=Tarareo (ejemplo)", "-metadata", "album=Pequeños paisajes", path.join(dir, "Paseo.webm")], 576, frameAt)
+  "-map", "1:v", "-map", "0:a", "-t", "24", "-vf", "format=yuv420p", "-r", "24",
+  "-c:v", "libvpx-vp9", "-deadline", "good", "-cpu-used", "4", "-b:v", "260k", "-c:a", "libopus", "-b:a", "64k", "-af", "loudnorm=I=-16:TP=-1.5:LRA=11,ebur128=peak=true:framelog=quiet",
+  "-metadata", "title=Paseo", "-metadata", "artist=Tarareo (ejemplo)", "-metadata", "album=Pequeños paisajes", "-ar", "48000", path.join(dir, "Paseo.webm")], 576, frameAt)
   .catch((error) => { console.error(error); process.exitCode = 1; });
 
 fs.writeFileSync(path.join(dir, "Brisa.lrc"), "[ti:Brisa]\n[ar:Tarareo (ejemplo)]\n[00:02.00]La tarde se inclina al mar\n[00:05.00]la cuerda despierta al sol\n[00:08.00]un paso comienza a andar\n[00:11.00]y el viento responde en do\n[00:14.00]las hojas giran al pasar\n[00:17.00]la luz se posa en la piel\n[00:20.00]la noche nos ve llegar\n[00:24.00]y el aire nos mece otra vez\n", "utf8");
